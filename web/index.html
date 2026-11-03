@@ -106,6 +106,9 @@ th:first-child,td:first-child{text-align:left}
 .fig .fl{fill:var(--accent);fill-opacity:.4;stroke:var(--ink);stroke-width:1.5}
 .fig text{font:600 12px var(--font-body);fill:var(--accent)}
 .fig text.t2{fill:var(--muted);font-weight:500}
+.mrow{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+.mrow .full{grid-column:1/-1}
+.btns{display:flex;gap:10px;flex-wrap:wrap}
 .foot{margin:28px 2px 0;font-size:12.5px;color:var(--muted);max-width:60ch}
 @media (max-width:380px){.form{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:no-preference){.view{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}}
@@ -235,6 +238,24 @@ function convert(cat,val,from){
   for(const k in u)out[k]=base/u[k];
   return out;
 }
+
+function stair(H,riserTarget,Lav){
+  const n=Math.max(1,Math.round(H/riserTarget));
+  const h=H/n, treads=n-1;
+  const pp=(Lav>0&&treads>0)?Lav/treads:630-2*h;
+  const run=treads*pp;
+  return {n,h,treads,p:pp,run,ang:Math.atan2(h,pp)*180/Math.PI,zanca:Math.hypot(H,run),paso:2*h+pp};
+}
+function dimsFor(shape,a,b,c){
+  switch(shape){
+    case 'flat':return {w:a,t:b};
+    case 'round':return {d:a};
+    case 'square':case 'hex':return {s:a};
+    case 'tube':return {d:a,t:b};
+    default:return {w:a,h:b,t:c};
+  }
+}
+function lineKg(shape,a,b,c,L,q,rho){return massPerM(shape,dimsFor(shape,a,b,c),rho)*L/1000*q;}
 /*CALC-END*/
 
 /* ---------- utilidades de interfaz ---------- */
@@ -264,6 +285,8 @@ const ICON={
   angulo:'<path d="M4 20h16M4 20L17 5"/><path d="M11 20a7 7 0 0 0-2-5"/>',
   tanque:'<path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6"/><ellipse cx="12" cy="6" rx="7" ry="3"/>',
   corte:'<path d="M3 7h18v4H3zM3 14h11v4H3z"/>',
+  mats:'<path d="M4 7h16M4 12h16M4 17h9"/><path d="M16 17l2 2 3-4"/>',
+  escalera:'<path d="M4 20h4v-4h4v-4h4V8h4"/>',
   conv:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>'
 };
 const MAT=[['acero','Acero al carbono (7850)'],['inox304','Inoxidable 304 (8000)'],['inox316','Inoxidable 316 (8000)'],['alu','Aluminio (2700)'],['cobre','Cobre (8960)'],['laton','Latón (8500)'],['bronce','Bronce (8800)'],['fundicion','Fundición gris (7200)'],['titanio','Titanio (4500)'],['plomo','Plomo (11340)']];
@@ -274,6 +297,9 @@ const dh=(x1,x2,y,l)=>`<path class="d" d="M${x1} ${y}H${x2}M${x1} ${y-4}v8M${x2}
 const dv=(x,y1,y2,l,side)=>{side=side==null?7:side;return `<path class="d" d="M${x} ${y1}V${y2}M${x-4} ${y1}h8M${x-4} ${y2}h8"/>${l?`<text x="${x+side}" y="${(y1+y2)/2+4}"${side<0?' text-anchor="end"':''}>${l}</text>`:''}`;};
 const svg=(b,cap)=>`<svg viewBox="0 0 320 150" role="img" aria-hidden="true">${b}</svg>${cap?`<figcaption>${cap}</figcaption>`:''}`;
 const FIG={
+ escalera(){
+  return svg(`<path class="g" d="M30 120H250"/><path class="o" d="M40 120V102H76V84H112V66H148V48H184V30H230"/><path class="g" d="M40 120L212 34"/>${dv(104,66,84,'')}<text x="96" y="79" text-anchor="end">Contrahuella</text>${dh(112,148,58,'')}<text x="130" y="44" text-anchor="middle">Huella</text>${dv(244,30,120,'Altura')}`,'Vista lateral. La línea punteada es la zanca. Hay una huella menos que escalones, porque el último escalón es el piso de llegada.');
+ },
  peso(shape){
   const cap='Sección de la pieza. Largo es la longitud a lo largo del eje, que no se ve en el dibujo.';
   if(shape==='flat')return svg(`<rect class="sh" x="80" y="50" width="160" height="26"/>${dh(80,240,100,'Ancho')}${dv(262,50,76,'Espesor')}`,'Sección de la chapa o planchuela. Largo es la dimensión que no se ve en el dibujo.');
@@ -314,6 +340,15 @@ const FIG={
  }
 };
 
+const SHAPES=[['flat','Chapa / planchuela'],['round','Barra redonda'],['square','Barra cuadrada'],['hex','Barra hexagonal'],['tube','Caño redondo'],['rect','Caño rectangular'],['angle','Perfil L (ángulo)']];
+let matN=0;
+function persist(id,o){try{localStorage.setItem('ta:'+id,JSON.stringify(o));}catch(e){}MEM[id]=o;}
+function matRows(d){
+  save('mats');
+  matN=Math.max(1,Math.min(20,(matN||3)+d));
+  const o=Object.assign({},store('mats'));o.mrows=String(matN);persist('mats',o);
+  openTool(TOOLS.find(x=>x.id==='mats'));
+}
 const TOOLS=[
 {id:'peso',name:'Peso de materiales',desc:'Chapa, barra, caño, perfil L',
  fig:()=>FIG.peso(V('shape')),
@@ -342,6 +377,43 @@ const TOOLS=[
     (shape==='flat'?row('Superficie de una cara (por pieza)',fmt(p.w*L/1e6,3),'m²'):'')+
     (price>0?row('Costo del material',fmt(total*price,2),'$'):'')
   );
+ }},
+
+{id:'mats',name:'Lista de materiales',desc:'Peso y costo de una obra',
+ html:()=>{
+  const n=matN||(+store('mats').mrows)||3; matN=n;
+  const dflt=[['flat',100,10,'',1000,2],['rect',40,40,2,6000,3],['angle',50,50,5,6000,1]];
+  const rows=Array.from({length:n},(_,i)=>{const d=dflt[i]||['flat','','','','',''];
+    return `<div class="mrow"><h3 class="sec" style="margin:0">Pieza ${i+1}</h3>
+    ${sel('m'+i+'s','Forma',SHAPES,d[0],'','full')}
+    ${fld('m'+i+'a','Medida 1',d[1],'mm')}${fld('m'+i+'b','Medida 2',d[2],'mm')}${fld('m'+i+'c','Medida 3',d[3],'mm')}
+    ${fld('m'+i+'l','Largo',d[4],'mm')}${fld('m'+i+'q','Cantidad',d[5],'u.')}</div>`;}).join('');
+  return `<div class="form">
+  ${sel('mat','Material',MAT,'acero','','full')}
+  ${fld('mw','Desperdicio y recortes','10','%')}${fld('price','Precio por kg (opcional)','','$')}
+  ${rows}
+  <div class="full btns"><button type="button" class="back" onclick="matRows(1)">+ Agregar pieza</button><button type="button" class="back" onclick="matRows(-1)">Quitar última</button></div>
+  </div><div id="out"></div>`;},
+ calc(){
+  const n=matN||3, LAB={flat:['Ancho','Espesor'],round:['Diámetro'],square:['Lado'],hex:['Entre caras'],tube:['Diámetro exterior','Pared'],rect:['Ancho','Alto','Pared'],angle:['Ala A','Ala B','Espesor']};
+  const rho=RHO[V('mat')], names=Object.fromEntries(SHAPES), lines=[]; let net=0;
+  for(let i=0;i<n;i++){
+    const sh=V('m'+i+'s'), lab=LAB[sh];
+    ['a','b','c'].forEach((k,j)=>{const el=document.getElementById('m'+i+k).closest('.f');el.hidden=j>=lab.length;if(j<lab.length)document.getElementById('lab-m'+i+k).textContent=lab[j];});
+    const a=N('m'+i+'a'),b=N('m'+i+'b'),c=N('m'+i+'c'),L=N('m'+i+'l'),q=N('m'+i+'q');
+    const dims=[a,b,c].slice(0,lab.length);
+    if(!pos(L,q,...dims))continue;
+    const kg=lineKg(sh,a,b,c,L,q,rho);
+    if(isFinite(kg)&&kg>0){net+=kg;lines.push(row(`Pieza ${i+1}: ${names[sh]}, ${fmt(q,0)} × ${fmt(L,0)} mm`,fmt(kg,2),'kg'));}
+  }
+  if(!lines.length) return $('#out').innerHTML=need;
+  const w=N('mw')||0, buy=net*(1+w/100), price=N('price');
+  $('#out').innerHTML=res(
+    row('Peso a comprar',fmt(buy,1),'kg','key')+
+    row('Peso neto de las piezas',fmt(net,1),'kg')+
+    row('Con desperdicio del '+fmt(w,1)+' %',fmt(buy-net,1),'kg de recortes')+
+    (price>0?row('Costo estimado',fmt(buy*price,2),'$'):'')+
+    lines.join(''));
  }},
 
 {id:'viga',name:'Viga apoyada',desc:'Flexión, corte y flecha',
@@ -380,6 +452,29 @@ const TOOLS=[
     row('Relación luz / flecha','L/'+fmt(c.d>0?L*1000/c.d:Infinity,0))+
     (best?row('IPE más liviano que cumple',best,''):'')
   );
+ }},
+
+{id:'escalera',name:'Escalera',desc:'Escalones, huella y zanca',
+ fig:()=>FIG.escalera(),
+ html:()=>`<div class="form">
+  ${fld('eh','Altura total a salvar (piso a piso)','2800','mm')}${fld('er','Contrahuella deseada','175','mm')}
+  ${fld('el','Espacio horizontal disponible (opcional)','','mm')}${fld('ea','Ancho de la escalera','900','mm')}
+  <p class="hint">Si no cargás el espacio horizontal, la huella se calcula con la regla del paso: 2 × contrahuella + huella = 630 mm.</p></div><div id="out"></div>`,
+ calc(){
+  const H=N('eh'),R=N('er'),Lav=N('el'),A=N('ea');
+  if(!pos(H,R)) return $('#out').innerHTML=need;
+  const r=stair(H,R,Lav), okPaso=r.paso>=600&&r.paso<=640, okAng=r.ang>=20&&r.ang<=42;
+  $('#out').innerHTML=res(
+    row('Escalones (contrahuellas)',r.n,'u.','key')+
+    row('Altura de cada contrahuella',fmt(r.h,1),'mm',r.h<150||r.h>190?'warn':'')+
+    row('Huella (profundidad del escalón)',fmt(r.p,1),'mm',r.p<250||r.p>320?'warn':'')+
+    row('Cantidad de huellas o peldaños',r.treads,'u.')+
+    (isFinite(A)&&A>0?row('Largo de cada peldaño',fmt(A,0),'mm'):'')+
+    row('Recorrido horizontal total',fmt(r.run,0),'mm')+
+    row('Longitud de la zanca',fmt(r.zanca,0),'mm')+
+    row('Inclinación',fmt(r.ang,1),'°',okAng?'':'warn')+
+    row('Regla del paso (2 × contr. + huella)',fmt(r.paso,0),'mm',okPaso?'good':'warn')
+  )+`<p class="note">Referencias habituales: contrahuella de 150 a 190 mm, huella de 250 a 320 mm y paso de 600 a 640 mm. Los valores en naranja quedan fuera de ese rango. Verificá con el reglamento de tu zona. Las medidas son a eje del escalón, sin espesor de peldaño.</p>`;
  }},
 
 {id:'suelda',name:'Soldadura de filete',desc:'Resistencia y consumo',
@@ -567,13 +662,14 @@ const TOOLS=[
 
 /* ---------- navegación ---------- */
 const main=$('#main'), back=$('#back'), brand=$('#brand');
-function store(id){try{return JSON.parse(localStorage.getItem('ta:'+id)||'{}');}catch(e){return {};}}
-function save(id){try{const o={};$$('#main input,#main select,#main textarea').forEach(e=>{if(e.id)o[e.id]=e.value;});localStorage.setItem('ta:'+id,JSON.stringify(o));}catch(e){}}
+const MEM={};
+function store(id){if(MEM[id])return MEM[id];try{return JSON.parse(localStorage.getItem('ta:'+id)||'{}');}catch(e){return {};}}
+function save(id){const o=Object.assign({},store(id));$$('#main input,#main select,#main textarea').forEach(e=>{if(e.id)o[e.id]=e.value;});persist(id,o);}
 function home(){
   document.title='Taller Acero';
   back.hidden=true; brand.hidden=false;
   main.className='view';
-  main.innerHTML=`<p class="lead">Diez calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
+  main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
   window.scrollTo(0,0);
 }
 function openTool(t){
