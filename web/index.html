@@ -256,6 +256,28 @@ function dimsFor(shape,a,b,c){
   }
 }
 function lineKg(shape,a,b,c,L,q,rho){return massPerM(shape,dimsFor(shape,a,b,c),rho)*L/1000*q;}
+
+function stairLanding(H,rt,n1,A,gap,type){
+  const n=Math.max(2,Math.round(H/rt)), h=H/n;
+  let a=Math.round(n1); if(!(a>=1&&a<=n-1)) a=Math.round(n/2);
+  const b=n-a, p=Math.max(0,630-2*h), r1=(a-1)*p, r2=(b-1)*p, u=type==='u';
+  return {n,h,p,a,b,landH:a*h,r1,r2,z1:Math.hypot(a*h,r1),z2:Math.hypot(b*h,r2),
+    landW:A,landD:u?2*A+gap:A,footX:u?Math.max(r1,r2)+A:r1+A,footY:u?2*A+gap:A+r2,paso:2*h+p};
+}
+function stairSpiral(H,rt,D,dc,ang){
+  const n=Math.max(2,Math.round(H/rt)), h=H/n, tr=n-1, R=Math.PI/180;
+  const ro=D/2, ri=dc/2, rw=(ro+ri)/2, tot=tr*ang;
+  return {n,h,tr,perTurn:360/ang,turns:tot/360,rw,pw:rw*ang*R,width:ro-ri,arcOut:ro*ang*R,arcIn:ri*ang*R,
+    head:360/ang*h,walk:Math.hypot(rw*tot*R,H),rail:Math.hypot(ro*tot*R,H)};
+}
+function stairSteep(H,rt,ang){
+  const n=Math.max(1,Math.round(H/rt)), h=H/n, p=h/Math.tan(ang*Math.PI/180), tr=n-1, run=tr*p;
+  return {n,h,p,tr,run,zanca:Math.hypot(H,run)};
+}
+function ladderV(H,s,ext){
+  const n=Math.max(1,Math.round(H/s));
+  return {n,sp:H/n,rungs:n-1,rail:H+ext};
+}
 /*CALC-END*/
 
 /* ---------- utilidades de interfaz ---------- */
@@ -297,7 +319,18 @@ const dh=(x1,x2,y,l)=>`<path class="d" d="M${x1} ${y}H${x2}M${x1} ${y-4}v8M${x2}
 const dv=(x,y1,y2,l,side)=>{side=side==null?7:side;return `<path class="d" d="M${x} ${y1}V${y2}M${x-4} ${y1}h8M${x-4} ${y2}h8"/>${l?`<text x="${x+side}" y="${(y1+y2)/2+4}"${side<0?' text-anchor="end"':''}>${l}</text>`:''}`;};
 const svg=(b,cap)=>`<svg viewBox="0 0 320 150" role="img" aria-hidden="true">${b}</svg>${cap?`<figcaption>${cap}</figcaption>`:''}`;
 const FIG={
- escalera(){
+ escalera(t){
+  const steps=(x0,y0,x1,y1,n,vert)=>Array.from({length:n-1},(_,i)=>{const f=(i+1)/n;return vert?`<path class="o" style="stroke-width:1" d="M${x0+(x1-x0)*f} ${y0}V${y1}"/>`:`<path class="o" style="stroke-width:1" d="M${x0} ${y0+(y1-y0)*f}H${x1}"/>`;}).join('');
+  if(t==='l')return svg(`<rect class="sh" x="30" y="95" width="120" height="30"/>${steps(30,95,150,125,6,true)}<rect class="fl" x="150" y="95" width="30" height="30"/><rect class="sh" x="150" y="15" width="30" height="80"/>${steps(150,15,180,95,5,false)}<text x="90" y="88" text-anchor="middle">Tramo 1</text><text x="190" y="58">Tramo 2</text><text x="190" y="114">Descanso</text>${dh(150,180,142,'Ancho')}`,'Vista desde arriba. El descanso es un cuadrado del ancho de la escalera y cuenta como un peldaño más.');
+  if(t==='u')return svg(`<rect class="sh" x="30" y="50" width="110" height="30"/>${steps(30,50,140,80,6,true)}<rect class="sh" x="30" y="90" width="110" height="30"/>${steps(30,90,140,120,6,true)}<rect class="fl" x="140" y="50" width="30" height="70"/><text x="85" y="44" text-anchor="middle">Tramo 1</text><text x="85" y="138" text-anchor="middle">Tramo 2</text><text x="178" y="88">Descanso</text>${dh(140,170,140,'Ancho')}`,'Vista desde arriba. Los dos tramos van en paralelo, separados por el hueco, y se unen en el descanso.');
+  if(t==='c'){
+    const cx=110,cy=68,ro=55,ri=13,k=Math.PI/180;let ln='';
+    for(let i=0;i<16;i++){const a=i*22.5*k;ln+=`M${cx+ri*Math.cos(a)} ${cy-ri*Math.sin(a)}L${cx+ro*Math.cos(a)} ${cy-ro*Math.sin(a)}`;}
+    const a2=22.5*k, wedge=`M${cx+ri} ${cy}L${cx+ro} ${cy}A${ro} ${ro} 0 0 0 ${cx+ro*Math.cos(a2)} ${cy-ro*Math.sin(a2)}L${cx+ri*Math.cos(a2)} ${cy-ri*Math.sin(a2)}A${ri} ${ri} 0 0 1 ${cx+ri} ${cy}Z`;
+    return svg(`<circle class="o" cx="${cx}" cy="${cy}" r="${ro}"/><path class="fl" d="${wedge}"/><path class="o" style="stroke-width:1" d="${ln}"/><circle class="sh" cx="${cx}" cy="${cy}" r="${ri}"/>${dh(55,165,140,'Diámetro exterior')}<path class="g" d="M120 62L186 44"/><text x="190" y="44">Columna central</text><path class="g" d="M158 58L186 78"/><text x="190" y="82">Ángulo por escalón</text>`,'Vista desde arriba. Cada escalón es una cuña que gira alrededor de la columna central.');
+  }
+  if(t==='m')return svg(`<path class="g" d="M30 125H190"/><path class="o" d="M60 125V105H71.5V85H83V65H94.5V45H106V25H150"/><path class="g" d="M60 125L106 25"/><path class="d" d="M84 125A24 24 0 0 0 72 104.2"/><text x="90" y="118">Ángulo</text>${dv(210,25,125,'Altura')}${dh(60,106,144,'Avance')}`,'Vista lateral. Es una escalera de escalones angostos y muy inclinada, que se sube de frente.');
+  if(t==='g')return svg(`<path class="g" d="M90 135H230M90 55H230"/><path class="o" d="M120 30V135M200 30V135" style="stroke-width:3"/><path class="o" d="M120 115H200M120 95H200M120 75H200" style="stroke-width:2.5"/>${dh(120,200,22,'Ancho')}${dv(105,95,115,'Separación',-7)}${dv(105,30,55,'Prolongación',-7)}${dv(215,135,55,'Altura')}`,'Vista de frente. Los laterales siguen por encima del nivel superior para poder agarrarse al subir y bajar.');
   return svg(`<path class="g" d="M30 120H250"/><path class="o" d="M40 120V102H76V84H112V66H148V48H184V30H230"/><path class="g" d="M40 120L212 34"/>${dv(104,66,84,'')}<text x="96" y="79" text-anchor="end">Contrahuella</text>${dh(112,148,58,'')}<text x="130" y="44" text-anchor="middle">Huella</text>${dv(244,30,120,'Altura')}`,'Vista lateral. La línea punteada es la zanca. Hay una huella menos que escalones, porque el último escalón es el piso de llegada.');
  },
  peso(shape){
@@ -454,17 +487,103 @@ const TOOLS=[
   );
  }},
 
-{id:'escalera',name:'Escalera',desc:'Escalones, huella y zanca',
- fig:()=>FIG.escalera(),
+{id:'escalera',name:'Escaleras',desc:'Recta, descanso, caracol, marinera, gato',
+ fig:()=>FIG.escalera(V('et')),
  html:()=>`<div class="form">
-  ${fld('eh','Altura total a salvar (piso a piso)','2800','mm')}${fld('er','Contrahuella deseada','175','mm')}
-  ${fld('el','Espacio horizontal disponible (opcional)','','mm')}${fld('ea','Ancho de la escalera','900','mm')}
-  <p class="hint">Si no cargás el espacio horizontal, la huella se calcula con la regla del paso: 2 × contrahuella + huella = 630 mm.</p></div><div id="out"></div>`,
+  ${sel('et','Tipo de escalera',[['r','Recta'],['l','Con descanso en L (90°)'],['u','Con descanso en U (180°)'],['c','Caracol (helicoidal)'],['m','Marinera (muy inclinada)'],['g','De gato (vertical)']],'r','','full')}
+  ${fld('eh','Altura total a salvar (piso a piso)','2800','mm')}
+  ${fld('er','Contrahuella deseada','175','mm','r l u c m')}
+  ${fld('es','Separación deseada entre peldaños','300','mm','g')}
+  ${fld('el','Espacio horizontal disponible (opcional)','','mm','r')}
+  ${fld('ea','Ancho de la escalera','900','mm','r l u')}
+  ${fld('en1','Escalones hasta el descanso (opcional)','','u.','l u')}
+  ${fld('eq','Hueco entre tramos','100','mm','u')}
+  ${fld('ed','Diámetro exterior','1600','mm','c')}
+  ${fld('ec','Diámetro de la columna central','100','mm','c')}
+  ${fld('eang','Ángulo de cada escalón','22.5','°','c')}
+  ${fld('em','Ángulo de inclinación','60','°','m')}
+  ${fld('ew','Ancho entre laterales','450','mm','g')}
+  ${fld('ex','Prolongación sobre el nivel superior','1000','mm','g')}
+  <p class="hint" id="ehint"></p></div><div id="out"></div>`,
  calc(){
-  const H=N('eh'),R=N('er'),Lav=N('el'),A=N('ea');
-  if(!pos(H,R)) return $('#out').innerHTML=need;
+  const t=V('et'); $$('[data-g]').forEach(e=>e.hidden=!e.dataset.g.split(' ').includes(t));
+  const HINT={
+   r:'Si no cargás el espacio horizontal, la huella se calcula con la regla del paso: 2 × contrahuella + huella = 630 mm.',
+   l:'El descanso cuenta como un peldaño más. La huella sale de la regla del paso (2 × contrahuella + huella = 630 mm). Si no indicás los escalones hasta el descanso, se reparten por la mitad.',
+   u:'El descanso cuenta como un peldaño más. La huella sale de la regla del paso (2 × contrahuella + huella = 630 mm). Si no indicás los escalones hasta el descanso, se reparten por la mitad.',
+   c:'La huella se mide sobre la línea de paso, a mitad del ancho útil entre la columna y el borde exterior. Un ángulo habitual por escalón va de 20° a 30°.',
+   m:'Pendiente alta, usual para accesos a entrepisos técnicos o salas de máquinas. Se sube de frente y con pasamanos.',
+   g:'El último peldaño queda a una separación del nivel superior y los laterales siguen hacia arriba para agarrarse. A cierta altura suele exigirse aro de protección: verificá el reglamento.'};
+  $('#ehint').textContent=HINT[t];
+  const H=N('eh'), R=N('er');
+  const REF='<p class="note">Referencias habituales: contrahuella de 150 a 190 mm, huella de 250 a 320 mm y paso de 600 a 640 mm. Los valores en naranja quedan fuera de ese rango. Verificá con el reglamento de tu zona. Las medidas son a eje del escalón, sin espesor de peldaño.</p>';
+  const out=h=>$('#out').innerHTML=h;
+  if(t==='g'){
+    const S=N('es'),W=N('ew'),X=N('ex')||0;
+    if(!pos(H,S,W)) return out(need);
+    const r=ladderV(H,S,X);
+    return out(res(
+      row('Cantidad de peldaños',r.rungs,'u.','key')+
+      row('Separación real entre peldaños',fmt(r.sp,1),'mm',r.sp<250||r.sp>300?'warn':'')+
+      row('Largo de cada lateral',fmt(r.rail,0),'mm')+
+      row('Largo de cada peldaño',fmt(W,0),'mm')+
+      row('Altura hasta el nivel superior',fmt(H,0),'mm')
+    )+'<p class="note">El primer peldaño queda a una separación del piso y el último a una separación del nivel superior. Referencia habitual de separación: 250 a 300 mm. Verificá con el reglamento si hace falta protección (aro) y a qué altura.</p>');
+  }
+  if(t==='c'){
+    const D=N('ed'),dc=N('ec'),ang=N('eang');
+    if(!pos(H,R,D,dc,ang)||dc>=D||ang>90) return out(need);
+    const r=stairSpiral(H,R,D,dc,ang);
+    return out(res(
+      row('Escalones (contrahuellas)',r.n,'u.','key')+
+      row('Altura de cada contrahuella',fmt(r.h,1),'mm',r.h<150||r.h>220?'warn':'')+
+      row('Escalones por vuelta',fmt(r.perTurn,1),'u.')+
+      row('Vueltas totales',fmt(r.turns,2))+
+      row('Huella en la línea de paso',fmt(r.pw,0),'mm')+
+      row('Ancho útil (columna a borde)',fmt(r.width,0),'mm')+
+      row('Ancho del escalón en el borde exterior',fmt(r.arcOut,0),'mm')+
+      row('Ancho del escalón en el borde interior',fmt(r.arcIn,0),'mm')+
+      row('Altura libre entre vueltas',fmt(r.head,0),'mm',r.head<2000?'bad':'good')+
+      row('Largo de la línea de paso',fmt(r.walk,0),'mm')+
+      row('Largo del barandal exterior',fmt(r.rail,0),'mm')
+    )+'<p class="note">En el caracol la regla del paso no se aplica igual que en una escalera recta. La altura libre entre vueltas debería ser de al menos 2000 mm para no golpearse la cabeza; descontá el espesor del peldaño. Verificá con el reglamento de tu zona.</p>');
+  }
+  if(t==='m'){
+    const ang=N('em');
+    if(!pos(H,R,ang)||ang>=90) return out(need);
+    const r=stairSteep(H,R,ang);
+    return out(res(
+      row('Escalones (contrahuellas)',r.n,'u.','key')+
+      row('Altura de cada contrahuella',fmt(r.h,1),'mm',r.h>250?'warn':'')+
+      row('Huella (profundidad del escalón)',fmt(r.p,1),'mm')+
+      row('Cantidad de huellas o peldaños',r.tr,'u.')+
+      row('Inclinación',fmt(ang,1),'°',ang<50||ang>75?'warn':'')+
+      row('Recorrido horizontal total',fmt(r.run,0),'mm')+
+      row('Longitud de la zanca',fmt(r.zanca,0),'mm')
+    )+'<p class="note">Una inclinación de 50° a 75° es lo habitual en escaleras marineras. Fuera de ese rango conviene usar una escalera recta o una de gato. Verificá con el reglamento de tu zona.</p>');
+  }
+  if(t==='l'||t==='u'){
+    const A=N('ea'),gap=N('eq')||0,n1=N('en1');
+    if(!pos(H,R,A)) return out(need);
+    const r=stairLanding(H,R,n1,A,gap,t), okPaso=r.paso>=600&&r.paso<=640;
+    return out(res(
+      row('Escalones totales',r.n,'u.','key')+
+      row('Altura de cada contrahuella',fmt(r.h,1),'mm',r.h<150||r.h>190?'warn':'')+
+      row('Huella (profundidad del escalón)',fmt(r.p,1),'mm',r.p<250||r.p>320?'warn':'')+
+      row('Escalones del tramo 1',r.a,'u.')+
+      row('Escalones del tramo 2',r.b,'u.')+
+      row('Altura del descanso',fmt(r.landH,0),'mm')+
+      row('Medida del descanso',fmt(r.landW,0)+' × '+fmt(r.landD,0),'mm')+
+      row('Zanca del tramo 1',fmt(r.z1,0),'mm')+
+      row('Zanca del tramo 2',fmt(r.z2,0),'mm')+
+      row('Ocupa en planta',fmt(r.footX,0)+' × '+fmt(r.footY,0),'mm')+
+      row('Regla del paso (2 × contr. + huella)',fmt(r.paso,0),'mm',okPaso?'good':'warn')
+    )+REF);
+  }
+  const Lav=N('el'),A=N('ea');
+  if(!pos(H,R)) return out(need);
   const r=stair(H,R,Lav), okPaso=r.paso>=600&&r.paso<=640, okAng=r.ang>=20&&r.ang<=42;
-  $('#out').innerHTML=res(
+  out(res(
     row('Escalones (contrahuellas)',r.n,'u.','key')+
     row('Altura de cada contrahuella',fmt(r.h,1),'mm',r.h<150||r.h>190?'warn':'')+
     row('Huella (profundidad del escalón)',fmt(r.p,1),'mm',r.p<250||r.p>320?'warn':'')+
@@ -474,7 +593,7 @@ const TOOLS=[
     row('Longitud de la zanca',fmt(r.zanca,0),'mm')+
     row('Inclinación',fmt(r.ang,1),'°',okAng?'':'warn')+
     row('Regla del paso (2 × contr. + huella)',fmt(r.paso,0),'mm',okPaso?'good':'warn')
-  )+`<p class="note">Referencias habituales: contrahuella de 150 a 190 mm, huella de 250 a 320 mm y paso de 600 a 640 mm. Los valores en naranja quedan fuera de ese rango. Verificá con el reglamento de tu zona. Las medidas son a eje del escalón, sin espesor de peldaño.</p>`;
+  )+REF);
  }},
 
 {id:'suelda',name:'Soldadura de filete',desc:'Resistencia y consumo',
