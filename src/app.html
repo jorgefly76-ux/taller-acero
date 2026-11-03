@@ -1,0 +1,589 @@
+<title>Taller Acero</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: una pantalla de inicio con mosaicos de herramientas; cada herramienta abre un formulario arriba y resultados abajo. */
+:root{
+  --bg:#edeff1; --surface:#ffffff; --field:#f5f6f7; --ink:#161b20; --muted:#58646e; --line:#d2d8dd;
+  --accent:#1b5e8c; --accent-ink:#ffffff; --mark:#e9c216; --good:#1c7c4a; --warn:#a85a07; --bad:#b3261e;
+  --font-display:"Barlow Condensed","Roboto Condensed","Arial Narrow",sans-serif-condensed,sans-serif;
+  --font-body:"Barlow","Roboto",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12161a; --surface:#1b2127; --field:#141a1f; --ink:#e8ecef; --muted:#97a3ad; --line:#2f3942;
+    --accent:#5fb0e6; --accent-ink:#0b1a26; --good:#4cc088; --warn:#e8a04a; --bad:#ff8a80; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12161a; --surface:#1b2127; --field:#141a1f; --ink:#e8ecef; --muted:#97a3ad; --line:#2f3942;
+  --accent:#5fb0e6; --accent-ink:#0b1a26; --good:#4cc088; --warn:#e8a04a; --bad:#ff8a80; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--font-body); font-size:16px; line-height:1.4;
+  padding-block:0 40px; padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:720px;margin:0 auto}
+.top{display:flex;align-items:center;gap:12px;padding:18px 0 14px}
+.brand{font-family:var(--font-display);font-weight:700;font-size:26px;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:10px;margin:0;line-height:1}
+.brand::before{content:"";width:14px;height:14px;background:var(--mark);display:inline-block}
+.back{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;height:40px;padding:0 14px;font:600 15px var(--font-body);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.back:focus-visible,.tile:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.lead{margin:0 0 18px;color:var(--muted);max-width:52ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tile{appearance:none;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 14px 16px;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;font:inherit;text-decoration:none}
+.tile:active{background:var(--field)}
+.tile svg{width:30px;height:30px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tile h2{margin:0;overflow-wrap:anywhere;font-family:var(--font-display);font-size:22px;line-height:1.05;letter-spacing:.02em;text-transform:uppercase}
+.tile p{margin:0;font-size:13.5px;color:var(--muted)}
+h1.tt{font-family:var(--font-display);font-size:34px;line-height:1;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.02em}
+.sub{margin:0 0 16px;color:var(--muted);font-size:14.5px}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 12px;margin-bottom:18px}
+.form .full{grid-column:1/-1}
+.f{display:flex;flex-direction:column;gap:5px;min-width:0}
+.f>span{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+.in{display:flex;align-items:center;background:var(--field);border:1px solid var(--line);border-radius:8px;min-width:0}
+.in:focus-within{border-color:var(--accent)}
+.in input,.in select,.in textarea{flex:1;min-width:0;width:100%;border:0;background:transparent;color:var(--ink);font:500 17px var(--font-body);padding:11px 12px;border-radius:8px}
+.in textarea{font-family:var(--font-mono);font-size:15px;min-height:110px;resize:vertical}
+.in select{appearance:auto}
+.in em{font-style:normal;color:var(--muted);font-size:14px;padding-right:12px}
+.hint{grid-column:1/-1;margin:0;font-size:13px;color:var(--muted)}
+.sec{grid-column:1/-1;margin:6px 0 0;font-family:var(--font-display);font-size:18px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:4px}
+.res{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 16px 10px}
+.r{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.r:last-child{border-bottom:0}
+.r>span{color:var(--muted);font-size:14.5px;min-width:0}
+.r>b{font-variant-numeric:tabular-nums;font-weight:600;font-size:18px;text-align:right;white-space:nowrap}
+.r>b small{font-weight:500;font-size:13px;color:var(--muted);margin-left:8px}
+.r.key{padding:14px 0 12px;align-items:flex-end}
+.r.key>span{color:var(--ink);font-weight:600;display:flex;align-items:center;gap:8px}
+.r.key>span::before{content:"";width:10px;height:10px;background:var(--mark);flex:none}
+.r.key>b{font-family:var(--font-display);font-size:38px;line-height:1;font-weight:700}
+.r.good>b{color:var(--good)} .r.warn>b{color:var(--warn)} .r.bad>b{color:var(--bad)}
+.note{margin:12px 2px 0;font-size:13px;color:var(--muted)}
+.msg{padding:14px 2px;color:var(--muted)}
+.util{display:block;height:8px;background:var(--field);border:1px solid var(--line);border-radius:4px;overflow:hidden;margin-top:6px;width:100%}
+.util i{display:block;height:100%;background:var(--good)}
+.util i.warn{background:var(--warn)} .util i.bad{background:var(--bad)}
+.r.u{display:block}
+.r.u .top2{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.tblw{overflow-x:auto;margin-top:2px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-family:var(--font-mono);font-size:14.5px}
+th,td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-family:var(--font-body);font-weight:600;color:var(--muted);font-size:13px}
+th:first-child,td:first-child{text-align:left}
+.bars{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.bar{display:flex;height:30px;background:repeating-linear-gradient(135deg,var(--field) 0 6px,var(--line) 6px 7px);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg{display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:600;color:var(--accent-ink);overflow:hidden;white-space:nowrap;border-right:2px solid var(--surface);font-variant-numeric:tabular-nums}
+.seg.p0{background:var(--accent)} .seg.p1{background:color-mix(in srgb,var(--accent) 72%,var(--ink))}
+.barlab{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:3px;gap:8px}
+.fig{margin:0 0 16px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 10px 8px}
+.fig svg{display:block;width:100%;height:auto;max-height:190px}
+.fig figcaption{font-size:12.5px;color:var(--muted);margin-top:4px}
+.fig .o{fill:none;stroke:var(--ink);stroke-width:2}
+.fig .sh{fill:var(--field);stroke:var(--ink);stroke-width:2}
+.fig .d{stroke:var(--accent);stroke-width:1.5;fill:none}
+.fig .g{stroke:var(--muted);stroke-width:1.2;stroke-dasharray:4 3;fill:none}
+.fig .wt{fill:var(--accent);fill-opacity:.3}
+.fig .sheet{fill:none;stroke:var(--ink);stroke-width:9;stroke-linejoin:round}
+.fig .fl{fill:var(--accent);fill-opacity:.4;stroke:var(--ink);stroke-width:1.5}
+.fig text{font:600 12px var(--font-body);fill:var(--accent)}
+.fig text.t2{fill:var(--muted);font-weight:500}
+.foot{margin:28px 2px 0;font-size:12.5px;color:var(--muted);max-width:60ch}
+@media (max-width:380px){.form{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:no-preference){.view{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <button class="back" id="back" hidden aria-label="Volver al inicio"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Inicio</button>
+    <p class="brand" id="brand">Taller Acero</p>
+  </header>
+  <main id="main" class="view"></main>
+  <p class="foot" id="foot">Los resultados son orientativos para trabajo de taller. Antes de fabricar o montar una estructura, verificá con la norma aplicable y con el responsable técnico.</p>
+</div>
+
+<script>
+/*CALC-START*/
+const RHO={acero:7850,inox304:8000,inox316:8000,alu:2700,cobre:8960,laton:8500,bronce:8800,fundicion:7200,titanio:4500,plomo:11340};
+function crossArea(shape,p){
+  const {w,h,t,d,s}=p;
+  switch(shape){
+    case 'flat': return w*t;
+    case 'round': return Math.PI*d*d/4;
+    case 'square': return s*s;
+    case 'hex': return Math.sqrt(3)/2*s*s;
+    case 'tube': return d>2*t ? Math.PI/4*(d*d-Math.pow(d-2*t,2)) : NaN;
+    case 'rect': return (w>2*t && h>2*t) ? w*h-(w-2*t)*(h-2*t) : NaN;
+    case 'angle': return t*(w+h-t);
+  }
+  return NaN;
+}
+function massPerM(shape,p,rho){return crossArea(shape,p)*1e-6*rho;}
+
+function beamLoads(L,w,P){return {M:w*L*L/8+P*L/4, V:w*L/2+P/2};}
+function beamDefl(L,w,P,I,E){E=E||210000;const Lm=L*1000;return 5*w*Math.pow(Lm,4)/(384*E*I)+P*1000*Math.pow(Lm,3)/(48*E*I);}
+function beamCheck(sec,L,w,P,fy,limit,selfW){
+  const q=w+(selfW?sec.mass*9.80665/1000:0);
+  const {M,V}=beamLoads(L,q,P);
+  const sigma=M*1e6/sec.W, uM=sigma/fy;
+  const tau=sec.Av?V*1000/sec.Av:NaN, uV=tau/(fy/Math.sqrt(3));
+  const d=beamDefl(L,q,P,sec.I), dl=L*1000/limit, uD=d/dl;
+  return {q,M,V,sigma,uM,tau,uV,d,dl,uD,ok:uM<=1&&(isNaN(uV)||uV<=1)&&uD<=1};
+}
+const IPE=[ // nombre, h mm, tw mm, A cm2, Ix cm4, Wel,x cm3, masa kg/m
+['IPE 80',80,3.8,7.64,80.1,20.0,6.0],['IPE 100',100,4.1,10.3,171,34.2,8.1],['IPE 120',120,4.4,13.2,318,53.0,10.4],
+['IPE 140',140,4.7,16.4,541,77.3,12.9],['IPE 160',160,5.0,20.1,869,109,15.8],['IPE 180',180,5.3,23.9,1317,146,18.8],
+['IPE 200',200,5.6,28.5,1943,194,22.4],['IPE 220',220,5.9,33.4,2772,252,26.2],['IPE 240',240,6.2,39.1,3892,324,30.7],
+['IPE 270',270,6.6,45.9,5790,429,36.1],['IPE 300',300,7.1,53.8,8356,557,42.2],['IPE 330',330,7.5,62.6,11770,713,49.1],
+['IPE 360',360,8.0,72.7,16270,904,57.1],['IPE 400',400,8.6,84.5,23130,1156,66.3]];
+function ipeSec(r){return {I:r[4]*1e4,W:r[5]*1e3,Av:r[1]*r[2],mass:r[6]};}
+
+const FEXX={E60:414,E70:483,E80:552};
+function minLeg(t){return t<=6.35?3:t<=12.7?5:t<=19.05?6:8;}
+function weld(leg,len,fexx,eff,load){
+  const throat=leg*Math.SQRT1_2, area=leg*leg/2;
+  const kgPerM=area*1e-6*7850, kg=kgPerM*len/1000;
+  const phi=0.75*0.6*fexx*throat;       // N/mm, LRFD
+  const asd=0.6*fexx*throat/2;          // N/mm, ASD
+  return {throat,area,kgPerM,kg,consum:kg/eff,phi,asd,phiTot:phi*len/1000,asdTot:asd*len/1000,
+    reqLeg:load>0?load*1000/(len*0.75*0.6*fexx*Math.SQRT1_2):NaN};
+}
+
+const UTS={acero:400,inox:600,alu5052:230,alu6061:310,cobre:220,laton:340};
+function vDie(t){return Math.round(t<=2.5?6*t:t<=8?8*t:t<=10?10*t:12*t);}
+function bend(t,uts,ang,len,V,r,K,A,B){
+  V=V>0?V:vDie(t); r=r>0?r:0.16*V;
+  const th=ang*Math.PI/180;
+  const Fm=1.42*uts*t*t/V;               // kN por metro
+  const BA=th*(r+K*t), oss=(r+t)*Math.tan(th/2), BD=2*oss-BA;
+  return {V,r,Fm,tf_m:Fm/9.80665,tfTot:Fm*len/1000/9.80665,minFlange:0.7*V,BA,BD,flat:A+B-BD};
+}
+
+function offsetCalc(hor,ver,ang,R){
+  const off=Math.hypot(hor,ver), a=ang*Math.PI/180;
+  const travel=off/Math.sin(a), run=off/Math.tan(a), take=R>0?R*Math.tan(a/2):0;
+  return {off,travel,run,mult:1/Math.sin(a),take,cut:travel-2*take};
+}
+function pcd(n,D,start){
+  const r=D/2;
+  return Array.from({length:n},(_,i)=>{const a=start+360*i/n, rad=a*Math.PI/180;
+    return {i:i+1,a:((a%360)+360)%360,x:r*Math.cos(rad),y:r*Math.sin(rad)};});
+}
+function tri(a,b,c,A){
+  const ok=v=>isFinite(v)&&v>0, R=Math.PI/180;
+  if(ok(a)&&ok(b)){c=Math.hypot(a,b);A=Math.atan2(a,b)/R;}
+  else if(ok(a)&&ok(c)){if(c<=a)return null;b=Math.sqrt(c*c-a*a);A=Math.asin(a/c)/R;}
+  else if(ok(b)&&ok(c)){if(c<=b)return null;a=Math.sqrt(c*c-b*b);A=Math.acos(b/c)/R;}
+  else if(ok(A)&&A<90&&ok(a)){b=a/Math.tan(A*R);c=a/Math.sin(A*R);}
+  else if(ok(A)&&A<90&&ok(b)){a=b*Math.tan(A*R);c=b/Math.cos(A*R);}
+  else if(ok(A)&&A<90&&ok(c)){a=c*Math.sin(A*R);b=c*Math.cos(A*R);}
+  else return null;
+  return {a,b,c,A,B:90-A};
+}
+function segArea(r,h){
+  h=Math.max(0,Math.min(2*r,h)); if(h<=0)return 0; if(h>=2*r)return Math.PI*r*r;
+  return r*r*Math.acos((r-h)/r)-(r-h)*Math.sqrt(2*r*h-h*h);
+}
+function tank(type,p){
+  let total,fill;
+  if(type==='v'){const A=Math.PI*p.d*p.d/4;total=A*p.h;fill=A*Math.min(p.level,p.h);}
+  else if(type==='h'){const r=p.d/2;total=Math.PI*r*r*p.h;fill=segArea(r,p.level)*p.h;}
+  else{const A=p.w*p.l;total=A*p.h;fill=A*Math.min(p.level,p.h);}
+  return {total:total/1e6,fill:fill/1e6};
+}
+function packCuts(stock,kerf,pieces){
+  const sorted=pieces.slice().sort((a,b)=>b-a), bars=[];
+  for(const p of sorted){
+    let placed=false;
+    for(const b of bars){
+      const need=b.used+kerf+p;
+      if(need<=stock+1e-9){b.items.push(p);b.used=need;placed=true;break;}
+    }
+    if(!placed)bars.push({items:[p],used:p});
+  }
+  return bars;
+}
+const UNITS={
+  'Longitud':{base:'m',u:{mm:.001,cm:.01,m:1,km:1000,'pulg (in)':.0254,'pie (ft)':.3048,'yarda (yd)':.9144}},
+  'Masa':{u:{g:.001,kg:1,'t (métrica)':1000,'libra (lb)':.45359237,'onza (oz)':.028349523125}},
+  'Presión / tensión':{u:{Pa:1,kPa:1e3,MPa:1e6,bar:1e5,psi:6894.757293,ksi:6894757.293,'kgf/cm²':98066.5}},
+  'Fuerza':{u:{N:1,kN:1000,kgf:9.80665,'lbf':4.4482216,'tonf (métrica)':9806.65}},
+  'Par (torque)':{u:{'N·m':1,'kgf·m':9.80665,'lbf·ft':1.3558179,'lbf·in':.1129848}},
+  'Área':{u:{'mm²':1e-6,'cm²':1e-4,'m²':1,'in²':6.4516e-4,'ft²':.09290304}},
+  'Volumen':{u:{mL:.001,L:1,'m³':1000,'gal EE.UU.':3.785411784,'gal imp.':4.54609}}
+};
+function convert(cat,val,from){
+  const u=UNITS[cat].u, base=val*u[from], out={};
+  for(const k in u)out[k]=base/u[k];
+  return out;
+}
+/*CALC-END*/
+
+/* ---------- utilidades de interfaz ---------- */
+const $=(s,r)=>(r||document).querySelector(s);
+const $$=(s,r)=>Array.from((r||document).querySelectorAll(s));
+const N=id=>{const e=document.getElementById(id);if(!e)return NaN;const v=parseFloat(String(e.value).replace(',','.'));return isFinite(v)?v:NaN;};
+const V=id=>document.getElementById(id).value;
+const fmt=(n,d)=>isFinite(n)?n.toLocaleString('es-AR',{maximumFractionDigits:d==null?2:d}):'—';
+const fld=(id,label,val,unit,grp,cls)=>`<label class="f ${cls||''}" for="${id}"${grp?` data-g="${grp}"`:''}><span id="lab-${id}">${label}</span><div class="in"><input id="${id}" type="text" inputmode="decimal" autocomplete="off" value="${val}">${unit?`<em>${unit}</em>`:''}</div></label>`;
+const sel=(id,label,opts,val,grp,cls)=>`<label class="f ${cls||''}" for="${id}"${grp?` data-g="${grp}"`:''}><span>${label}</span><div class="in"><select id="${id}">${opts.map(o=>`<option value="${o[0]}"${String(o[0])===String(val)?' selected':''}>${o[1]}</option>`).join('')}</select></div></label>`;
+const row=(label,value,unit,cls)=>`<div class="r ${cls||''}"><span>${label}</span><b>${value}${unit?`<small>${unit}</small>`:''}</b></div>`;
+const utilRow=(label,u,detail)=>{const c=!isFinite(u)?'':u>1?'bad':u>.85?'warn':'good';
+  return `<div class="r u ${c}"><div class="top2"><span>${label}</span><b>${isFinite(u)?fmt(u*100,0)+' %':'—'}<small>${detail||''}</small></b></div><span class="util"><i class="${c}" style="width:${isFinite(u)?Math.min(100,u*100):0}%"></i></span></div>`;};
+const res=h=>`<div class="res">${h}</div>`;
+const need='<p class="msg">Completá los datos para ver el resultado.</p>';
+const ok=(...a)=>a.every(x=>isFinite(x));
+const pos=(...a)=>a.every(x=>isFinite(x)&&x>0);
+
+/* ---------- herramientas ---------- */
+const ICON={
+  peso:'<path d="M7 20h10l-1.6-9H8.6z"/><circle cx="12" cy="7" r="2.4"/>',
+  viga:'<path d="M5 5h14M5 19h14M12 5v14"/>',
+  suelda:'<path d="M5 5v14h14z"/>',
+  plegado:'<path d="M3 18h9l7-9"/><path d="M12 18l3.5-.5"/>',
+  offset:'<path d="M3 18h6l6-12h6"/>',
+  pcd:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="4" r=".9"/><circle cx="20" cy="12" r=".9"/><circle cx="12" cy="20" r=".9"/><circle cx="4" cy="12" r=".9"/>',
+  angulo:'<path d="M4 20h16M4 20L17 5"/><path d="M11 20a7 7 0 0 0-2-5"/>',
+  tanque:'<path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6"/><ellipse cx="12" cy="6" rx="7" ry="3"/>',
+  corte:'<path d="M3 7h18v4H3zM3 14h11v4H3z"/>',
+  conv:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>'
+};
+const MAT=[['acero','Acero al carbono (7850)'],['inox304','Inoxidable 304 (8000)'],['inox316','Inoxidable 316 (8000)'],['alu','Aluminio (2700)'],['cobre','Cobre (8960)'],['laton','Latón (8500)'],['bronce','Bronce (8800)'],['fundicion','Fundición gris (7200)'],['titanio','Titanio (4500)'],['plomo','Plomo (11340)']];
+
+
+/* ---------- esquemas ---------- */
+const dh=(x1,x2,y,l)=>`<path class="d" d="M${x1} ${y}H${x2}M${x1} ${y-4}v8M${x2} ${y-4}v8"/>${l?`<text x="${(x1+x2)/2}" y="${y-6}" text-anchor="middle">${l}</text>`:''}`;
+const dv=(x,y1,y2,l,side)=>{side=side==null?7:side;return `<path class="d" d="M${x} ${y1}V${y2}M${x-4} ${y1}h8M${x-4} ${y2}h8"/>${l?`<text x="${x+side}" y="${(y1+y2)/2+4}"${side<0?' text-anchor="end"':''}>${l}</text>`:''}`;};
+const svg=(b,cap)=>`<svg viewBox="0 0 320 150" role="img" aria-hidden="true">${b}</svg>${cap?`<figcaption>${cap}</figcaption>`:''}`;
+const FIG={
+ peso(shape){
+  const cap='Sección de la pieza. Largo es la longitud a lo largo del eje, que no se ve en el dibujo.';
+  if(shape==='flat')return svg(`<rect class="sh" x="80" y="50" width="160" height="26"/>${dh(80,240,100,'Ancho')}${dv(262,50,76,'Espesor')}`,'Sección de la chapa o planchuela. Largo es la dimensión que no se ve en el dibujo.');
+  if(shape==='round')return svg(`<circle class="sh" cx="160" cy="70" r="48"/>${dh(112,208,70,'Diámetro')}`,cap);
+  if(shape==='square')return svg(`<rect class="sh" x="112" y="22" width="96" height="96"/>${dh(112,208,70,'Lado')}`,cap);
+  if(shape==='hex')return svg(`<path class="sh" d="M210 70L185 113.3H135L110 70L135 26.7H185Z"/>${dv(226,26.7,113.3,'Entre caras')}`,cap+' Entre caras es la distancia entre dos lados paralelos.');
+  if(shape==='tube')return svg(`<circle class="sh" cx="160" cy="70" r="48"/><circle class="o" cx="160" cy="70" r="34"/>${dh(112,208,136,'Diámetro exterior')}${dh(194,208,70,'')}<text x="222" y="74">Espesor de pared</text>`,cap);
+  if(shape==='rect')return svg(`<rect class="sh" x="90" y="25" width="140" height="90"/><rect class="o" x="104" y="39" width="112" height="62"/>${dh(90,230,136,'Ancho')}${dv(250,25,115,'Alto')}${dh(90,104,76,'')}<text x="110" y="80">Espesor de pared</text>`,cap);
+  return svg(`<path class="sh" d="M110 25H124V101H200V115H110Z"/>${dh(110,200,138,'Ala A')}${dv(98,25,115,'Ala B',-7)}${dv(214,101,115,'Espesor')}`,cap);
+ },
+ viga(){
+  let ar='';for(let x=36;x<=290;x+=32)ar+=`M${x} 38V66m-3 -6l3 6l3 -6`;
+  return svg(`<rect class="sh" x="30" y="72" width="260" height="8"/><path class="sh" d="M40 80l-10 18h20zM280 80l-10 18h20z"/><path class="d" d="M30 38H290${ar}"/><path class="d" style="stroke-width:2.2" d="M160 8V70m-4 -8l4 8l4 -8"/><text x="34" y="30">Carga distribuida</text><text x="168" y="16">Carga puntual</text>${dh(40,280,128,'Luz entre apoyos')}`,'Viga apoyada en sus extremos. La carga puntual va en el centro de la luz.');
+ },
+ suelda(){
+  return svg(`<rect class="sh" x="30" y="100" width="260" height="18"/><rect class="sh" x="150" y="30" width="20" height="70"/><path class="fl" d="M170 100V70L200 100ZM150 100V70L120 100Z"/>${dv(214,70,100,'Cateto')}${dh(170,200,138,'Cateto')}<path class="g" d="M150 100L135 85"/><text x="128" y="82" text-anchor="end">Garganta</text>`,'Corte transversal del cordón. Longitud es el largo del cordón a lo largo de la unión. El espesor que se pide es el de la chapa más gruesa.');
+ },
+ plegado(){
+  return svg(`<path class="sheet" d="M72 30V92Q72 112 92 112H220"/>${dv(50,30,116.5,'Ala B',-7)}${dh(67.5,220,138,'Ala A')}<text x="112" y="76">Radio interior</text><path class="g" d="M108 80L88 100"/>`,'Medidas exteriores. El ángulo de plegado es cuánto se dobla desde plano: 90° da una L.');
+ },
+ offset(){
+  return svg(`<path class="g" d="M20 40H110M190 110H300"/><path class="sheet" style="opacity:.75" d="M20 110H110L190 40H300"/>${dv(256,40,110,'Desvío')}${dh(110,190,134,'Avance')}<text x="140" y="58" text-anchor="end">Diagonal</text><path class="d" d="M132 110A22 22 0 0 0 126.5 95"/><text x="138" y="100">Ángulo</text>`,'Eje de la cañería. Con desvío vertical se calcula el desvío real compuesto.');
+ },
+ pcd(){
+  const pts=[[198,75],[169,125.2],[111,125.2],[82,75],[111,24.8],[169,24.8]];
+  return svg(`<circle class="g" cx="140" cy="75" r="58"/><path class="g" d="M134 75H146M140 69V81"/>${pts.map(p=>`<circle class="sh" cx="${p[0]}" cy="${p[1]}" r="7"/>`).join('')}${dh(82,198,75,'PCD')}<text x="212" y="79">Agujero 1</text>`,'Círculo de agujeros visto de frente, con 6 agujeros como ejemplo. El agujero 1 queda a la derecha con ángulo inicial 0°; los ángulos se miden en sentido antihorario.');
+ },
+ angulo(){
+  return svg(`<path class="sh" d="M50 118H240V32Z"/><path class="o" style="stroke-width:1.4" d="M226 118V104H240"/><path class="d" d="M80 118A30 30 0 0 0 77.3 105.6"/><text x="145" y="138" text-anchor="middle">Cateto b</text><text x="252" y="80">Cateto a</text><text x="140" y="60" text-anchor="end">Hipotenusa c</text><text x="86" y="110">Ángulo A</text>`,'a es el cateto opuesto al ángulo A y b es el adyacente. El ángulo recto está en el vértice de los dos catetos.');
+ },
+ tanque(t){
+  if(t==='h')return svg(`<defs><clipPath id="clt"><rect x="40" y="35" width="200" height="70" rx="30"/></clipPath></defs><rect class="wt" x="40" y="70" width="200" height="35" clip-path="url(#clt)"/><rect class="o" x="40" y="35" width="200" height="70" rx="30"/>${dv(120,70,105,'Nivel')}${dh(40,240,128,'Largo del cilindro')}${dv(254,35,105,'Diámetro')}`,'Vista lateral del cilindro acostado. El nivel se mide desde el fondo.');
+  if(t==='r')return svg(`<rect class="wt" x="90" y="75" width="140" height="45"/><rect class="o" x="90" y="20" width="140" height="100"/>${dv(150,75,120,'Nivel')}${dh(90,230,140,'Ancho')}${dv(246,20,120,'Altura')}`,'Vista de frente. El largo es la profundidad del tanque, que no se ve en el dibujo. El nivel se mide desde el fondo.');
+  return svg(`<rect class="wt" x="100" y="70" width="120" height="50"/><rect class="o" x="100" y="20" width="120" height="100"/>${dv(160,70,120,'Nivel')}${dh(100,220,140,'Diámetro')}${dv(236,20,120,'Altura')}`,'Vista lateral. El nivel se mide desde el fondo.');
+ },
+ corte(){
+  return svg(`<rect class="sh" x="20" y="55" width="280" height="30"/><g class="wt"><rect x="20" y="55" width="90" height="30"/><rect x="113" y="55" width="75" height="30"/><rect x="191" y="55" width="55" height="30"/></g>${dh(20,300,40,'Largo de la barra')}<text class="t2" x="65" y="74" text-anchor="middle">Pieza</text><text class="t2" x="150" y="74" text-anchor="middle">Pieza</text><text class="t2" x="218" y="74" text-anchor="middle">Pieza</text><text class="t2" x="275" y="74" text-anchor="middle">Sobrante</text><path class="d" d="M111.5 85V108"/><text x="116" y="122">Espesor del corte</text>`,'Cada corte con disco consume material. El sobrante es lo que queda al final de la barra.');
+ }
+};
+
+const TOOLS=[
+{id:'peso',name:'Peso de materiales',desc:'Chapa, barra, caño, perfil L',
+ fig:()=>FIG.peso(V('shape')),
+ html:()=>`<div class="form">
+  ${sel('mat','Material',MAT,'acero','','full')}
+  ${sel('shape','Forma',[['flat','Chapa / planchuela'],['round','Barra redonda'],['square','Barra cuadrada'],['hex','Barra hexagonal'],['tube','Caño redondo'],['rect','Caño rectangular'],['angle','Perfil L (ángulo)']],'flat','','full')}
+  ${fld('w','Ancho','100','mm')}${fld('h','Alto','100','mm')}${fld('t','Espesor','10','mm')}${fld('d','Diámetro','50','mm')}${fld('s','Lado','30','mm')}${fld('l','Largo','1000','mm')}
+  ${fld('qty','Cantidad','1','u.')}${fld('price','Precio por kg (opcional)','','$')}
+  <p class="hint">Los caños y perfiles se calculan con esquinas vivas, sin radios de laminado.</p></div><div id="out"></div>`,
+ calc(){
+  const LAB={flat:{w:'Ancho',t:'Espesor',l:'Largo'},round:{d:'Diámetro',l:'Largo'},square:{s:'Lado',l:'Largo'},hex:{s:'Entre caras',l:'Largo'},tube:{d:'Diámetro exterior',t:'Espesor de pared',l:'Largo'},rect:{w:'Ancho',h:'Alto',t:'Espesor de pared',l:'Largo'},angle:{w:'Ala A',h:'Ala B',t:'Espesor',l:'Largo'}};
+  const shape=V('shape'), lab=LAB[shape];
+  ['w','h','t','d','s','l'].forEach(k=>{const el=document.getElementById(k).closest('.f');el.hidden=!(k in lab);if(k in lab)document.getElementById('lab-'+k).textContent=lab[k];});
+  const p={w:N('w'),h:N('h'),t:N('t'),d:N('d'),s:N('s')}, L=N('l'), q=N('qty')||1, rho=RHO[V('mat')];
+  const need2=Object.keys(lab).filter(k=>k!=='l').map(k=>p[k]);
+  if(!pos(L,...need2)) return $('#out').innerHTML=need;
+  const A=crossArea(shape,p);
+  if(!isFinite(A)||A<=0) return $('#out').innerHTML='<p class="msg">El espesor de pared es demasiado grande para esa medida.</p>';
+  const pm=A*1e-6*rho, piece=pm*L/1000, total=piece*q, price=N('price');
+  $('#out').innerHTML=res(
+    row('Peso total',fmt(total,2),'kg','key')+
+    row('Peso por metro',fmt(pm,3),'kg/m')+
+    row('Peso por pieza',fmt(piece,3),'kg')+
+    row('Peso total en libras',fmt(total*2.20462262,2),'lb')+
+    row('Área de la sección',fmt(A,1),'mm²')+
+    (shape==='flat'?row('Superficie de una cara (por pieza)',fmt(p.w*L/1e6,3),'m²'):'')+
+    (price>0?row('Costo del material',fmt(total*price,2),'$'):'')
+  );
+ }},
+
+{id:'viga',name:'Viga apoyada',desc:'Flexión, corte y flecha',
+ fig:()=>FIG.viga(),
+ html:()=>`<div class="form">
+  ${sel('sec','Sección',IPE.map((r,i)=>[i,r[0]]).concat([['rect','Rectangular maciza'],['round','Redonda maciza'],['tubeR','Caño redondo'],['custom','Propiedades propias']]),6,'','full')}
+  ${fld('sb','Base b','50','mm','rect')}${fld('sh','Alto h','100','mm','rect')}${fld('sd','Diámetro','40','mm','round')}
+  ${fld('sD','Diámetro exterior','88.9','mm','tubeR')}${fld('st','Espesor de pared','4','mm','tubeR')}
+  ${fld('cI','Inercia Ix','1943','cm⁴','custom')}${fld('cW','Módulo resistente Wx','194','cm³','custom')}${fld('cm','Masa','22.4','kg/m','custom')}${fld('cAv','Área de corte (opcional)','','cm²','custom')}
+  <h3 class="sec">Cargas y condiciones</h3>
+  ${fld('L','Luz entre apoyos','4','m')}${fld('w','Carga distribuida','10','kN/m')}
+  ${fld('P','Carga puntual al centro','0','kN')}${sel('fy','Acero',[[235,'S235 (235 MPa)'],[275,'S275 (275 MPa)'],[355,'S355 (355 MPa)']],235)}
+  ${sel('lim','Flecha admisible',[[250,'L/250'],[300,'L/300'],[360,'L/360'],[400,'L/400'],[500,'L/500']],300)}${sel('sw','Peso propio',[[1,'Sumarlo'],[0,'Ya incluido']],1)}
+  <p class="hint">Cargas de servicio, sin mayorar. Se compara la tensión con el límite elástico. No incluye pandeo lateral ni abolladura.</p></div><div id="out"></div>`,
+ calc(){
+  const s=V('sec'); $$('[data-g]').forEach(e=>e.hidden=e.dataset.g!==(isNaN(+s)?s:'none'));
+  let sec=null, name='';
+  if(!isNaN(+s)){sec=ipeSec(IPE[+s]);name=IPE[+s][0];}
+  else if(s==='rect'){const b=N('sb'),h=N('sh');if(pos(b,h))sec={I:b*h*h*h/12,W:b*h*h/6,Av:b*h,mass:b*h*1e-6*7850};}
+  else if(s==='round'){const d=N('sd');if(pos(d))sec={I:Math.PI*Math.pow(d,4)/64,W:Math.PI*d*d*d/32,Av:Math.PI*d*d/4,mass:Math.PI*d*d/4*1e-6*7850};}
+  else if(s==='tubeR'){const D=N('sD'),t=N('st');if(pos(D,t)&&D>2*t){const dd=D-2*t,A=Math.PI/4*(D*D-dd*dd);sec={I:Math.PI/64*(Math.pow(D,4)-Math.pow(dd,4)),W:Math.PI/32*(Math.pow(D,4)-Math.pow(dd,4))/D,Av:2*A/Math.PI,mass:A*1e-6*7850};}}
+  else if(s==='custom'){const I=N('cI'),W=N('cW'),m=N('cm'),av=N('cAv');if(pos(I,W,m))sec={I:I*1e4,W:W*1e3,Av:av>0?av*100:0,mass:m};}
+  const L=N('L'),w=N('w')||0,P=N('P')||0,fy=+V('fy'),lim=+V('lim'),sw=V('sw')==='1';
+  if(!sec||!pos(L)||(w<=0&&P<=0)) return $('#out').innerHTML=need;
+  const c=beamCheck(sec,L,w,P,fy,lim,sw);
+  let best='';
+  if(!isNaN(+s)){const f=IPE.find(r=>beamCheck(ipeSec(r),L,w,P,fy,lim,sw).ok);best=f?f[0]:'ninguno de la lista';}
+  $('#out').innerHTML=res(
+    row(c.ok?'Resultado':'Resultado',c.ok?'CUMPLE':'NO CUMPLE','',(c.ok?'good':'bad')+' key')+
+    utilRow('Flexión',c.uM,`${fmt(c.sigma,0)} / ${fy} MPa`)+
+    utilRow('Corte',c.uV,isFinite(c.tau)?`${fmt(c.tau,0)} MPa`:'sin dato')+
+    utilRow('Flecha',c.uD,`${fmt(c.d,1)} de ${fmt(c.dl,1)} mm`)+
+    row('Momento máximo',fmt(c.M,2),'kN·m')+
+    row('Reacción en cada apoyo',fmt(c.V,2),'kN')+
+    row('Carga distribuida total',fmt(c.q,3),'kN/m')+
+    row('Relación luz / flecha','L/'+fmt(c.d>0?L*1000/c.d:Infinity,0))+
+    (best?row('IPE más liviano que cumple',best,''):'')
+  );
+ }},
+
+{id:'suelda',name:'Soldadura de filete',desc:'Resistencia y consumo',
+ fig:()=>FIG.suelda(),
+ html:()=>`<div class="form">
+  ${fld('leg','Cateto del filete','6','mm')}${fld('len','Longitud total','200','mm')}
+  ${sel('el','Electrodo / alambre',[['E70','E70 (483 MPa)'],['E60','E60 (414 MPa)'],['E80','E80 (552 MPa)']],'E70')}
+  ${sel('pr','Proceso (rendimiento)',[[.6,'Electrodo revestido ~60 %'],[.85,'FCAW tubular ~85 %'],[.93,'MIG/MAG sólido ~93 %'],[.98,'TIG ~98 %']],.6)}
+  ${fld('tm','Espesor de la chapa más gruesa','10','mm')}${fld('ld','Carga a transmitir (opcional)','','kN')}
+  <p class="hint">Resistencia según AISC 360 (LRFD y ASD) para carga de corte en el filete. Sin refuerzo de cordón en el cálculo del metal depositado.</p></div><div id="out"></div>`,
+ calc(){
+  const leg=N('leg'),len=N('len'),tm=N('tm'),ld=N('ld');
+  if(!pos(leg,len)) return $('#out').innerHTML=need;
+  const r=weld(leg,len,FEXX[V('el')],+V('pr'),ld), ml=isFinite(tm)?minLeg(tm):NaN;
+  $('#out').innerHTML=res(
+    row('Resistencia de diseño (LRFD)',fmt(r.phiTot,1),'kN','key')+
+    row('Admisible (ASD)',fmt(r.asdTot,1),'kN')+
+    row('Resistencia por mm de cordón',fmt(r.phi,0),'N/mm')+
+    row('Garganta efectiva',fmt(r.throat,2),'mm')+
+    row('Metal depositado',fmt(r.kgPerM,3),'kg/m')+
+    row('Metal depositado en esta longitud',fmt(r.kg,3),'kg')+
+    row('Consumible necesario',fmt(r.consum,3),'kg')+
+    (isFinite(ml)?row('Cateto mínimo según espesor',ml,'mm',leg<ml?'warn':''):'')+
+    (isFinite(r.reqLeg)?row('Cateto necesario para la carga',fmt(r.reqLeg,1),'mm',r.reqLeg>leg?'bad':'good'):'')
+  );
+ }},
+
+{id:'plegado',name:'Plegado en prensa',desc:'Matriz V, tonelaje, desarrollo',
+ fig:()=>FIG.plegado(),
+ html:()=>`<div class="form">
+  ${sel('bm','Material',[['acero','Acero dulce (400 MPa)'],['inox','Inoxidable 304 (600 MPa)'],['alu5052','Aluminio 5052 (230 MPa)'],['alu6061','Aluminio 6061-T6 (310 MPa)'],['cobre','Cobre (220 MPa)'],['laton','Latón (340 MPa)']],'acero','','full')}
+  ${fld('bt','Espesor','2','mm')}${fld('ba','Ángulo de plegado','90','°')}
+  ${fld('bl','Largo de plegado','1000','mm')}${fld('bV','Apertura de matriz V (opcional)','','mm')}
+  ${fld('br','Radio interior (opcional)','','mm')}${fld('bk','Factor K','0.40','')}
+  ${fld('bA','Ala A, medida exterior','50','mm')}${fld('bB','Ala B, medida exterior','50','mm')}
+  <p class="hint">Plegado en aire a 90°. El tonelaje y la ala mínima son estimaciones: confirmá con la tabla de tu prensa. El ángulo de plegado es cuánto se dobla desde plano (90° da una L).</p></div><div id="out"></div>`,
+ calc(){
+  const t=N('bt'),ang=N('ba'),len=N('bl'),K=N('bk'),A=N('bA'),B=N('bB');
+  if(!pos(t,ang,len,A,B)||!ok(K)||ang>=180) return $('#out').innerHTML=need;
+  const r=bend(t,UTS[V('bm')],ang,len,N('bV'),N('br'),K,A,B);
+  $('#out').innerHTML=res(
+    row('Largo desarrollado (chapa a cortar)',fmt(r.flat,2),'mm','key')+
+    row('Apertura de matriz V',fmt(r.V,0),'mm')+
+    row('Radio interior',fmt(r.r,2),'mm')+
+    row('Fuerza de plegado',fmt(r.tf_m,1),'tf/m')+
+    row('Fuerza para este largo',fmt(r.tfTot,1),'tf')+
+    row('Ala mínima (aprox.)',fmt(r.minFlange,1),'mm')+
+    row('Compensación de plegado',fmt(r.BA,2),'mm')+
+    row('Deducción de plegado',fmt(r.BD,2),'mm')
+  );
+ }},
+
+{id:'offset',name:'Desvío de cañería',desc:'Diagonal, avance, corte',
+ fig:()=>FIG.offset(),
+ html:()=>`<div class="form">
+  ${fld('oh','Desvío horizontal','300','mm')}${fld('ov','Desvío vertical (si es rolado)','0','mm')}
+  ${sel('oa','Ángulo de los codos',[[45,'45°'],[30,'30°'],[22.5,'22,5°'],[60,'60°'],[11.25,'11,25°'],[90,'90°']],45)}${fld('oR','Radio del codo al eje (opcional)','','mm')}
+  <p class="hint">Con desvío vertical distinto de cero se calcula el desvío real compuesto. El radio de un codo largo es 1,5 veces el diámetro nominal.</p></div><div id="out"></div>`,
+ calc(){
+  const h=N('oh')||0,v=N('ov')||0,a=+V('oa'),R=N('oR')||0;
+  if(!(h>0||v>0)) return $('#out').innerHTML=need;
+  const r=offsetCalc(h,v,a,R);
+  $('#out').innerHTML=res(
+    row('Diagonal, centro a centro',fmt(r.travel,1),'mm','key')+
+    row('Avance de la desviación',fmt(r.run,1),'mm')+
+    row('Desvío real',fmt(r.off,1),'mm')+
+    row('Multiplicador',fmt(r.mult,4))+
+    (R>0?row('Descuento por codo',fmt(r.take,1),'mm')+row('Largo de corte del tramo',fmt(r.cut,1),'mm',r.cut<=0?'bad':''):'')
+  );
+ }},
+
+{id:'pcd',name:'Agujeros en círculo (PCD)',desc:'Coordenadas y cuerda',
+ fig:()=>FIG.pcd(),
+ html:()=>`<div class="form">
+  ${fld('pn','Cantidad de agujeros','6','')}${fld('pd','Diámetro del círculo (PCD)','100','mm')}
+  ${fld('ps','Ángulo del primer agujero','0','°')}${fld('pdec','Decimales','3','')}</div><div id="out"></div>`,
+ calc(){
+  const n=Math.round(N('pn')),D=N('pd'),st=N('ps')||0,dec=Math.min(6,Math.max(0,Math.round(N('pdec')||3)));
+  if(!(n>=2&&n<=360)||!pos(D)) return $('#out').innerHTML=need;
+  const pts=pcd(n,D,st), ch=D*Math.sin(Math.PI/n), z=x=>Math.abs(x)<1e-9?0:x;
+  $('#out').innerHTML=res(
+    row('Distancia entre agujeros vecinos',fmt(ch,dec),'mm','key')+
+    row('Separación angular',fmt(360/n,3),'°')+
+    row('Radio',fmt(D/2,dec),'mm')
+  )+`<div class="res" style="margin-top:12px"><div class="tblw"><table><thead><tr><th>N.º</th><th>Ángulo</th><th>X (mm)</th><th>Y (mm)</th></tr></thead><tbody>${
+    pts.map(p=>`<tr><td>${p.i}</td><td>${fmt(p.a,2)}°</td><td>${fmt(z(p.x),dec)}</td><td>${fmt(z(p.y),dec)}</td></tr>`).join('')}</tbody></table></div></div><p class="note">Coordenadas con origen en el centro del círculo. X hacia la derecha, Y hacia arriba.</p>`;
+ }},
+
+{id:'angulo',name:'Ángulos y pendientes',desc:'Triángulo, pendiente, inglete',
+ fig:()=>FIG.angulo(),
+ html:()=>`<div class="form">
+  <h3 class="sec">Triángulo rectángulo</h3>
+  ${fld('ta','Cateto a (opuesto a A)','','')}${fld('tb','Cateto b (adyacente a A)','','')}
+  ${fld('tc','Hipotenusa c','','')}${fld('tA','Ángulo A','','°')}
+  <p class="hint">Cargá dos datos: dos lados, o un lado y el ángulo A.</p>
+  <div id="tout" class="full" style="grid-column:1/-1"></div>
+  <h3 class="sec">Pendiente</h3>
+  ${sel('sk','Tengo el dato en',[['deg','Grados'],['pct','Porcentaje (%)'],['mm','mm por metro'],['ratio','Relación 1 : x']],'deg')}${fld('sv','Valor','5','')}
+  <div id="sout" style="grid-column:1/-1"></div>
+  <h3 class="sec">Inglete</h3>
+  ${fld('in','Lados del polígono','6','')}${fld('ja','Ángulo entre dos perfiles','90','°')}
+  <div id="iout" style="grid-column:1/-1"></div></div><div id="out"></div>`,
+ calc(){
+  const r=tri(N('ta'),N('tb'),N('tc'),N('tA'));
+  $('#tout').innerHTML=r?res(row('Cateto a',fmt(r.a,3))+row('Cateto b',fmt(r.b,3))+row('Hipotenusa c',fmt(r.c,3))+row('Ángulo A',fmt(r.A,3),'°')+row('Ángulo B',fmt(r.B,3),'°')):'';
+  const sv=N('sv'),k=V('sk');let deg=NaN;
+  if(isFinite(sv)){const R=Math.PI/180;deg=k==='deg'?sv:k==='pct'?Math.atan(sv/100)/R:k==='mm'?Math.atan(sv/1000)/R:sv>0?Math.atan(1/sv)/R:NaN;}
+  if(isFinite(deg)&&deg>=0&&deg<90){const t=Math.tan(deg*Math.PI/180);
+    $('#sout').innerHTML=res(row('Grados',fmt(deg,3),'°')+row('Porcentaje',fmt(t*100,3),'%')+row('Milímetros por metro',fmt(t*1000,2),'mm/m')+row('Relación',t>0?'1 : '+fmt(1/t,2):'—'));
+  }else $('#sout').innerHTML='';
+  const n=Math.round(N('in')),ja=N('ja');let h='';
+  if(n>=3)h+=row('Corte de cada pieza en un polígono de '+n+' lados',fmt(180/n,3),'°');
+  if(ja>0&&ja<180)h+=row('Corte de cada pieza, desde el eje',fmt(ja/2,3),'°')+row('Corte de cada pieza, desde escuadra',fmt(90-ja/2,3),'°');
+  $('#iout').innerHTML=h?res(h):'';
+ }},
+
+{id:'tanque',name:'Capacidad de tanque',desc:'Volumen total y por nivel',
+ fig:()=>FIG.tanque(V('tt')),
+ html:()=>`<div class="form">
+  ${sel('tt','Tipo de tanque',[['v','Cilíndrico vertical'],['h','Cilíndrico horizontal'],['r','Rectangular']],'v','','full')}
+  ${fld('kd','Diámetro','1000','mm','v h')}${fld('kw','Ancho','1000','mm','r')}${fld('kl','Largo','1000','mm','r')}
+  ${fld('kh','Altura','1500','mm','v r')}${fld('kL','Largo del cilindro','2000','mm','h')}
+  ${fld('kn','Nivel del líquido (desde el fondo)','750','mm')}${fld('kr','Densidad del líquido','1','kg/L')}</div><div id="out"></div>`,
+ calc(){
+  const t=V('tt'); $$('[data-g]').forEach(e=>e.hidden=!e.dataset.g.split(' ').includes(t));
+  const p={d:N('kd'),w:N('kw'),l:N('kl'),h:t==='h'?N('kL'):N('kh'),level:N('kn')}, rho=N('kr')||1;
+  const dims=t==='r'?[p.w,p.l,p.h]:[p.d,p.h];
+  if(!pos(...dims)||!ok(p.level)||p.level<0) return $('#out').innerHTML=need;
+  const maxLevel=t==='h'?p.d:p.h;
+  const r=tank(t,p), lv=Math.min(p.level,maxLevel);
+  $('#out').innerHTML=res(
+    row('Capacidad total',fmt(r.total,1),'L','key')+
+    row('Volumen con ese nivel',fmt(r.fill,1),'L')+
+    row('Llenado',fmt(r.fill/r.total*100,1),'%')+
+    row('Volumen libre',fmt(r.total-r.fill,1),'L')+
+    row('Capacidad total en m³',fmt(r.total/1000,3),'m³')+
+    row('Masa del líquido',fmt(r.fill*rho,1),'kg')
+  )+(p.level>maxLevel?'<p class="note">El nivel supera la altura útil; se tomó el tanque lleno.</p>':'');
+ }},
+
+{id:'corte',name:'Lista de corte',desc:'Barras necesarias y sobrante',
+ fig:()=>FIG.corte(),
+ html:()=>`<div class="form">
+  ${fld('cs','Largo de la barra','6000','mm')}${fld('ck','Espesor del corte (disco)','3','mm')}
+  <label class="f full" for="cp"><span>Piezas: largo × cantidad, una por línea</span><div class="in"><textarea id="cp" spellcheck="false">1200 x 4
+850 x 6
+430 x 8
+2100 x 2</textarea></div></label></div><div id="out"></div>`,
+ calc(){
+  const S=N('cs'),k=N('ck')||0, pieces=[], bad=[];
+  V('cp').split('\n').forEach(line=>{
+    if(!line.trim())return;
+    const m=line.trim().match(/^([\d.,]+)\s*(?:[x×*]\s*(\d+))?$/i);
+    if(!m){bad.push(line.trim());return;}
+    const len=parseFloat(m[1].replace(',','.')), q=Math.min(500,m[2]?+m[2]:1);
+    if(!(len>0)){bad.push(line.trim());return;}
+    for(let i=0;i<q;i++)pieces.push(len);
+  });
+  if(!pos(S)||!pieces.length) return $('#out').innerHTML=need;
+  const big=pieces.filter(p=>p>S);
+  if(big.length) return $('#out').innerHTML=`<p class="msg">Hay piezas más largas que la barra (${fmt(Math.max(...big),0)} mm).</p>`;
+  const bars=packCuts(S,k,pieces), used=pieces.reduce((a,b)=>a+b,0), mat=bars.length*S;
+  $('#out').innerHTML=res(
+    row('Barras necesarias',bars.length,'u.','key')+
+    row('Piezas a cortar',pieces.length,'u.')+
+    row('Aprovechamiento',fmt(used/mat*100,1),'%')+
+    row('Sobrante total',fmt(mat-used,0),'mm')
+  )+`<div class="bars">${bars.map((b,i)=>`<div><div class="barlab"><span>Barra ${i+1}</span><span>sobrante ${fmt(S-b.used,0)} mm</span></div><div class="bar">${b.items.map((x,j)=>`<span class="seg p${j%2}" style="width:${x/S*100}%">${fmt(x,0)}</span>`).join('')}</div></div>`).join('')}</div>`+
+  (bad.length?`<p class="note">No se entendió: ${bad.join(' | ')}</p>`:'');
+ }},
+
+{id:'conv',name:'Conversor de unidades',desc:'Longitud, presión, fuerza, par',
+ html:()=>`<div class="form">
+  ${sel('cc','Magnitud',Object.keys(UNITS).map(k=>[k,k]),'Longitud','','full')}
+  ${fld('cv','Valor','1','')}${sel('cf','Unidad',[],'')}</div><div id="out"></div>`,
+ calc(){
+  const cat=V('cc'), box=document.getElementById('cf');
+  if(box.dataset.cat!==cat){const keys=Object.keys(UNITS[cat].u);box.innerHTML=keys.map(k=>`<option>${k}</option>`).join('');box.dataset.cat=cat;
+    box.value=cat==='Longitud'?'pulg (in)':keys[Math.min(1,keys.length-1)];}
+  const v=N('cv'); if(!isFinite(v)) return $('#out').innerHTML=need;
+  const o=convert(cat,v,box.value);
+  $('#out').innerHTML=res(Object.keys(o).map(k=>row(k,fmt(o[k],6),'',k===box.value?'key':'')).join(''));
+ }}
+];
+
+/* ---------- navegación ---------- */
+const main=$('#main'), back=$('#back'), brand=$('#brand');
+function store(id){try{return JSON.parse(localStorage.getItem('ta:'+id)||'{}');}catch(e){return {};}}
+function save(id){try{const o={};$$('#main input,#main select,#main textarea').forEach(e=>{if(e.id)o[e.id]=e.value;});localStorage.setItem('ta:'+id,JSON.stringify(o));}catch(e){}}
+function home(){
+  document.title='Taller Acero';
+  back.hidden=true; brand.hidden=false;
+  main.className='view';
+  main.innerHTML=`<p class="lead">Diez calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
+  window.scrollTo(0,0);
+}
+function openTool(t){
+  document.title=t.name+' · Taller Acero';
+  back.hidden=false; brand.hidden=true;
+  main.className='view';
+  main.innerHTML=`<h1 class="tt">${t.name}</h1><p class="sub">${t.desc}</p>`+(t.fig?'<figure class="fig" id="fig"></figure>':'')+t.html();
+  const saved=store(t.id);
+  Object.keys(saved).forEach(k=>{const e=document.getElementById(k);if(e&&!(e.tagName==='SELECT'&&!Array.from(e.options).some(o=>o.value===saved[k])&&e.options.length))e.value=saved[k];});
+  const run=()=>{if(t.fig){try{$('#fig').innerHTML=t.fig();}catch(e){}}try{t.calc();}catch(e){$('#out').innerHTML='<p class="msg">No se pudo calcular con esos datos.</p>';}};
+  main.oninput=main.onchange=()=>{run();save(t.id);};
+  run();
+  window.scrollTo(0,0);
+}
+function route(){
+  const id=location.hash.replace('#','');
+  const t=TOOLS.find(x=>x.id===id);
+  t?openTool(t):home();
+}
+back.addEventListener('click',()=>{location.hash='';});
+window.addEventListener('hashchange',route);
+route();
+</script>
