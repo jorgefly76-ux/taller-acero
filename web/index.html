@@ -95,7 +95,8 @@ th:first-child,td:first-child{text-align:left}
 .seg.p0{background:var(--accent)} .seg.p1{background:color-mix(in srgb,var(--accent) 72%,var(--ink))}
 .barlab{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:3px;gap:8px}
 .fig{margin:0 0 16px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 10px 8px}
-.fig svg{display:block;width:100%;height:auto;max-height:190px}
+.fig svg{display:block;width:100%;height:auto;max-height:230px}
+.fig svg+svg{margin-top:10px}
 .fig figcaption{font-size:12.5px;color:var(--muted);margin-top:4px}
 .fig .o{fill:none;stroke:var(--ink);stroke-width:2}
 .fig .sh{fill:var(--field);stroke:var(--ink);stroke-width:2}
@@ -109,6 +110,11 @@ th:first-child,td:first-child{text-align:left}
 .mrow{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
 .mrow .full{grid-column:1/-1}
 .btns{display:flex;gap:10px;flex-wrap:wrap}
+.gloss{margin:14px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.gloss summary{cursor:pointer;font-weight:600}
+.gloss dl{margin:12px 0 0;display:grid;gap:10px}
+.gloss dt{font-weight:600;font-size:14.5px}
+.gloss dd{margin:2px 0 0;color:var(--muted);font-size:13.5px}
 .foot{margin:28px 2px 0;font-size:12.5px;color:var(--muted);max-width:60ch}
 @media (max-width:380px){.form{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:no-preference){.view{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}}
@@ -244,7 +250,7 @@ function stair(H,riserTarget,Lav){
   const h=H/n, treads=n-1;
   const pp=(Lav>0&&treads>0)?Lav/treads:630-2*h;
   const run=treads*pp;
-  return {n,h,treads,p:pp,run,ang:Math.atan2(h,pp)*180/Math.PI,zanca:Math.hypot(H,run),paso:2*h+pp};
+  return {n,h,treads,p:pp,run,ang:Math.atan2(h,pp)*180/Math.PI,zanca:n*Math.hypot(h,pp),paso:2*h+pp};
 }
 function dimsFor(shape,a,b,c){
   switch(shape){
@@ -261,7 +267,7 @@ function stairLanding(H,rt,n1,A,gap,type){
   const n=Math.max(2,Math.round(H/rt)), h=H/n;
   let a=Math.round(n1); if(!(a>=1&&a<=n-1)) a=Math.round(n/2);
   const b=n-a, p=Math.max(0,630-2*h), r1=(a-1)*p, r2=(b-1)*p, u=type==='u';
-  return {n,h,p,a,b,landH:a*h,r1,r2,z1:Math.hypot(a*h,r1),z2:Math.hypot(b*h,r2),
+  return {n,h,p,a,b,landH:a*h,r1,r2,z1:a*Math.hypot(h,p),z2:b*Math.hypot(h,p),
     landW:A,landD:u?2*A+gap:A,footX:u?Math.max(r1,r2)+A:r1+A,footY:u?2*A+gap:A+r2,paso:2*h+p};
 }
 function stairSpiral(H,rt,D,dc,ang){
@@ -272,11 +278,19 @@ function stairSpiral(H,rt,D,dc,ang){
 }
 function stairSteep(H,rt,ang){
   const n=Math.max(1,Math.round(H/rt)), h=H/n, p=h/Math.tan(ang*Math.PI/180), tr=n-1, run=tr*p;
-  return {n,h,p,tr,run,zanca:Math.hypot(H,run)};
+  return {n,h,p,tr,run,zanca:n*Math.hypot(h,p)};
 }
 function ladderV(H,s,ext){
   const n=Math.max(1,Math.round(H/s));
   return {n,sp:H/n,rungs:n-1,rail:H+ext};
+}
+
+function barWidth(shape,a,b,orient){return shape==='flat'?(orient==='canto'?b:a):a;}
+function rejaCalc(Wc,H,fw,b,mode,gmax,nIn){
+  const inner=Wc-2*fw, Lb=H-2*fw;
+  const n=mode==='n'?Math.max(0,Math.min(300,Math.round(nIn))):Math.max(0,Math.ceil((inner-gmax)/(b+gmax)-1e-9));
+  const g=(inner-n*b)/(n+1);
+  return {inner,Lb,n,g,pitch:g+b};
 }
 /*CALC-END*/
 
@@ -309,6 +323,7 @@ const ICON={
   corte:'<path d="M3 7h18v4H3zM3 14h11v4H3z"/>',
   mats:'<path d="M4 7h16M4 12h16M4 17h9"/><path d="M16 17l2 2 3-4"/>',
   escalera:'<path d="M4 20h4v-4h4v-4h4V8h4"/>',
+  reja:'<path d="M4 5h16v14H4z"/><path d="M8 5v14M12 5v14M16 5v14"/>',
   conv:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>'
 };
 const MAT=[['acero','Acero al carbono (7850)'],['inox304','Inoxidable 304 (8000)'],['inox316','Inoxidable 316 (8000)'],['alu','Aluminio (2700)'],['cobre','Cobre (8960)'],['laton','Latón (8500)'],['bronce','Bronce (8800)'],['fundicion','Fundición gris (7200)'],['titanio','Titanio (4500)'],['plomo','Plomo (11340)']];
@@ -318,20 +333,38 @@ const MAT=[['acero','Acero al carbono (7850)'],['inox304','Inoxidable 304 (8000)
 const dh=(x1,x2,y,l)=>`<path class="d" d="M${x1} ${y}H${x2}M${x1} ${y-4}v8M${x2} ${y-4}v8"/>${l?`<text x="${(x1+x2)/2}" y="${y-6}" text-anchor="middle">${l}</text>`:''}`;
 const dv=(x,y1,y2,l,side)=>{side=side==null?7:side;return `<path class="d" d="M${x} ${y1}V${y2}M${x-4} ${y1}h8M${x-4} ${y2}h8"/>${l?`<text x="${x+side}" y="${(y1+y2)/2+4}"${side<0?' text-anchor="end"':''}>${l}</text>`:''}`;};
 const svg=(b,cap)=>`<svg viewBox="0 0 320 150" role="img" aria-hidden="true">${b}</svg>${cap?`<figcaption>${cap}</figcaption>`:''}`;
+const svgH=(b,cap,h)=>`<svg viewBox="0 0 320 ${h}" role="img" aria-hidden="true">${b}</svg>${cap?`<figcaption>${cap}</figcaption>`:''}`;
+const lbl=(x,y,tx,an)=>`<text x="${x}" y="${y}"${an?` text-anchor="${an}"`:''}>${tx}</text>`;
+const lead=(x1,y1,x2,y2)=>`<path class="g" d="M${x1} ${y1}L${x2} ${y2}"/>`;
+const hl='style="stroke:var(--accent);stroke-width:5;fill:none"';
 const FIG={
  escalera(t){
   const steps=(x0,y0,x1,y1,n,vert)=>Array.from({length:n-1},(_,i)=>{const f=(i+1)/n;return vert?`<path class="o" style="stroke-width:1" d="M${x0+(x1-x0)*f} ${y0}V${y1}"/>`:`<path class="o" style="stroke-width:1" d="M${x0} ${y0+(y1-y0)*f}H${x1}"/>`;}).join('');
-  if(t==='l')return svg(`<rect class="sh" x="30" y="95" width="120" height="30"/>${steps(30,95,150,125,6,true)}<rect class="fl" x="150" y="95" width="30" height="30"/><rect class="sh" x="150" y="15" width="30" height="80"/>${steps(150,15,180,95,5,false)}<text x="90" y="88" text-anchor="middle">Tramo 1</text><text x="190" y="58">Tramo 2</text><text x="190" y="114">Descanso</text>${dh(150,180,142,'Ancho')}`,'Vista desde arriba. El descanso es un cuadrado del ancho de la escalera y cuenta como un peldaño más.');
-  if(t==='u')return svg(`<rect class="sh" x="30" y="50" width="110" height="30"/>${steps(30,50,140,80,6,true)}<rect class="sh" x="30" y="90" width="110" height="30"/>${steps(30,90,140,120,6,true)}<rect class="fl" x="140" y="50" width="30" height="70"/><text x="85" y="44" text-anchor="middle">Tramo 1</text><text x="85" y="138" text-anchor="middle">Tramo 2</text><text x="178" y="88">Descanso</text>${dh(140,170,140,'Ancho')}`,'Vista desde arriba. Los dos tramos van en paralelo, separados por el hueco, y se unen en el descanso.');
+  if(t==='l'||t==='u'){
+    const plan=t==='l'
+     ?`<rect class="sh" x="30" y="95" width="120" height="30"/>${steps(30,95,150,125,6,true)}<rect class="fl" x="150" y="95" width="30" height="30"/><rect class="sh" x="150" y="15" width="30" height="80"/>${steps(150,15,180,95,5,false)}${lbl(90,88,'Tramo 1','middle')}${lbl(190,58,'Tramo 2')}${lbl(190,114,'Descanso')}${dh(150,180,142,'Ancho')}`
+     :`<rect class="sh" x="30" y="50" width="110" height="30"/>${steps(30,50,140,80,6,true)}<rect class="sh" x="30" y="90" width="110" height="30"/>${steps(30,90,140,120,6,true)}<rect class="fl" x="140" y="50" width="30" height="70"/>${lbl(85,44,'Tramo 1','middle')}${lbl(85,138,'Tramo 2','middle')}${lbl(178,66,'Descanso')}<path class="g" d="M60 85H174"/>${lbl(178,89,'Hueco')}${dh(140,170,140,'Ancho')}`;
+    const elev=`<path class="g" d="M10 140H300M130 80H235M260 20H300"/><path class="o" d="M20 140V125H40V110H60V95H80V80H130V65H150V50H170V35H190V20H260"/><path d="M80 80H130" ${hl}/>${lbl(96,72,'Descanso','middle')}${dv(235,80,140,'Altura del descanso',-7)}${dv(300,20,140,'Altura',-7)}`;
+    return svg(plan,'')+svg(elev,'Arriba, la escalera vista desde arriba. Abajo, vista lateral: el descanso es un peldaño más, a la altura que marca la cuenta.');
+  }
   if(t==='c'){
-    const cx=110,cy=68,ro=55,ri=13,k=Math.PI/180;let ln='';
+    const cx=110,cy=68,ro=55,ri=13,k=Math.PI/180;let ln='',bars='';
     for(let i=0;i<16;i++){const a=i*22.5*k;ln+=`M${cx+ri*Math.cos(a)} ${cy-ri*Math.sin(a)}L${cx+ro*Math.cos(a)} ${cy-ro*Math.sin(a)}`;}
     const a2=22.5*k, wedge=`M${cx+ri} ${cy}L${cx+ro} ${cy}A${ro} ${ro} 0 0 0 ${cx+ro*Math.cos(a2)} ${cy-ro*Math.sin(a2)}L${cx+ri*Math.cos(a2)} ${cy-ri*Math.sin(a2)}A${ri} ${ri} 0 0 1 ${cx+ri} ${cy}Z`;
-    return svg(`<circle class="o" cx="${cx}" cy="${cy}" r="${ro}"/><path class="fl" d="${wedge}"/><path class="o" style="stroke-width:1" d="${ln}"/><circle class="sh" cx="${cx}" cy="${cy}" r="${ri}"/>${dh(55,165,140,'Diámetro exterior')}<path class="g" d="M120 62L186 44"/><text x="190" y="44">Columna central</text><path class="g" d="M158 58L186 78"/><text x="190" y="82">Ángulo por escalón</text>`,'Vista desde arriba. Cada escalón es una cuña que gira alrededor de la columna central.');
+    const plan=`<circle class="o" cx="${cx}" cy="${cy}" r="${ro}"/><path class="fl" d="${wedge}"/><path class="o" style="stroke-width:1" d="${ln}"/><circle class="g" cx="${cx}" cy="${cy}" r="34"/><circle class="sh" cx="${cx}" cy="${cy}" r="${ri}"/>${dh(55,165,140,'Diámetro exterior')}${lead(120,62,186,44)}${lbl(190,44,'Columna central')}${lead(158,58,186,78)}${lbl(190,82,'Ángulo por escalón')}${lead(130,96,186,108)}${lbl(190,112,'Línea de paso')}`;
+    for(let i=0;i<=16;i++){const a=i*22.5*k;bars+=`M110 ${140-i*7}H${110+55*Math.cos(a)}`;}
+    const elev=`<path class="g" d="M20 140H250M165 28H250"/><rect class="sh" x="105" y="14" width="10" height="126"/><path class="o" style="stroke-width:3" d="${bars}"/>${lead(115,20,150,14)}${lbl(154,18,'Columna')}${dv(250,28,140,'Altura libre',-7)}`;
+    return svg(plan,'')+svg(elev,'Arriba, vista desde arriba: cada escalón es una cuña que gira alrededor de la columna. Abajo, vista lateral: la altura libre es la distancia vertical entre un escalón y el que queda justo encima, una vuelta después.');
   }
-  if(t==='m')return svg(`<path class="g" d="M30 125H190"/><path class="o" d="M60 125V105H71.5V85H83V65H94.5V45H106V25H150"/><path class="g" d="M60 125L106 25"/><path class="d" d="M84 125A24 24 0 0 0 72 104.2"/><text x="90" y="118">Ángulo</text>${dv(210,25,125,'Altura')}${dh(60,106,144,'Avance')}`,'Vista lateral. Es una escalera de escalones angostos y muy inclinada, que se sube de frente.');
-  if(t==='g')return svg(`<path class="g" d="M90 135H230M90 55H230"/><path class="o" d="M120 30V135M200 30V135" style="stroke-width:3"/><path class="o" d="M120 115H200M120 95H200M120 75H200" style="stroke-width:2.5"/>${dh(120,200,22,'Ancho')}${dv(105,95,115,'Separación',-7)}${dv(105,30,55,'Prolongación',-7)}${dv(215,135,55,'Altura')}`,'Vista de frente. Los laterales siguen por encima del nivel superior para poder agarrarse al subir y bajar.');
-  return svg(`<path class="g" d="M30 120H250"/><path class="o" d="M40 120V102H76V84H112V66H148V48H184V30H230"/><path class="g" d="M40 120L212 34"/>${dv(104,66,84,'')}<text x="96" y="79" text-anchor="end">Contrahuella</text>${dh(112,148,58,'')}<text x="130" y="44" text-anchor="middle">Huella</text>${dv(244,30,120,'Altura')}`,'Vista lateral. La línea punteada es la zanca. Hay una huella menos que escalones, porque el último escalón es el piso de llegada.');
+  if(t==='m')return svg(`<path class="g" d="M20 125H260M106 25H260"/><path class="g" d="M48.5 125L106 25"/><path class="o" d="M60 125V105H71.5V85H83V65H94.5V45H106V25H150"/><path d="M83 85V65M94.5 45H106" ${hl}/><path class="d" d="M58.5 125A10 10 0 0 0 53.5 116.3"/>${lbl(10,114,'Ángulo')}${lead(83,75,150,92)}${lbl(154,96,'Contrahuella')}${lead(100,45,150,66)}${lbl(154,70,'Huella')}${lead(88.8,55,60,40)}${lbl(56,36,'Zanca','end')}${dh(60,106,144,'Avance')}${dv(250,25,125,'Altura')}`,'Vista lateral. Es una escalera de escalones angostos y muy inclinada, que se sube de frente.');
+  if(t==='g')return svg(`<path class="g" d="M90 135H300M90 55H300"/><path class="o" d="M120 30V135M200 30V135" style="stroke-width:3"/><path class="o" d="M120 95H200M120 75H200" style="stroke-width:2.5"/><path d="M120 115H200" ${hl}/>${dh(120,200,22,'Ancho')}${lbl(160,110,'Peldaño','middle')}${lead(203,38,228,34)}${lbl(232,38,'Lateral')}${dv(105,95,115,'Separación',-7)}${dv(105,30,55,'Prolongación',-7)}${dv(300,135,55,'Altura',-7)}`,'Vista de frente. Los laterales siguen por encima del nivel superior para poder agarrarse al subir y bajar.');
+  let d='M60 140',x=60,y=140;
+  for(let i=0;i<6;i++){y-=20;d+=`V${y}`;x+=(i<5?30:50);d+=`H${x}`;}
+  return svgH(`<path class="g" d="M20 140H300M260 20H300"/><path class="g" d="M30 140L210 20"/><path class="o" d="${d}"/><path d="M120 100V80M150 60H180" ${hl}/>${lead(120,90,212,128)}${lbl(216,132,'Contrahuella')}${lead(165,60,212,100)}${lbl(216,104,'Huella')}${lead(105,90,82,66)}${lbl(78,62,'Zanca','end')}<path class="d" d="M54 140A24 24 0 0 0 50 126.7"/>${lead(46,138,64,152)}${lbl(68,157,'Inclinación')}${lbl(215,14,'Piso de llegada')}${dh(60,210,176,'Recorrido')}${dv(296,20,140,'Altura',-7)}`,'Vista lateral. La zanca es la viga inclinada que sostiene los escalones y va de un piso al otro. La contrahuella es la altura de cada escalón y la huella es donde se apoya el pie.',184);
+ },
+ reja(){
+  const xs=[96.4,126.8,157.2,187.6];
+  return svgH(`<path class="sh" fill-rule="evenodd" d="M60 25H230V125H60Z M72 37H218V113H72Z"/>${xs.map((x,i)=>`<rect class="${i===3?'fl':'sh'}" x="${x}" y="37" width="6" height="76"/>`).join('')}${dh(60,230,17,'Ancho del vano')}${dv(40,25,125,'Alto',-7)}${dh(132.8,157.2,140,'Separación libre')}${dh(129.8,160.2,166,'Entre ejes')}${lead(190.6,60,256,52)}${lbl(260,56,'Barrote')}${lead(224,90,256,100)}${lbl(260,104,'Marco')}`,'Vista de frente. La separación libre es el hueco entre dos barrotes, y la separación entre ejes se mide de centro a centro.',176);
  },
  peso(shape){
   const cap='Sección de la pieza. Largo es la longitud a lo largo del eje, que no se ve en el dibujo.';
@@ -449,6 +482,59 @@ const TOOLS=[
     lines.join(''));
  }},
 
+{id:'reja',name:'Reja y baranda',desc:'Separación de barrotes y peso',
+ fig:()=>FIG.reja(),
+ html:()=>`<div class="form">
+  ${sel('jm','Calcular por',[['g','Separación libre máxima'],['n','Cantidad de barrotes']],'g','','full')}
+  ${fld('jw','Ancho total del vano','1200','mm')}${fld('jh','Alto total','1000','mm')}
+  ${fld('jg','Separación libre máxima permitida','100','mm')}${fld('jn','Cantidad de barrotes','8','u.')}
+  ${sel('jmat','Material',MAT,'acero','','full')}
+  <h3 class="sec">Barrotes</h3>
+  ${sel('jbs','Forma',[['square','Barra cuadrada'],['round','Barra redonda'],['flat','Planchuela'],['tube','Caño redondo'],['rect','Caño rectangular']],'square','','full')}
+  ${fld('jba','Lado','12','mm')}${fld('jbb','Medida 2','','mm')}${fld('jbc','Medida 3','','mm')}
+  ${sel('jbo','Planchuela colocada',[['plano','De plano (se ve el ancho)'],['canto','De canto (se ve el espesor)']],'plano','','full')}
+  <h3 class="sec">Marco</h3>
+  ${sel('jfs','Sección del marco',[['rect','Caño cuadrado o rectangular'],['flat','Planchuela'],['angle','Perfil L'],['none','Sin marco']],'rect','','full')}
+  ${fld('jfa','Ancho visible','40','mm')}${fld('jfb','Alto','40','mm')}${fld('jfc','Pared','2','mm')}
+  ${fld('jp','Precio por kg (opcional)','','$')}
+  <p class="hint">Los barrotes van entre el marco de arriba y el de abajo, con la misma separación libre contra los costados. El marco se calcula con uniones a tope, sin pérdidas por corte.</p></div><div id="out"></div>`,
+ calc(){
+  const hide=(id,c)=>{document.getElementById(id).closest('.f').hidden=c;};
+  const LABB={square:['Lado'],round:['Diámetro'],flat:['Ancho','Espesor'],tube:['Diámetro exterior','Pared'],rect:['Ancho','Alto','Pared']};
+  const LABF={rect:['Ancho visible','Alto','Pared'],flat:['Ancho visible','Espesor'],angle:['Ala visible','Otra ala','Espesor'],none:[]};
+  const DEFB={square:[12],round:[12],flat:[25,5],tube:[20,2],rect:[20,20,2]}, DEFF={rect:[40,40,2],flat:[40,6],angle:[40,40,4],none:[]};
+  const sync=(sid,pfx,def)=>{const el=document.getElementById(sid);if(!el.dataset.s){el.dataset.s=el.value;return;}if(el.dataset.s===el.value)return;el.dataset.s=el.value;const d=def[el.value]||[];['a','b','c'].forEach((k,i)=>{document.getElementById(pfx+k).value=d[i]==null?'':d[i];});};
+  sync('jbs','jb',DEFB); sync('jfs','jf',DEFF);
+  const bs=V('jbs'), fs=V('jfs'), mode=V('jm'), lb=LABB[bs], lf=LABF[fs];
+  ['a','b','c'].forEach((k,i)=>{
+    hide('jb'+k,i>=lb.length); if(i<lb.length)document.getElementById('lab-jb'+k).textContent=lb[i];
+    hide('jf'+k,i>=lf.length); if(i<lf.length)document.getElementById('lab-jf'+k).textContent=lf[i];
+  });
+  hide('jbo',bs!=='flat'); hide('jn',mode!=='n');
+  const W=N('jw'),H=N('jh'),gmax=N('jg'),nIn=N('jn'),a=N('jba'),b=N('jbb'),c=N('jbc'),fa=N('jfa'),fb=N('jfb'),fc=N('jfc');
+  const dimsB=[a,b,c].slice(0,lb.length), dimsF=[fa,fb,fc].slice(0,lf.length);
+  if(!pos(W,H,gmax,...dimsB,...dimsF)||(mode==='n'&&!(nIn>=0))) return $('#out').innerHTML=need;
+  const fw=fs==='none'?0:fa, bw=barWidth(bs,a,b,V('jbo')), rho=RHO[V('jmat')];
+  const r=rejaCalc(W,H,fw,bw,mode,gmax,nIn);
+  if(!(r.inner>0)||!(r.Lb>0)) return $('#out').innerHTML='<p class="msg">El marco ocupa todo el vano. Reducí su ancho visible.</p>';
+  if(r.g<0) return $('#out').innerHTML='<p class="msg">Los barrotes no entran en ese ancho. Reducí la cantidad o su medida.</p>';
+  const kgB=lineKg(bs,a,b,c,r.Lb,r.n,rho), kgF=fs==='none'?0:lineKg(fs,fa,fb,fc,2*W+2*r.Lb,1,rho), tot=kgB+kgF, price=N('jp');
+  if(!isFinite(tot)) return $('#out').innerHTML='<p class="msg">El espesor de pared es demasiado grande para esa medida.</p>';
+  const ALT=[['acero','acero al carbono'],['inox304','inoxidable 304'],['alu','aluminio'],['laton','latón']].filter(x=>x[0]!==V('jmat'));
+  $('#out').innerHTML=res(
+    row('Cantidad de barrotes',r.n,'u.','key')+
+    row('Separación libre entre barrotes',fmt(r.g,1),'mm',r.g>gmax+1e-9?'bad':'good')+
+    row('Separación entre ejes',fmt(r.pitch,1),'mm')+
+    row('Largo de cada barrote',fmt(r.Lb,0),'mm')+
+    row('Largo total de barrotes',fmt(r.n*r.Lb/1000,2),'m')+
+    row('Peso de los barrotes',fmt(kgB,2),'kg')+
+    (fs!=='none'?row('Peso del marco',fmt(kgF,2),'kg'):'')+
+    row('Peso total',fmt(tot,2),'kg')+
+    (price>0?row('Costo del material',fmt(tot*price,2),'$'):'')+
+    ALT.map(x=>row('Si fuera de '+x[1],fmt(tot*RHO[x[0]]/rho,2),'kg')).join('')
+  )+'<p class="note">La separación libre máxima que se exige en rejas y barandas depende del reglamento de tu zona. Un valor habitual para que no pase un niño es 100 mm. Verificá antes de fabricar.</p>';
+ }},
+
 {id:'viga',name:'Viga apoyada',desc:'Flexión, corte y flecha',
  fig:()=>FIG.viga(),
  html:()=>`<div class="form">
@@ -504,7 +590,7 @@ const TOOLS=[
   ${fld('em','Ángulo de inclinación','60','°','m')}
   ${fld('ew','Ancho entre laterales','450','mm','g')}
   ${fld('ex','Prolongación sobre el nivel superior','1000','mm','g')}
-  <p class="hint" id="ehint"></p></div><div id="out"></div>`,
+  <p class="hint" id="ehint"></p></div><div id="out"></div><details class="gloss" id="egloss"></details>`,
  calc(){
   const t=V('et'); $$('[data-g]').forEach(e=>e.hidden=!e.dataset.g.split(' ').includes(t));
   const HINT={
@@ -515,6 +601,30 @@ const TOOLS=[
    m:'Pendiente alta, usual para accesos a entrepisos técnicos o salas de máquinas. Se sube de frente y con pasamanos.',
    g:'El último peldaño queda a una separación del nivel superior y los laterales siguen hacia arriba para agarrarse. A cierta altura suele exigirse aro de protección: verificá el reglamento.'};
   $('#ehint').textContent=HINT[t];
+  const GD={
+   contra:['Contrahuella','Altura vertical de cada escalón: la parte de adelante que sube de un peldaño al siguiente.'],
+   huella:['Huella','Profundidad del escalón: la parte horizontal donde se apoya el pie.'],
+   peldano:['Peldaño','La pieza horizontal sobre la que se pisa. En la escalera de gato es el travesaño.'],
+   zanca:['Zanca','Viga inclinada que sostiene los peldaños. Se usa una a cada lado o una central. Su largo va de un piso al otro.'],
+   altura:['Altura total','Desnivel entre el piso de salida y el piso de llegada.'],
+   recorrido:['Recorrido horizontal','Distancia horizontal que ocupa la escalera, entre el primer y el último escalón.'],
+   incl:['Inclinación','Ángulo de la escalera respecto de la horizontal.'],
+   paso:['Regla del paso','Suma de dos contrahuellas más una huella. Entre 600 y 640 mm da un paso cómodo.'],
+   desc:['Descanso','Plataforma plana intermedia donde la escalera cambia de dirección. Cuenta como un peldaño.'],
+   hueco:['Hueco entre tramos','Espacio libre entre los dos tramos de una escalera en U.'],
+   col:['Columna central','Tubo vertical donde se fijan los escalones de un caracol.'],
+   lp:['Línea de paso','Recorrido imaginario de quien sube, a mitad del ancho útil. Sobre esa línea se mide la huella.'],
+   util:['Ancho útil','Espacio entre la columna y el borde exterior donde se pisa.'],
+   ang:['Ángulo por escalón','Cuánto gira cada escalón alrededor de la columna. 360° dividido ese ángulo da los escalones por vuelta.'],
+   libre:['Altura libre','Distancia vertical entre un escalón y el que queda justo encima, una vuelta después. Evita golpes en la cabeza.'],
+   lat:['Lateral','Cada uno de los dos perfiles verticales de una escalera de gato, donde se sueldan los peldaños.'],
+   prol:['Prolongación','Parte de los laterales que sobresale del nivel superior para agarrarse al subir y bajar.'],
+   sep:['Separación','Distancia de centro a centro entre dos peldaños de una escalera de gato.']};
+  const GL={r:['contra','huella','peldano','zanca','altura','recorrido','incl','paso'],
+   l:['contra','huella','zanca','desc','altura','paso'],u:['contra','huella','zanca','desc','hueco','altura','paso'],
+   c:['contra','huella','col','lp','util','ang','libre','altura'],m:['contra','huella','zanca','altura','incl'],g:['peldano','sep','lat','prol','altura']};
+  const gd=document.getElementById('egloss');
+  if(gd.dataset.t!==t){gd.dataset.t=t;gd.innerHTML='<summary>Qué significa cada término</summary><dl>'+GL[t].map(k=>`<div><dt>${GD[k][0]}</dt><dd>${GD[k][1]}</dd></div>`).join('')+'</dl>';}
   const H=N('eh'), R=N('er');
   const REF='<p class="note">Referencias habituales: contrahuella de 150 a 190 mm, huella de 250 a 320 mm y paso de 600 a 640 mm. Los valores en naranja quedan fuera de ese rango. Verificá con el reglamento de tu zona. Las medidas son a eje del escalón, sin espesor de peldaño.</p>';
   const out=h=>$('#out').innerHTML=h;
