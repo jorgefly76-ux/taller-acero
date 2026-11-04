@@ -115,6 +115,19 @@ th:first-child,td:first-child{text-align:left}
 .gloss dl{margin:12px 0 0;display:grid;gap:10px}
 .gloss dt{font-weight:600;font-size:14.5px}
 .gloss dd{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+.cdisp{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:10px}
+.cdisp input{width:100%;border:0;background:transparent;color:var(--ink);font:500 22px var(--font-mono);padding:6px 0;text-align:right;min-width:0}
+.cres{text-align:right;font-family:var(--font-display);font-size:40px;line-height:1.1;min-height:44px;font-weight:700;overflow-wrap:anywhere}
+.cres.bad{color:var(--bad)} .cres.muted{color:var(--muted)}
+.sci{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.k{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;height:50px;font:600 17px var(--font-body);cursor:pointer;padding:0;min-width:0}
+.k:active{background:var(--field)}
+.k.fn{font-size:15px;color:var(--accent)} .k.op{background:var(--field)} .k.cl{color:var(--bad)}
+.k.eq{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);grid-row:span 2;height:auto;font-size:24px}
+.chist{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:6px}
+.chist li{display:flex;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-family:var(--font-mono);font-size:14px;cursor:pointer}
+.chist li span{color:var(--muted);overflow-wrap:anywhere;min-width:0}
+.chist li b{white-space:nowrap}
 .foot{margin:28px 2px 0;font-size:12.5px;color:var(--muted);max-width:60ch}
 @media (max-width:380px){.form{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:no-preference){.view{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}}
@@ -292,6 +305,112 @@ function rejaCalc(Wc,H,fw,b,mode,gmax,nIn){
   const g=(inner-n*b)/(n+1);
   return {inner,Lb,n,g,pitch:g+b};
 }
+
+function sciEval(src,deg,ans){
+  const s=String(src).replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-').replace(/π/g,'pi').replace(/√/g,'sqrt').replace(/,/g,'.').toLowerCase();
+  const T=[];let i=0;
+  while(i<s.length){
+    const c=s[i];
+    if(c===' '){i++;continue;}
+    if(/[0-9.]/.test(c)){
+      let j=i;while(j<s.length&&/[0-9.]/.test(s[j]))j++;
+      let str=s.slice(i,j);const m=/^e[+-]?[0-9]+/.exec(s.slice(j));
+      if(m){str+=m[0];j+=m[0].length;}
+      const v=Number(str);if(!isFinite(v)||str.split('.').length>2||str==='.')throw new Error('num');
+      T.push({t:'n',v});i=j;continue;
+    }
+    if(/[a-z]/.test(c)){let j=i;while(j<s.length&&/[a-z]/.test(s[j]))j++;T.push({t:'id',v:s.slice(i,j)});i=j;continue;}
+    if('+-*/^()!%'.includes(c)){T.push({t:c});i++;continue;}
+    throw new Error('char');
+  }
+  const R=Math.PI/180, snap=x=>Math.abs(x)<1e-15?0:x;
+  const rad=x=>deg?x*R:x, back=x=>deg?x/R:x;
+  const fact=n=>{if(!(n>=0)||n!==Math.floor(n)||n>170)return NaN;let r=1;for(let k=2;k<=n;k++)r*=k;return r;};
+  const FN={
+    sin:x=>snap(Math.sin(rad(x))),cos:x=>snap(Math.cos(rad(x))),
+    tan:x=>Math.abs(Math.cos(rad(x)))<1e-15?NaN:snap(Math.tan(rad(x))),
+    asin:x=>Math.abs(x)>1?NaN:back(Math.asin(x)),acos:x=>Math.abs(x)>1?NaN:back(Math.acos(x)),atan:x=>back(Math.atan(x)),
+    sinh:Math.sinh,cosh:Math.cosh,tanh:Math.tanh,
+    log:x=>x>0?Math.log10(x):NaN,ln:x=>x>0?Math.log(x):NaN,sqrt:x=>x>=0?Math.sqrt(x):NaN,cbrt:Math.cbrt,abs:Math.abs,exp:Math.exp};
+  let k=0;const peek=()=>T[k],next=()=>T[k++];
+  function expr(){let a=term();while(peek()&&(peek().t==='+'||peek().t==='-')){const op=next().t,b=term(),bv=b.pct?a.v*b.v:b.v;a={v:op==='+'?a.v+bv:a.v-bv,pct:false};}return a;}
+  function term(){
+    let a=unary();
+    for(;;){const p=peek();if(!p)break;
+      if(p.t==='*'||p.t==='/'){next();const b=unary();a={v:p.t==='*'?a.v*b.v:a.v/b.v,pct:false};}
+      else if(p.t==='n'||p.t==='id'||p.t==='('){const b=unary();a={v:a.v*b.v,pct:false};}
+      else break;}
+    return a;
+  }
+  function unary(){const p=peek();if(p&&p.t==='-'){next();const a=unary();return {v:-a.v,pct:a.pct};}if(p&&p.t==='+'){next();return unary();}return power();}
+  function power(){const a=post();if(peek()&&peek().t==='^'){next();const b=unary();return {v:Math.pow(a.v,b.v),pct:false};}return a;}
+  function post(){let a=prim();for(;;){const p=peek();if(p&&p.t==='!'){next();a={v:fact(a.v),pct:false};}else if(p&&p.t==='%'){next();a={v:a.v/100,pct:true};}else break;}return a;}
+  function prim(){
+    const p=next();if(!p)throw new Error('fin');
+    if(p.t==='n')return {v:p.v,pct:false};
+    if(p.t==='('){const a=expr();if(peek()&&peek().t===')')next();else if(peek())throw new Error('par');return {v:a.v,pct:a.pct};}
+    if(p.t==='id'){
+      if(p.v==='pi')return {v:Math.PI,pct:false};
+      if(p.v==='e')return {v:Math.E,pct:false};
+      if(p.v==='ans')return {v:ans||0,pct:false};
+      const f=FN[p.v];if(!f)throw new Error('fn');
+      const arg=(peek()&&peek().t==='(')?prim():power();
+      return {v:f(arg.v),pct:false};
+    }
+    throw new Error('tok');
+  }
+  const r=expr();if(k<T.length)throw new Error('sobra');
+  return r.v;
+}
+function fmtSci(v){
+  const x=Number(v.toPrecision(12)),a=Math.abs(x);
+  if(a>=1e12||(a<1e-6&&x!==0))return x.toExponential(8).replace(/\.?0+e/,'e').replace('.',',');
+  return x.toLocaleString('es-AR',{maximumFractionDigits:10,useGrouping:false});
+}
+function areaCalc(t,a,b,c){
+  const P=Math.PI;
+  switch(t){
+    case 'rect':return {A:a*b,per:2*(a+b),perLab:'Perímetro'};
+    case 'tri':return {A:a*b/2};
+    case 'circ':return {A:P*a*a/4,per:P*a,perLab:'Circunferencia'};
+    case 'trap':return {A:(a+b)/2*c};
+    case 'ring':return {A:P/4*(a*a-b*b)};
+    case 'sector':return {A:P*a*a*b/360,per:a*b*P/180,perLab:'Largo del arco'};
+    case 'ell':{const x=a/2,y=b/2;return {A:P*x*y,per:P*(3*(x+y)-Math.sqrt((3*x+y)*(x+3*y))),perLab:'Perímetro (aproximado)'};}
+  }
+}
+function volCalc(t,a,b,c){
+  const P=Math.PI;
+  switch(t){
+    case 'box':return {V:a*b*c,S:2*(a*b+a*c+b*c)};
+    case 'cyl':{const r=a/2;return {V:P*r*r*b,S:2*P*r*(r+b)};}
+    case 'cone':{const r=a/2,sl=Math.hypot(r,b);return {V:P*r*r*b/3,S:P*r*(r+sl)};}
+    case 'sph':{const r=a/2;return {V:4/3*P*r*r*r,S:4*P*r*r};}
+  }
+}
+function roomCalc(L,A,H,open){const per=2*(L+A),gross=per*H;return {per,gross,net:gross-open,floor:L*A,vol:L*A*H};}
+function parseReads(txt){
+  const out=[];
+  String(txt).split('\n').forEach(ln=>{
+    const t=ln.trim();if(!t)return;
+    const m=/^(.*?)(-?\d+(?:[.,]\d+)?)\s*$/.exec(t);if(!m)return;
+    const v=parseFloat(m[2].replace(',','.'));if(!isFinite(v))return;
+    out.push({name:m[1].trim()||('P'+(out.length+1)),v});
+  });
+  return out;
+}
+function nivCalc(cota,back,reads,target){
+  const hi=cota+back, has=isFinite(target);
+  return {hi,readTarget:has?hi-target:NaN,
+    pts:reads.map(r=>({name:r.name,lect:r.v,cota:hi-r.v,dif:hi-r.v-cota,adj:has?target-(hi-r.v):NaN}))};
+}
+function slopeCalc(mode,dist,pct,drop){
+  let s,d,c;
+  if(mode==='c'){s=pct/100;d=dist;c=d*s*1000;}
+  else if(mode==='p'){d=dist;c=drop;s=drop/1000/d;}
+  else{c=drop;s=pct/100;d=drop/1000/s;}
+  return {s,dist:d,drop:c,pct:s*100,deg:Math.atan(s)*180/Math.PI,ratio:1/s,mmpm:s*1000};
+}
 /*CALC-END*/
 
 /* ---------- utilidades de interfaz ---------- */
@@ -324,6 +443,10 @@ const ICON={
   mats:'<path d="M4 7h16M4 12h16M4 17h9"/><path d="M16 17l2 2 3-4"/>',
   escalera:'<path d="M4 20h4v-4h4v-4h4V8h4"/>',
   reja:'<path d="M4 5h16v14H4z"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+  cientifica:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2M12 11h2M8 15h2M12 15h2M8 18h2M12 18h4"/>',
+  areas:'<rect x="3" y="9" width="10" height="11"/><circle cx="17" cy="8" r="3.5"/>',
+  niv:'<path d="M4 20h16M7 20V8M17 20V13"/><path d="M3 6h18" stroke-dasharray="3 2"/>',
+  pend:'<path d="M4 8l16 8"/><path d="M4 20h16M4 8v12"/>',
   conv:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>'
 };
 const MAT=[['acero','Acero al carbono (7850)'],['inox304','Inoxidable 304 (8000)'],['inox316','Inoxidable 316 (8000)'],['alu','Aluminio (2700)'],['cobre','Cobre (8960)'],['laton','Latón (8500)'],['bronce','Bronce (8800)'],['fundicion','Fundición gris (7200)'],['titanio','Titanio (4500)'],['plomo','Plomo (11340)']];
@@ -366,6 +489,32 @@ const FIG={
   const xs=[96.4,126.8,157.2,187.6];
   return svgH(`<path class="sh" fill-rule="evenodd" d="M60 25H230V125H60Z M72 37H218V113H72Z"/>${xs.map((x,i)=>`<rect class="${i===3?'fl':'sh'}" x="${x}" y="37" width="6" height="76"/>`).join('')}${dh(60,230,17,'Ancho del vano')}${dv(40,25,125,'Alto',-7)}${dh(132.8,157.2,140,'Separación libre')}${dh(129.8,160.2,166,'Entre ejes')}${lead(190.6,60,256,52)}${lbl(260,56,'Barrote')}${lead(224,90,256,100)}${lbl(260,104,'Marco')}`,'Vista de frente. La separación libre es el hueco entre dos barrotes, y la separación entre ejes se mide de centro a centro.',176);
  },
+ areas(t){
+  const ctr=(x,y,tx)=>`<text class="t2" x="${x}" y="${y}" text-anchor="middle">${tx}</text>`;
+  if(t==='rect')return svg(`<rect class="sh" x="90" y="28" width="140" height="80"/>${ctr(160,72,'Área')}${dh(90,230,128,'Base')}${dv(250,28,108,'Altura')}`,'La base y la altura se miden en ángulo recto.');
+  if(t==='tri')return svg(`<path class="sh" d="M90 108L230 108L170 28Z"/><path class="g" d="M170 28V108M170 28H250"/>${ctr(140,92,'Área')}${dh(90,230,128,'Base')}${dv(250,28,108,'Altura')}`,'La altura es la distancia perpendicular desde la punta hasta la base, no el lado inclinado.');
+  if(t==='circ')return svg(`<circle class="sh" cx="160" cy="70" r="50"/>${dh(110,210,70,'Diámetro')}${ctr(160,102,'Área')}`,'El diámetro pasa por el centro y une dos puntos opuestos del círculo.');
+  if(t==='trap')return svg(`<path class="sh" d="M80 108L240 108L200 32L120 32Z"/><path class="g" d="M200 32V108M200 32H262"/>${ctr(150,80,'Área')}${dh(80,240,128,'Base mayor')}${dh(120,200,24,'Base menor')}${dv(262,32,108,'Altura')}`,'Las dos bases son los lados paralelos. La altura es la distancia perpendicular entre ellos.');
+  if(t==='ring')return svg(`<circle class="sh" cx="160" cy="68" r="50"/><circle class="o" style="fill:var(--surface)" cx="160" cy="68" r="28"/><path class="g" d="M110 68V138M210 68V138"/>${dh(110,210,138,'Diámetro exterior')}${dh(132,188,68,'')}${lead(188,68,216,46)}${lbl(218,44,'Diámetro interior')}${ctr(160,106,'Área')}`,'La corona es el anillo entre el círculo grande y el agujero del centro.');
+  if(t==='sector'){
+    const k=Math.PI/180,r=90,ex=110+r*Math.cos(60*k),ey=110-r*Math.sin(60*k);
+    return svg(`<path class="sh" d="M110 110L200 110A90 90 0 0 0 ${ex} ${ey}Z"/><path class="d" d="M136 110A26 26 0 0 0 123 87.5"/>${lbl(142,100,'Ángulo')}${dh(110,200,130,'Radio')}${ctr(165,70,'Área')}`,'Un sector es una porción del círculo, como una porción de pizza. Se define por el radio y el ángulo.');
+  }
+  if(t==='ell')return svg(`<ellipse class="sh" cx="160" cy="70" rx="75" ry="42"/>${dh(85,235,70,'Eje mayor')}<path class="d" d="M130 28V112M126 28h8M126 112h8"/>${lbl(136,104,'Eje menor')}`,'El eje mayor es el diámetro más largo y el eje menor es el más corto, en ángulo recto.');
+  if(t==='box')return svg(`<path class="sh" d="M60 60H180V120H60Z"/><path class="sh" d="M60 60L90 35H210L180 60Z"/><path class="sh" d="M180 60L210 35V95L180 120Z"/>${dh(60,180,138,'Largo')}${dv(40,60,120,'Alto',-7)}${lead(195,47,226,38)}${lbl(230,42,'Ancho')}`,'Volumen = largo × ancho × alto. Sirve para hormigón, tierra o cualquier relleno.');
+  if(t==='cyl')return svg(`<path class="sh" d="M115 35V105A45 12 0 0 0 205 105V35"/><ellipse class="sh" cx="160" cy="35" rx="45" ry="12"/><path class="g" d="M115 105V136M205 105V136"/>${dh(115,205,136,'Diámetro')}${dv(225,35,105,'Altura')}`,'Sirve para tanques, caños, columnas redondas y pilotes.');
+  if(t==='cone')return svg(`<path class="sh" d="M160 20L205 110A45 12 0 0 1 115 110Z"/><ellipse class="o" cx="160" cy="110" rx="45" ry="12"/><path class="g" d="M115 110V140M205 110V140M160 20H235"/>${dh(115,205,140,'Diámetro de la base')}${dv(235,20,110,'Altura')}`,'El volumen de un cono es un tercio del cilindro con la misma base y altura.');
+  if(t==='sph')return svg(`<circle class="sh" cx="160" cy="68" r="50"/><ellipse class="g" cx="160" cy="68" rx="50" ry="14"/><path class="g" d="M110 68V138M210 68V138"/>${dh(110,210,138,'Diámetro')}`,'El diámetro es la medida de lado a lado pasando por el centro.');
+  const plan=`<rect class="sh" x="70" y="25" width="180" height="90"/>${ctr(160,74,'Piso y techo')}${dh(70,250,134,'Largo')}${dv(50,25,115,'Ancho',-7)}`;
+  const elev=`<rect class="sh" x="60" y="20" width="200" height="100"/><rect class="o" style="fill:var(--surface)" x="88" y="52" width="44" height="68"/><rect class="o" style="fill:var(--surface)" x="170" y="45" width="56" height="35"/>${ctr(110,92,'Puerta')}${ctr(198,66,'Ventana')}${dv(40,20,120,'Alto',-7)}${dh(60,260,138,'Largo o ancho de la pared')}`;
+  return svg(plan,'')+svg(elev,'Arriba, el ambiente visto desde arriba. Abajo, una pared vista de frente: las aberturas (puertas y ventanas) se restan de la superficie de las paredes.');
+ },
+ niv(){
+  return svg(`<path class="o" style="stroke-width:1.5" d="M10 118H120L200 130H310"/><path class="d" style="stroke-dasharray:6 4" d="M20 60H300"/><rect class="sh" x="66" y="40" width="8" height="78"/><rect class="sh" x="246" y="40" width="8" height="90"/><rect class="sh" x="148" y="50" width="24" height="12"/><path class="o" style="stroke-width:1.5" d="M160 62L142 122M160 62L178 126M160 62V124"/>${dv(90,60,118,'Atrás')}${dv(230,60,130,'Adelante',-7)}${lbl(70,34,'Mira de referencia','middle')}${lbl(250,34,'Mira en el punto','middle')}${lbl(300,54,'Plano del instrumento','end')}${lbl(70,146,'Cota de referencia','middle')}${lbl(250,146,'Cota del punto','middle')}`,'El nivel marca un plano horizontal. La cota de un punto es la cota de ese plano menos la lectura en la mira: a mayor lectura, más bajo está el punto.');
+ },
+ pend(){
+  return svg(`<path class="g" d="M40 50H270"/><path class="o" d="M40 50L260 90"/><path class="g" d="M260 90V50"/>${dh(40,260,120,'Distancia horizontal')}${dv(285,50,90,'Caída',-7)}<path class="d" d="M80 50A40 40 0 0 1 79.3 57.2"/>${lbl(92,70,'Pendiente')}<path class="g" d="M260 120V90"/>`,'La pendiente es cuánto baja la superficie por cada metro de recorrido. Pendiente = caída ÷ distancia, y se suele dar en porcentaje.');
+ },
  peso(shape){
   const cap='Sección de la pieza. Largo es la longitud a lo largo del eje, que no se ve en el dibujo.';
   if(shape==='flat')return svg(`<rect class="sh" x="80" y="50" width="160" height="26"/>${dh(80,240,100,'Ancho')}${dv(262,50,76,'Espesor')}`,'Sección de la chapa o planchuela. Largo es la dimensión que no se ve en el dibujo.');
@@ -406,6 +555,47 @@ const FIG={
  }
 };
 
+const glossHtml=items=>`<details class="gloss"><summary>Qué significa cada término</summary><dl>${items.map(x=>`<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl></details>`;
+let cDeg=true,cAns=0,cFresh=false;const cHistory=[];
+function cEl(){return document.getElementById('cx');}
+function cFire(){cEl().dispatchEvent(new Event('input',{bubbles:true}));}
+function cKey(tok){
+  const el=cEl();
+  const OPS=['+','−','×','÷','^','%','!','^2','^(-1)'];
+  let st=el.selectionStart,en=el.selectionEnd;
+  if(cFresh){if(!OPS.includes(tok))el.value='';cFresh=false;st=en=el.value.length;}
+  if(st==null){st=en=el.value.length;}
+  el.value=el.value.slice(0,st)+tok+el.value.slice(en);
+  try{el.setSelectionRange(st+tok.length,st+tok.length);}catch(e){}
+  cFire();
+}
+function cDel(){
+  const el=cEl();cFresh=false;
+  let st=el.selectionStart,en=el.selectionEnd;
+  if(st==null){st=en=el.value.length;}
+  if(st===en&&st>0)st-=1;
+  el.value=el.value.slice(0,st)+el.value.slice(en);
+  try{el.setSelectionRange(st,st);}catch(e){}
+  cFire();
+}
+function cClr(){const el=cEl();cFresh=false;el.value='';cFire();}
+function cNeg(){const el=cEl();cFresh=false;el.value=el.value.trim()?'−('+el.value+')':'−';cFire();}
+function cMode(){cDeg=!cDeg;const b=document.getElementById('cmode');if(b)b.textContent=cDeg?'DEG':'RAD';cFire();}
+function cHistRender(){
+  const ul=document.getElementById('ch');if(!ul)return;
+  ul.innerHTML=cHistory.slice(-6).reverse().map((h,i)=>`<li onclick="cUse(${cHistory.length-1-i})"><span>${h.e.replace(/</g,'&lt;')}</span><b>${h.r}</b></li>`).join('');
+}
+function cUse(i){const h=cHistory[i];if(!h)return;cFresh=false;cEl().value=h.e;cFire();}
+function cEq(){
+  const el=cEl(),cr=document.getElementById('cr'),txt=el.value;
+  if(!txt.trim())return;
+  try{
+    const v=sciEval(txt,cDeg,cAns);
+    if(!isFinite(v))throw new Error('x');
+    cHistory.push({e:txt,r:fmtSci(v)});cAns=v;
+    el.value=String(Number(v.toPrecision(12)));cFresh=true;cFire();cHistRender();
+  }catch(e){cr.textContent='Error';cr.className='cres bad';}
+}
 const SHAPES=[['flat','Chapa / planchuela'],['round','Barra redonda'],['square','Barra cuadrada'],['hex','Barra hexagonal'],['tube','Caño redondo'],['rect','Caño rectangular'],['angle','Perfil L (ángulo)']];
 let matN=0;
 function persist(id,o){try{localStorage.setItem('ta:'+id,JSON.stringify(o));}catch(e){}MEM[id]=o;}
@@ -416,6 +606,104 @@ function matRows(d){
   openTool(TOOLS.find(x=>x.id==='mats'));
 }
 const TOOLS=[
+{id:'cientifica',name:'Calculadora científica',desc:'Funciones, potencias, grados y radianes',
+ html:()=>{
+  const kb=(lab,act,cls,aria)=>`<button type="button" class="k ${cls||''}" onclick="${act}"${aria?` aria-label="${aria}"`:''}>${lab}</button>`;
+  const f=(lab,tok)=>kb(lab,`cKey('${tok}')`,'fn');
+  const n=(lab,tok)=>kb(lab,`cKey('${tok||lab}')`,'');
+  const o=(lab,tok)=>kb(lab,`cKey('${tok||lab}')`,'op');
+  return `<div class="cdisp"><input id="cx" type="text" inputmode="none" autocomplete="off" spellcheck="false" aria-label="Operación" placeholder="0"><div class="cres" id="cr" aria-live="polite">0</div></div>
+  <div class="sci">
+  <button type="button" class="k fn" id="cmode" onclick="cMode()" aria-label="Cambiar entre grados y radianes">${cDeg?'DEG':'RAD'}</button>${o('(')}${o(')')}${kb('⌫','cDel()','cl','Borrar')}${kb('C','cClr()','cl','Borrar todo')}
+  ${f('sin','sin(')}${f('cos','cos(')}${f('tan','tan(')}${f('π','π')}${f('e','e')}
+  ${f('asin','asin(')}${f('acos','acos(')}${f('atan','atan(')}${f('ln','ln(')}${f('log','log(')}
+  ${f('x²','^2')}${f('xʸ','^')}${f('√','√(')}${f('n!','!')}${f('x⁻¹','^(-1)')}
+  ${n('7')}${n('8')}${n('9')}${o('÷')}${o('%')}
+  ${n('4')}${n('5')}${n('6')}${o('×')}${kb('Ans',"cKey('ans')",'fn')}
+  ${n('1')}${n('2')}${n('3')}${o('−')}${kb('=','cEq()','eq','Calcular')}
+  ${n('0')}${n('.')}${kb('±','cNeg()','op','Cambiar signo')}${o('+')}
+  </div><ul class="chist" id="ch"></ul>
+  <p class="hint" style="margin-top:12px">DEG usa grados y RAD usa radianes para sin, cos, tan y sus inversas. En la computadora también podés escribir con el teclado y apretar Enter. Un porcentaje después de sumar o restar se calcula sobre el primer número: 200 + 10 % da 220.</p>`;
+ },
+ calc(){
+  const ex=cEl();
+  if(!ex.dataset.k){ex.dataset.k='1';ex.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();cEq();}else cFresh=false;});cHistRender();}
+  const b=document.getElementById('cmode');if(b)b.textContent=cDeg?'DEG':'RAD';
+  const cr=document.getElementById('cr'),txt=ex.value;
+  if(!txt.trim()){cr.textContent='0';cr.className='cres muted';return;}
+  try{const v=sciEval(txt,cDeg,cAns);if(!isFinite(v))throw new Error('x');cr.textContent=fmtSci(v);cr.className='cres';}
+  catch(e){cr.textContent='…';cr.className='cres muted';}
+ }},
+
+{id:'areas',name:'Áreas y volúmenes',desc:'m², m³, litros y paredes',
+ fig:()=>FIG.areas(V('at')),
+ html:()=>`<div class="form">
+  ${sel('at','Qué querés calcular',[['rect','Área de un rectángulo'],['tri','Área de un triángulo'],['circ','Área de un círculo'],['trap','Área de un trapecio'],['ring','Área de una corona circular'],['sector','Área de un sector circular'],['ell','Área de una elipse'],['box','Volumen de una caja o prisma'],['cyl','Volumen de un cilindro'],['cone','Volumen de un cono'],['sph','Volumen de una esfera'],['room','Paredes, piso y techo de un ambiente']],'rect','','full')}
+  ${sel('au','Unidad de las medidas',[['m','metros (m)'],['cm','centímetros (cm)'],['mm','milímetros (mm)'],['in','pulgadas (in)'],['ft','pies (ft)']],'m','','full')}
+  ${fld('aa','Base','4','m')}${fld('ab','Altura','3','m')}${fld('ac','Medida 3','','m')}${fld('ad','Aberturas (puertas y ventanas)','3','m²')}
+  ${fld('aw','Desperdicio','0','%')}
+  <p class="hint" id="ahint"></p></div><div id="out"></div>`,
+ calc(){
+  const UL={m:1,cm:.01,mm:.001,in:.0254,ft:.3048};
+  const LAB={rect:['Base','Altura'],tri:['Base','Altura'],circ:['Diámetro'],trap:['Base mayor','Base menor','Altura'],ring:['Diámetro exterior','Diámetro interior'],sector:['Radio','Ángulo'],ell:['Eje mayor','Eje menor'],box:['Largo','Ancho','Alto'],cyl:['Diámetro','Altura'],cone:['Diámetro de la base','Altura'],sph:['Diámetro'],room:['Largo','Ancho','Alto']};
+  const DEF={rect:[4,3],tri:[4,3],circ:[2],trap:[5,3,2],ring:[1,.6],sector:[2,90],ell:[3,2],box:[4,3,.1],cyl:[.5,2],cone:[1,2],sph:[1],room:[4,3,2.6]};
+  const HINT={ring:'El diámetro interior es el del agujero del centro.',sector:'El ángulo es el del sector, entre 0° y 360°.',box:'Para hormigón o relleno, cargá un desperdicio de 5 % a 10 %.',room:'Las aberturas se descuentan de las paredes. Cargá su superficie total en m². El desperdicio se aplica a las paredes, útil para pintura.',trap:'Las bases son los lados paralelos.'};
+  const hide=(id,c)=>{document.getElementById(id).closest('.f').hidden=c;};
+  const t=V('at'),u=V('au'),f=UL[u],isAng=(tt,i)=>tt==='sector'&&i===1;
+  const et=document.getElementById('at'),eu=document.getElementById('au');
+  if(!et.dataset.s){et.dataset.s=t;eu.dataset.s=u;}
+  else if(et.dataset.s!==t){
+    et.dataset.s=t;eu.dataset.s=u;
+    ['a','b','c'].forEach((k,i)=>{const d=DEF[t][i];document.getElementById('a'+k).value=d==null?'':(isAng(t,i)?d:Number((d/f).toFixed(3)));});
+    if(t==='room')document.getElementById('ad').value=3;
+  }else if(eu.dataset.s!==u){
+    const old=UL[eu.dataset.s];eu.dataset.s=u;
+    LAB[t].forEach((_,i)=>{if(isAng(t,i))return;const el=document.getElementById('a'+'abc'[i]),v=parseFloat(String(el.value).replace(',','.'));if(isFinite(v))el.value=Number((v*old/f).toFixed(3));});
+  }
+  const lb=LAB[t];
+  ['a','b','c'].forEach((k,i)=>{
+    hide('a'+k,i>=lb.length);
+    if(i<lb.length){document.getElementById('lab-a'+k).textContent=lb[i];document.getElementById('a'+k).nextElementSibling.textContent=isAng(t,i)?'°':u;}
+  });
+  hide('ad',t!=='room');
+  document.getElementById('ahint').textContent=HINT[t]||'';
+  const vals=[N('aa'),N('ab'),N('ac')].slice(0,lb.length), w=Math.max(0,N('aw')||0);
+  if(!pos(...vals)) return $('#out').innerHTML=need;
+  const [a,b,c]=vals.map((v,i)=>isAng(t,i)?v:v*f);
+  const wr=(v,unit,dec)=>w>0?row('Con '+fmt(w,1)+' % de desperdicio',fmt(v*(1+w/100),dec||3),unit):'';
+  if(t==='ring'&&!(b<a)) return $('#out').innerHTML='<p class="msg">El diámetro interior tiene que ser menor que el exterior.</p>';
+  if(t==='sector'&&vals[1]>360) return $('#out').innerHTML='<p class="msg">El ángulo no puede pasar de 360°.</p>';
+  if(t==='room'){
+    const open=N('ad')||0, r=roomCalc(a,b,c,open);
+    if(!(r.net>=0)) return $('#out').innerHTML='<p class="msg">Las aberturas son mayores que la superficie de las paredes.</p>';
+    return $('#out').innerHTML=res(
+      row('Paredes sin aberturas',fmt(r.net,2),'m²','key')+
+      wr(r.net,'m²',2)+
+      row('Paredes con aberturas',fmt(r.gross,2),'m²')+
+      row('Piso',fmt(r.floor,2),'m²')+
+      row('Techo',fmt(r.floor,2),'m²')+
+      row('Perímetro (zócalo, sin descontar puertas)',fmt(r.per,2),'m')+
+      row('Volumen de aire',fmt(r.vol,2),'m³')
+    );
+  }
+  if(['box','cyl','cone','sph'].includes(t)){
+    const r=volCalc(t,a,b,c);
+    return $('#out').innerHTML=res(
+      row('Volumen',fmt(r.V,4),'m³','key')+wr(r.V,'m³',4)+
+      row('En litros',fmt(r.V*1000,1),'L')+
+      row('En pies cúbicos',fmt(r.V/0.0283168466,3),'ft³')+
+      row('Superficie total',fmt(r.S,3),'m²')
+    );
+  }
+  const r=areaCalc(t,a,b,c);
+  $('#out').innerHTML=res(
+    row('Superficie',fmt(r.A,4),'m²','key')+wr(r.A,'m²',4)+
+    row('En centímetros cuadrados',fmt(r.A*1e4,1),'cm²')+
+    row('En pies cuadrados',fmt(r.A/0.09290304,3),'ft²')+
+    (r.per!=null?row(r.perLab,fmt(r.per,3),'m'):'')
+  );
+ }},
+
 {id:'peso',name:'Peso de materiales',desc:'Chapa, barra, caño, perfil L',
  fig:()=>FIG.peso(V('shape')),
  html:()=>`<div class="form">
@@ -818,6 +1106,68 @@ const TOOLS=[
   if(n>=3)h+=row('Corte de cada pieza en un polígono de '+n+' lados',fmt(180/n,3),'°');
   if(ja>0&&ja<180)h+=row('Corte de cada pieza, desde el eje',fmt(ja/2,3),'°')+row('Corte de cada pieza, desde escuadra',fmt(90-ja/2,3),'°');
   $('#iout').innerHTML=h?res(h):'';
+ }},
+
+{id:'niv',name:'Nivelación',desc:'Cotas con nivel óptico o láser',
+ fig:()=>FIG.niv(),
+ html:()=>`<div class="form">
+  ${sel('nu','Unidad de todos los datos',[['m','metros (m)'],['mm','milímetros (mm)']],'m','','full')}
+  ${fld('nc','Cota de la referencia','100.000','')}${fld('nb','Lectura sobre la referencia (atrás)','1.452','')}
+  ${fld('ng','Cota que querés lograr (opcional)','','')}
+  <label class="f full" for="nt"><span>Lecturas en los puntos: nombre y lectura, una por línea</span><div class="in"><textarea id="nt" spellcheck="false">P1 1.380
+P2 1.512
+P3 1.640
+P4 1.298</textarea></div></label>
+  <p class="hint">Cargá todos los datos en la misma unidad. Si no ponés nombre, el punto se llama P1, P2, y así.</p></div><div id="out"></div>${glossHtml([['Cota','Altura de un punto respecto de una referencia.'],['Punto de referencia','Punto fijo del que se conoce la cota. Todo se mide a partir de él.'],['Mira','Regla graduada que se apoya en el punto a medir.'],['Lectura','Número que se ve en la mira a la altura del plano del instrumento. A mayor lectura, más bajo está el punto.'],['Lectura atrás','La lectura sobre el punto de referencia.'],['Plano del instrumento','Altura del nivel. Es la cota de la referencia más la lectura atrás.'],['Ajuste','Cuánto hay que subir (+) o bajar (−) cada punto para llegar a la cota que querés lograr. Subir es rellenar y bajar es cortar.']])}`,
+ calc(){
+  const cota=N('nc'),back=N('nb'),tgt=N('ng'),reads=parseReads(V('nt')).slice(0,200),U=V('nu'),dec=U==='m'?3:0;
+  if(!ok(cota,back)||!reads.length) return $('#out').innerHTML=need;
+  const r=nivCalc(cota,back,reads,tgt), has=isFinite(tgt);
+  const fx=n=>n.toLocaleString('es-AR',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+  const sg=n=>{const x=Number(n.toFixed(dec));return (x>0?'+':x<0?'−':'')+fx(Math.abs(x));};
+  const hi=r.pts.reduce((m,p)=>p.cota>m.cota?p:m), lo=r.pts.reduce((m,p)=>p.cota<m.cota?p:m);
+  const esc=x=>String(x).replace(/</g,'&lt;');
+  $('#out').innerHTML=res(
+    row('Plano del instrumento',fx(r.hi),U,'key')+
+    row('Punto más alto',esc(hi.name)+' · '+fx(hi.cota),U)+
+    row('Punto más bajo',esc(lo.name)+' · '+fx(lo.cota),U)+
+    row('Diferencia entre el más alto y el más bajo',fx(hi.cota-lo.cota),U)+
+    (has?row('Lectura en la mira para la cota deseada',fx(r.readTarget),U):'')
+  )+`<div class="res" style="margin-top:12px"><div class="tblw"><table><thead><tr><th>Punto</th><th>Lectura</th><th>Cota</th><th>Dif. con ref.</th>${has?'<th>Ajuste</th>':''}</tr></thead><tbody>${r.pts.map(p=>`<tr><td>${esc(p.name)}</td><td>${fx(p.lect)}</td><td>${fx(p.cota)}</td><td>${sg(p.dif)}</td>${has?`<td>${sg(p.adj)}</td>`:''}</tr>`).join('')}</tbody></table></div></div>`+(has?'<p class="note">Ajuste con signo más: hay que subir o rellenar. Con signo menos: hay que bajar o cortar.</p>':'');
+ }},
+
+{id:'pend',name:'Pendiente y caída',desc:'Desagües, rampas, cotas intermedias',
+ fig:()=>FIG.pend(),
+ html:()=>`<div class="form">
+  ${sel('pm','Qué sabés',[['c','Distancia y pendiente (calculo la caída)'],['p','Distancia y caída (calculo la pendiente)'],['d','Caída y pendiente (calculo la distancia)']],'c','','full')}
+  ${fld('pd','Distancia horizontal','6','m')}${fld('pp','Pendiente','1','%')}${fld('pc','Caída','60','mm')}
+  ${sel('pdir','Sentido',[['baja','Baja en el sentido de avance'],['sube','Sube en el sentido de avance']],'baja','','full')}
+  ${fld('pz','Cota de partida (opcional)','','m')}${fld('ps','Mostrar una cota cada','1','m')}
+  <p class="hint">Un 1 % de pendiente baja 10 mm por cada metro. Para desagües de patios y veredas se usa muchas veces entre 1 % y 2 %: verificá lo que pide tu reglamento.</p></div><div id="out"></div>${glossHtml([['Pendiente','Cuánto baja o sube la superficie por cada metro de recorrido. 1 % equivale a 10 mm por metro.'],['Caída','Desnivel total entre el principio y el final del tramo.'],['Distancia horizontal','Longitud del tramo medida en horizontal, no sobre la superficie inclinada.'],['Cota','Altura de un punto respecto de una referencia.']])}`,
+ calc(){
+  const hide=(id,c)=>{document.getElementById(id).closest('.f').hidden=c;};
+  const m=V('pm');
+  hide('pd',m==='d');hide('pp',m==='p');hide('pc',m==='c');
+  const d=N('pd'),pp=N('pp'),pc=N('pc');
+  const need3=m==='c'?[d,pp]:m==='p'?[d,pc]:[pc,pp];
+  if(!pos(...need3)) return $('#out').innerHTML=need;
+  const r=slopeCalc(m,d,pp,pc);
+  if(!(isFinite(r.s)&&r.s>0&&isFinite(r.dist))) return $('#out').innerHTML=need;
+  const sgn=V('pdir')==='baja'?-1:1,z=N('pz'),step=N('ps');
+  let tbl='';
+  if(step>0&&r.dist>0){
+    const pts=[];for(let x=0;x<r.dist-1e-9&&pts.length<60;x+=step)pts.push(x);pts.push(r.dist);
+    tbl=`<div class="res" style="margin-top:12px"><div class="tblw"><table><thead><tr><th>Distancia (m)</th><th>Desnivel (mm)</th>${isFinite(z)?'<th>Cota (m)</th>':''}</tr></thead><tbody>${pts.map(x=>`<tr><td>${fmt(x,2)}</td><td>${fmt(sgn*x*r.mmpm,1)}</td>${isFinite(z)?`<td>${(z+sgn*x*r.s).toLocaleString('es-AR',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>`:''}</tr>`).join('')}</tbody></table></div></div>`;
+  }
+  $('#out').innerHTML=res(
+    (m==='c'?row('Caída total',fmt(r.drop,1),'mm','key'):m==='p'?row('Pendiente',fmt(r.pct,3),'%','key'):row('Distancia horizontal',fmt(r.dist,3),'m','key'))+
+    row('Pendiente en porcentaje',fmt(r.pct,3),'%')+
+    row('Pendiente en grados',fmt(r.deg,3),'°')+
+    row('Relación',r.s>0?'1 : '+fmt(r.ratio,1):'—')+
+    row('Milímetros por metro',fmt(r.mmpm,2),'mm/m')+
+    row('Caída total',fmt(r.drop,1),'mm')+
+    row('Distancia horizontal',fmt(r.dist,3),'m')
+  )+tbl;
  }},
 
 {id:'tanque',name:'Capacidad de tanque',desc:'Volumen total y por nivel',
