@@ -420,7 +420,8 @@ const CAT=[
  {s:'PVC cloacal',g:'PVC cloacal (tubo 4 m)',len:4000,it:[['Ø 40 mm',40,0],['Ø 50 mm',50,0],['Ø 63 mm',63,1],['Ø 110 mm',110,1],['Ø 160 mm',160,0]]},
  {s:'Durlock',g:'Perfiles Durlock (2,60 m)',len:2600,it:[['Montante 34',34,1],['Montante 69',69,1],['Solera 35',35,1],['Solera 70',70,1]]},
  {s:'Perfil C',g:'Perfil C Barbieri (6 m)',len:6000,it:[['Perfil C (según medida)',0,1]]},
- {s:'Caño',g:'Caño estructural (6 m)',len:6000,it:[['Cuadrado 20×20',0,0],['Cuadrado 30×30',0,0],['Cuadrado 40×40',0,0],['Rectangular 40×20',0,0],['Rectangular 60×40',0,0],['Redondo 1"',0,0]]}
+ {s:'Caño',g:'Caño estructural (6 m)',len:6000,it:[['Cuadrado 20×20',0,0],['Cuadrado 30×30',0,0],['Cuadrado 40×40',0,0],['Rectangular 40×20',0,0],['Rectangular 60×40',0,0],['Redondo 1"',0,0]]},
+ {s:'Epoxi gas',g:'Caño epoxi para gas (tubo 3,20 m roscado)',len:3200,it:[['1/2"',0,1],['3/4"',0,1],['1"',0,1],['1 1/4"',0,0],['1 1/2"',0,0],['2"',0,0]]}
 ];
 function catPick(key){
   if(!key||key==='custom')return null;
@@ -434,6 +435,19 @@ const DL={
  doble:{placas:4.10,solera:1.00,mont:{40:3.00,48:2.50},t1:{40:10,48:8},t2:{40:15,48:13},t3:{40:30,48:26},cinta:6.60,masilla:3.20,fij:3.5,lana:1.05},
  cielo:{placas:1.05,solera:1.10,mont:{40:3.20,48:3.20},t1:{40:16,48:16},t2:{40:18,48:18},cinta:1.65,masilla:0.90,fij:6}
 };
+function parseSurf(txt){
+  let add=0,sub=0,n=0;const bad=[];
+  String(txt).split('\n').forEach(l=>{
+    l=l.trim(); if(!l)return;
+    const neg=/^[-−–]/.test(l); const t=l.replace(/^[-−–+]\s*/,'').replace(/,/g,'.');
+    let m=t.match(/^([\d.]+)\s*[x×*]\s*([\d.]+)(?:\s*[x×*]\s*(\d+))?$/i), a;
+    if(m)a=parseFloat(m[1])*parseFloat(m[2])*(m[3]?+m[3]:1);
+    else{m=t.match(/^([\d.]+)\s*(?:m2|m²)$/i);a=m?parseFloat(m[1]):NaN;}
+    if(!(a>=0)||!isFinite(a)){bad.push(l);return;}
+    if(neg)sub+=a;else{add+=a;n++;}
+  });
+  return {add,sub,net:add-sub,n,bad};
+}
 const SB_KG={6:25,8:32,10:41};
 const BRICK={h8:[33,18,8],h12:[33,18,12],h18:[33,18,18],mac:[25,5.5,12]};
 function obraCalc(type,o){
@@ -1295,8 +1309,9 @@ P4 1.298</textarea></div></label>
  fig:()=>FIG.obra(),
  html:()=>`<div class="form">
   ${sel('ot','Trabajo',[['simple','Durlock: pared simple'],['doble','Durlock: pared doble'],['cielo','Durlock: cielorraso junta tomada'],['superboard','Superboard (placa cementicia)'],['desplegado','Metal desplegado'],['ladrillo','Mampostería de ladrillos'],['pintura','Pintura'],['revest','Pisos y revestimientos']],'simple','','full')}
-  ${fld('ol','Largo','4','m')}${fld('oh','Alto','2.6','m')}
-  ${fld('oa','Superficie directa (opcional)','','m²')}${fld('oab','Aberturas a restar','0','m²')}
+  <label class="f full" for="os"><span>Superficies: largo × alto (× cantidad), una por línea. Con − adelante se resta (puertas, ventanas). También vale "12 m2"</span><div class="in"><textarea id="os" spellcheck="false">4 x 2.6
+3 x 2.6 x 2
+- 0.9 x 2.1</textarea></div></label>
   ${fld('ow','Desperdicio','5','%')}
   ${sel('om','Modulación',[['40','40 cm'],['48','48 cm']],'40','dl','')}
   ${sel('op','Placa',[['2.88','1,20 × 2,40 m'],['3.12','1,20 × 2,60 m']],'2.88','dl','')}
@@ -1316,14 +1331,13 @@ P4 1.298</textarea></div></label>
   const GR={dl:isDl,dlw:t==='simple'||t==='doble',sb:t==='superboard',md:t==='desplegado',lad:t==='ladrillo',pin:t==='pintura',rev:t==='revest'};
   $$('[data-g]').forEach(e=>e.hidden=!GR[e.dataset.g]);
   document.getElementById('om').closest('.f').hidden=t==='cielo'||!isDl;
-  document.getElementById('lab-oh').textContent=(t==='cielo'||t==='revest'||t==='pintura')?'Ancho / alto':'Alto';
   const hints={simple:'Pared con una capa de placa de cada lado. Coeficientes por m² del fabricante.',doble:'Dos capas de placa de cada lado. El perfil se estimó igual al de pared simple.',cielo:'Cielorraso con junta tomada. Coeficientes por m² del fabricante.',superboard:'Placas de 1,20 × 2,40 m. Los pesos son de ficha técnica. No incluye perfilería ni tornillos.',desplegado:'Subí el desperdicio si hay muchos recortes o solapes.',ladrillo:'Estimación geométrica con junta de 1,5 cm. Dejá margen para roturas.',pintura:'El rendimiento depende de la pintura y la pared: mirá la lata (suele ser 10 a 14 m²/L por mano).',revest:'Estimación geométrica. Agregá 10 % o más si va en diagonal.'};
   $('#ohint').textContent=hints[t];
-  let A=N('oa'); if(!(A>0))A=N('ol')*N('oh'); A-= (N('oab')||0);
+  const sf=parseSurf(V('os')), A=sf.net;
   const o={A,w:N('ow')||0,mod:+V('om'),plate:+V('op'),lana:V('olana')==='1',esp:+V('oe'),sheet:+V('osh'),brick:V('obk'),manos:N('omn'),rend:N('ore'),pa:N('opa'),pb:N('opb'),junta:N('oj')||0};
   if(!(A>0)||(t==='pintura'&&!pos(o.manos,o.rend))||(t==='revest'&&!pos(o.pa,o.pb))) return $('#out').innerHTML=need;
   const r=obraCalc(t,o);
-  $('#out').innerHTML=res(row('Superficie neta',fmt(A,2),'m²')+r.map(x=>row(x.label,fmt(x.q,x.u==='m³'?3:(x.u==='u.'?0:2)),x.u,x.key?'key':'')).join(''));
+  $('#out').innerHTML=res((sf.sub>0?row('Superficies cargadas',fmt(sf.add,2),'m²')+row('Aberturas restadas',fmt(sf.sub,2),'m²'):'')+row('Superficie neta',fmt(A,2),'m²')+r.map(x=>row(x.label,fmt(x.q,x.u==='m³'?3:(x.u==='u.'?0:2)),x.u,x.key?'key':'')).join(''))+(sf.bad.length?`<p class="note">No se entendió: ${sf.bad.join(' | ')}</p>`:'');
  }},
 
 {id:'conv',name:'Conversor de unidades',desc:'Longitud, presión, fuerza, par',
