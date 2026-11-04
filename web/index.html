@@ -411,6 +411,60 @@ function slopeCalc(mode,dist,pct,drop){
   else{c=drop;s=pct/100;d=drop/1000/s;}
   return {s,dist:d,drop:c,pct:s*100,deg:Math.atan(s)*180/Math.PI,ratio:1/s,mmpm:s*1000};
 }
+
+/* Catálogo de caños y barras. ver=1: medida/largo confirmado en comercios; 0: habitual, confirmar con tu proveedor */
+const CAT=[
+ {s:'Hierro',g:'Hierro de construcción ADN 420 (barra 12 m)',len:12000,kind:'hierro',it:[['Ø 6 mm',6,1],['Ø 8 mm',8,1],['Ø 10 mm',10,1],['Ø 12 mm',12,1],['Ø 16 mm',16,0],['Ø 20 mm',20,0],['Ø 25 mm',25,0]]},
+ {s:'Aqua System',g:'Aqua System PP-R (tubo 4 m)',len:4000,it:[['Ø 20 mm',20,1],['Ø 25 mm',25,1],['Ø 32 mm',32,1],['Ø 40 mm',40,0],['Ø 50 mm',50,0],['Ø 63 mm',63,0],['Ø 75 mm',75,0],['Ø 90 mm',90,0],['Ø 110 mm',110,0]]},
+ {s:'Sigas',g:'Sigas gas (tubo 4 m)',len:4000,it:[['Ø 20 mm',20,1],['Ø 25 mm',25,1],['Ø 32 mm',32,1],['Ø 40 mm',40,1]]},
+ {s:'PVC cloacal',g:'PVC cloacal (tubo 4 m)',len:4000,it:[['Ø 40 mm',40,0],['Ø 50 mm',50,0],['Ø 63 mm',63,1],['Ø 110 mm',110,1],['Ø 160 mm',160,0]]},
+ {s:'Durlock',g:'Perfiles Durlock (2,60 m)',len:2600,it:[['Montante 34',34,1],['Montante 69',69,1],['Solera 35',35,1],['Solera 70',70,1]]},
+ {s:'Perfil C',g:'Perfil C Barbieri (6 m)',len:6000,it:[['Perfil C (según medida)',0,1]]},
+ {s:'Caño',g:'Caño estructural (6 m)',len:6000,it:[['Cuadrado 20×20',0,0],['Cuadrado 30×30',0,0],['Cuadrado 40×40',0,0],['Rectangular 40×20',0,0],['Rectangular 60×40',0,0],['Redondo 1"',0,0]]}
+];
+function catPick(key){
+  if(!key||key==='custom')return null;
+  const [i,j]=key.split('.').map(Number), g=CAT[i]; if(!g||!g.it[j])return null;
+  const it=g.it[j];
+  return {fam:g.g,name:it[0],len:g.len,d:it[1],ver:!!it[2],kind:g.kind||'',kgm:g.kind==='hierro'?it[1]*it[1]/162:0};
+}
+/* Cantidades de obra. o: {A m² netos, w % desperdicio, ...}. Devuelve [{k,label,q,u,key}] */
+const DL={
+ simple:{placas:2.05,solera:1.00,mont:{40:3.00,48:2.50},t1:{40:10,48:8},t2:{40:30,48:26},cinta:3.30,masilla:1.80,fij:3.5,lana:1.05},
+ doble:{placas:4.10,solera:1.00,mont:{40:3.00,48:2.50},t1:{40:10,48:8},t2:{40:15,48:13},t3:{40:30,48:26},cinta:6.60,masilla:3.20,fij:3.5,lana:1.05},
+ cielo:{placas:1.05,solera:1.10,mont:{40:3.20,48:3.20},t1:{40:16,48:16},t2:{40:18,48:18},cinta:1.65,masilla:0.90,fij:6}
+};
+const SB_KG={6:25,8:32,10:41};
+const BRICK={h8:[33,18,8],h12:[33,18,12],h18:[33,18,18],mac:[25,5.5,12]};
+function obraCalc(type,o){
+  const A=o.A, w=1+(o.w||0)/100, out=[], c=Math.ceil, add=(label,q,u,key)=>out.push({label,q,u,key:!!key});
+  if(!(A>0))return out;
+  if(DL[type]){
+    const t=DL[type], m=o.mod||40, pa=o.plate||2.88, np=c(A*t.placas*w/pa-1e-9);
+    add('Placas de yeso',np,'u.',1);
+    add('Solera',A*t.solera,'m'); add('Montante',A*t.mont[m],'m');
+    add('Perfiles (barras de 2,60 m)',c((A*t.solera+A*t.mont[m])/2.6-1e-9),'u.');
+    add('Tornillos T1 (perfil)',c(A*t.t1[m]),'u.'); add('Tornillos T2 (placa)',c(A*t.t2[m]),'u.');
+    if(t.t3)add('Tornillos T3 (2ª capa)',c(A*t.t3[m]),'u.');
+    add('Cinta para juntas',A*t.cinta,'m'); add('Masilla',A*t.masilla,'kg'); add('Fijaciones al muro/losa',c(A*t.fij),'u.');
+    if(o.lana&&t.lana)add('Lana de vidrio',A*t.lana,'m²');
+  }else if(type==='superboard'){
+    const n=c(A*w/(o.plate||2.88)-1e-9); add('Placas Superboard 1,20 × 2,40',n,'u.',1); add('Peso total de placas',n*SB_KG[o.esp||8],'kg');
+  }else if(type==='desplegado'){
+    add('Chapas de metal desplegado',c(A*w/(o.sheet||2)-1e-9),'u.',1);
+  }else if(type==='ladrillo'){
+    const [L,H,B]=BRICK[o.brick||'h12'], j=1.5, n=1/((L+j)*(H+j))*1e4;
+    const mort=(B/100-n*L*H*B/1e6);
+    add('Ladrillos',c(A*n*w),'u.',1); add('Ladrillos por m²',n,'u./m²'); add('Mortero de asiento',A*mort*w,'m³');
+  }else if(type==='pintura'){
+    const L=A*(o.manos||2)/(o.rend||12)*w; add('Pintura necesaria',L,'L',1);
+    add('Latas de 20 L',Math.floor(L/20),'u.'); add('Resto en latas de 10, 4 o 1 L',L-Math.floor(L/20)*20,'L');
+  }else if(type==='revest'){
+    const a=o.pa/100, b=o.pb/100, j=(o.junta||0)/1000, n=A*w/((a+j)*(b+j));
+    add('Piezas',c(n-1e-9),'u.',1); add('Superficie a comprar',c(n-1e-9)*a*b,'m²');
+  }
+  return out;
+}
 /*CALC-END*/
 
 /* ---------- utilidades de interfaz ---------- */
@@ -447,7 +501,8 @@ const ICON={
   areas:'<rect x="3" y="9" width="10" height="11"/><circle cx="17" cy="8" r="3.5"/>',
   niv:'<path d="M4 20h16M7 20V8M17 20V13"/><path d="M3 6h18" stroke-dasharray="3 2"/>',
   pend:'<path d="M4 8l16 8"/><path d="M4 20h16M4 8v12"/>',
-  conv:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>'
+  conv:'<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+  obra:'<path d="M3 20V8l9-4 9 4v12"/><path d="M3 12h18M3 16h18M9 8v4M15 12v4M9 16v4"/>'
 };
 const MAT=[['acero','Acero al carbono (7850)'],['inox304','Inoxidable 304 (8000)'],['inox316','Inoxidable 316 (8000)'],['alu','Aluminio (2700)'],['cobre','Cobre (8960)'],['laton','Latón (8500)'],['bronce','Bronce (8800)'],['fundicion','Fundición gris (7200)'],['titanio','Titanio (4500)'],['plomo','Plomo (11340)']];
 
@@ -556,6 +611,9 @@ const FIG={
 };
 
 const glossHtml=items=>`<details class="gloss"><summary>Qué significa cada término</summary><dl>${items.map(x=>`<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl></details>`;
+
+FIG.obra=()=>svg(`<rect class="sh" x="30" y="30" width="230" height="90"/><rect x="170" y="62" width="40" height="58" style="fill:var(--bg,#fff);stroke:var(--ink,#333)"/><text class="t2" x="190" y="54" text-anchor="middle">Abertura</text><text class="t2" x="95" y="80" text-anchor="middle">Superficie neta</text>${dh(30,260,20,'Largo')}${dv(276,30,120,'Alto',8)}`,'Se mide el largo y el alto de la superficie y se restan puertas y ventanas. Con el desperdicio se obtienen las cantidades a comprar.');
+const GLOBRA=[['Aberturas','Puertas y ventanas: su superficie se resta de la total.'],['Desperdicio','Porcentaje extra por cortes, roturas y recortes. Sobre placas, chapas, ladrillos y piezas.'],['Modulación','Separación entre montantes: 40 cm (más rígida) o 48 cm.'],['Solera','Perfil horizontal que se fija a piso y techo y guía a los montantes.'],['Montante','Perfil vertical donde se atornillan las placas.'],['T1','Tornillo punta aguja para unir perfiles.'],['T2','Tornillo para fijar la placa al perfil.'],['T3','Tornillo para la segunda capa de placa (pared doble).'],['Cinta y masilla','Se usan para tomar las juntas entre placas.'],['Junta','Separación entre piezas o ladrillos, rellena con mortero o pastina.']];
 let cDeg=true,cAns=0,cFresh=false;const cHistory=[];
 function cEl(){return document.getElementById('cx');}
 function cFire(){cEl().dispatchEvent(new Event('input',{bubbles:true}));}
@@ -1194,15 +1252,21 @@ P4 1.298</textarea></div></label>
   )+(p.level>maxLevel?'<p class="note">El nivel supera la altura útil; se tomó el tanque lleno.</p>':'');
  }},
 
-{id:'corte',name:'Lista de corte',desc:'Barras necesarias y sobrante',
+{id:'corte',name:'Lista de corte',desc:'Barras, caños y sobrante',
  fig:()=>FIG.corte(),
  html:()=>`<div class="form">
-  ${fld('cs','Largo de la barra','6000','mm')}${fld('ck','Espesor del corte (disco)','3','mm')}
+  <label class="f full" for="cm"><span>Material y medida (carga el largo comercial)</span><div class="in"><select id="cm"><option value="custom">Personalizado (escribo el largo)</option>${CAT.map((g,i)=>`<optgroup label="${g.g}">${g.it.map((it,j)=>`<option value="${i}.${j}">${g.s} ${it[0]}${it[2]?'':' *'}</option>`).join('')}</optgroup>`).join('')}</select></div></label>
+  ${fld('cs','Largo de la barra o tubo','6000','mm')}${fld('ck','Espesor del corte (disco)','3','mm')}
+  <p class="hint" id="chint"></p>
   <label class="f full" for="cp"><span>Piezas: largo × cantidad, una por línea</span><div class="in"><textarea id="cp" spellcheck="false">1200 x 4
 850 x 6
 430 x 8
 2100 x 2</textarea></div></label></div><div id="out"></div>`,
  calc(){
+  const cmEl=document.getElementById('cm'), pick=catPick(cmEl.value);
+  if(!cmEl.dataset.s){cmEl.dataset.s=cmEl.value;}
+  else if(cmEl.dataset.s!==cmEl.value){cmEl.dataset.s=cmEl.value;if(pick)document.getElementById('cs').value=pick.len;}
+  $('#chint').textContent=pick?(pick.ver?'Largo comercial habitual de esta línea: ':'Medida habitual, confirmala con tu proveedor (*): ')+fmt(pick.len,0)+' mm. Podés cambiarlo si tu barra es otra.':'Medidas con * son habituales pero no las pude confirmar en todos los comercios.';
   const S=N('cs'),k=N('ck')||0, pieces=[], bad=[];
   V('cp').split('\n').forEach(line=>{
     if(!line.trim())return;
@@ -1216,13 +1280,50 @@ P4 1.298</textarea></div></label>
   const big=pieces.filter(p=>p>S);
   if(big.length) return $('#out').innerHTML=`<p class="msg">Hay piezas más largas que la barra (${fmt(Math.max(...big),0)} mm).</p>`;
   const bars=packCuts(S,k,pieces), used=pieces.reduce((a,b)=>a+b,0), mat=bars.length*S;
+  let extra='';
+  if(pick&&pick.kgm)extra=row('Peso de lo que hay que comprar',fmt(bars.length*S/1000*pick.kgm,1),'kg')+row('Peso de las piezas',fmt(used/1000*pick.kgm,1),'kg');
   $('#out').innerHTML=res(
     row('Barras necesarias',bars.length,'u.','key')+
     row('Piezas a cortar',pieces.length,'u.')+
     row('Aprovechamiento',fmt(used/mat*100,1),'%')+
-    row('Sobrante total',fmt(mat-used,0),'mm')
+    row('Sobrante total',fmt(mat-used,0),'mm')+extra
   )+`<div class="bars">${bars.map((b,i)=>`<div><div class="barlab"><span>Barra ${i+1}</span><span>sobrante ${fmt(S-b.used,0)} mm</span></div><div class="bar">${b.items.map((x,j)=>`<span class="seg p${j%2}" style="width:${x/S*100}%">${fmt(x,0)}</span>`).join('')}</div></div>`).join('')}</div>`+
   (bad.length?`<p class="note">No se entendió: ${bad.join(' | ')}</p>`:'');
+ }},
+
+{id:'obra',name:'Cantidades de obra',desc:'Durlock, Superboard, desplegado, ladrillos, pintura',
+ fig:()=>FIG.obra(),
+ html:()=>`<div class="form">
+  ${sel('ot','Trabajo',[['simple','Durlock: pared simple'],['doble','Durlock: pared doble'],['cielo','Durlock: cielorraso junta tomada'],['superboard','Superboard (placa cementicia)'],['desplegado','Metal desplegado'],['ladrillo','Mampostería de ladrillos'],['pintura','Pintura'],['revest','Pisos y revestimientos']],'simple','','full')}
+  ${fld('ol','Largo','4','m')}${fld('oh','Alto','2.6','m')}
+  ${fld('oa','Superficie directa (opcional)','','m²')}${fld('oab','Aberturas a restar','0','m²')}
+  ${fld('ow','Desperdicio','5','%')}
+  ${sel('om','Modulación',[['40','40 cm'],['48','48 cm']],'40','dl','')}
+  ${sel('op','Placa',[['2.88','1,20 × 2,40 m'],['3.12','1,20 × 2,60 m']],'2.88','dl','')}
+  ${sel('olana','Lana de vidrio',[['0','No'],['1','Sí']],'0','dlw','')}
+  ${sel('oe','Espesor',[['6','6 mm (25 kg)'],['8','8 mm (32 kg)'],['10','10 mm (41 kg)']],'8','sb','')}
+  ${sel('osh','Chapa',[['2','1 × 2 m'],['1.4','Yesero 0,70 × 2 m']],'2','md','')}
+  ${sel('obk','Ladrillo',[['h8','Hueco 8×18×33'],['h12','Hueco 12×18×33'],['h18','Hueco 18×18×33'],['mac','Común macizo 5,5×12×25']],'h12','lad','')}
+  ${fld('omn','Manos','2','','pin')}${fld('ore','Rendimiento por mano','12','m²/L','pin')}
+  ${fld('opa','Pieza: lado A','60','cm','rev')}${fld('opb','Pieza: lado B','60','cm','rev')}${fld('oj','Junta','3','mm','rev')}
+  <p class="hint" id="ohint"></p></div><div id="out"></div>${glossHtml(GLOBRA)}`,
+ calc(){
+  const t=V('ot'), isDl=!!DL[t];
+  const W={simple:5,doble:5,cielo:5,superboard:5,desplegado:10,ladrillo:5,pintura:5,revest:10};
+  const el=document.getElementById('ot');
+  if(!el.dataset.s)el.dataset.s=t;
+  else if(el.dataset.s!==t){el.dataset.s=t;document.getElementById('ow').value=W[t];}
+  const GR={dl:isDl,dlw:t==='simple'||t==='doble',sb:t==='superboard',md:t==='desplegado',lad:t==='ladrillo',pin:t==='pintura',rev:t==='revest'};
+  $$('[data-g]').forEach(e=>e.hidden=!GR[e.dataset.g]);
+  document.getElementById('om').closest('.f').hidden=t==='cielo'||!isDl;
+  document.getElementById('lab-oh').textContent=(t==='cielo'||t==='revest'||t==='pintura')?'Ancho / alto':'Alto';
+  const hints={simple:'Pared con una capa de placa de cada lado. Coeficientes por m² del fabricante.',doble:'Dos capas de placa de cada lado. El perfil se estimó igual al de pared simple.',cielo:'Cielorraso con junta tomada. Coeficientes por m² del fabricante.',superboard:'Placas de 1,20 × 2,40 m. Los pesos son de ficha técnica. No incluye perfilería ni tornillos.',desplegado:'Subí el desperdicio si hay muchos recortes o solapes.',ladrillo:'Estimación geométrica con junta de 1,5 cm. Dejá margen para roturas.',pintura:'El rendimiento depende de la pintura y la pared: mirá la lata (suele ser 10 a 14 m²/L por mano).',revest:'Estimación geométrica. Agregá 10 % o más si va en diagonal.'};
+  $('#ohint').textContent=hints[t];
+  let A=N('oa'); if(!(A>0))A=N('ol')*N('oh'); A-= (N('oab')||0);
+  const o={A,w:N('ow')||0,mod:+V('om'),plate:+V('op'),lana:V('olana')==='1',esp:+V('oe'),sheet:+V('osh'),brick:V('obk'),manos:N('omn'),rend:N('ore'),pa:N('opa'),pb:N('opb'),junta:N('oj')||0};
+  if(!(A>0)||(t==='pintura'&&!pos(o.manos,o.rend))||(t==='revest'&&!pos(o.pa,o.pb))) return $('#out').innerHTML=need;
+  const r=obraCalc(t,o);
+  $('#out').innerHTML=res(row('Superficie neta',fmt(A,2),'m²')+r.map(x=>row(x.label,fmt(x.q,x.u==='m³'?3:(x.u==='u.'?0:2)),x.u,x.key?'key':'')).join(''));
  }},
 
 {id:'conv',name:'Conversor de unidades',desc:'Longitud, presión, fuerza, par',
