@@ -607,6 +607,21 @@ function tplLote(x,y,frente,fondo,vereda,calle,retiro,ext){
   if(retiro>0)o.push({t:'l',a:[x,y+retiro],b:[x+frente,y+retiro],w:2,ls:'le'});
   return o;
 }
+/* Foto de un plano: origen (x,y) = esquina inferior izquierda de la imagen; sc = mm por píxel; rot en grados */
+function bgWorld(bg,u,v){const r=bg.rot*Math.PI/180,c=Math.cos(r),s=Math.sin(r);return [bg.x+c*u-s*v,bg.y+s*u+c*v];}
+function bgCorners(bg){const W=bg.w*bg.sc,H=bg.h*bg.sc;return [[0,0],[W,0],[W,H],[0,H]].map(q=>bgWorld(bg,q[0],q[1]));}
+function bgBounds(bg){const c=bgCorners(bg),xs=c.map(q=>q[0]),ys=c.map(q=>q[1]);return [Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];}
+function unionB(a,b){return !a?b:!b?a:[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[2],b[2]),Math.max(a[3],b[3])];}
+function rotAbout(c,p,deg){const r=deg*Math.PI/180,co=Math.cos(r),si=Math.sin(r),x=p[0]-c[0],y=p[1]-c[1];return [c[0]+co*x-si*y,c[1]+si*x+co*y];}
+/* Calibra: A y B son dos puntos (en mm del plano, sobre la foto) que en la realidad distan real mm. Deja A fijo. */
+function calibImage(bg,A,B,real,align){
+  const L=pdist(A,B);if(!(L>0)||!(real>0))return bg;
+  const o=Object.assign({},bg),th=Math.atan2(B[1]-A[1],B[0]-A[0])*180/Math.PI;
+  let d=0;if(align==='h')d=-th;else if(align==='v')d=90-th;
+  if(d){const P=rotAbout(A,[o.x,o.y],d);o.x=P[0];o.y=P[1];o.rot=bg.rot+d;}
+  const f=real/L;o.x=A[0]+f*(o.x-A[0]);o.y=A[1]+f*(o.y-A[1]);o.sc=bg.sc*f;return o;
+}
+function shrinkSize(w,h,max){const k=Math.min(1,max/Math.max(w,h));return [Math.max(1,Math.round(w*k)),Math.max(1,Math.round(h*k))];}
 /* Escala normalizada y hoja A4 que mejor entra (w,h en mm reales) */
 function paperScale(w,h,forced){
   w=Math.max(w,1);h=Math.max(h,1);
@@ -849,12 +864,12 @@ const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el nor
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
   cfg:{ortho:true,dims:true,big:false,grid:100,unit:'mm',th:150,lw:2,title:'',dw:900,vw:1200,ve:3000,ca:8000,no:90,cmp:true}};
-const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['door','Puerta'],['win','Ventana'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle']];
+const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['door','Puerta'],['win','Ventana'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['cal','Calibrar foto'],['img','Mover foto']];
 const PLLINE=['l','w','dim','lm','le','vr','ca'];
 const PLHINT={ver:'Arrastrá con un dedo para mover el plano. Con dos dedos acercás o alejás.',sel:'Tocá una figura para elegirla. Arrastrala para moverla.',
   l:'Arrastrá para mover el plano. Tocá donde empieza la línea y después donde termina. Para una medida exacta usá los campos de abajo.',w:'Arrastrá para mover el plano. Tocá el inicio y el final de la pared. El espesor se define abajo.',
   r:'Arrastrá para mover el plano. Tocá una esquina y la esquina opuesta.',c:'Arrastrá para mover el plano. Tocá el centro y después un punto del borde.',dim:'Arrastrá para mover el plano. Tocá los dos puntos que querés medir.',tx:'Arrastrá para mover el plano. Tocá donde va el texto.',
-  lm:'Arrastrá para mover el plano. Tocá los dos extremos de la línea municipal (límite entre el lote y la vereda).',le:'Arrastrá para mover el plano. Tocá los dos extremos de la línea de edificación (hasta dónde se puede construir).',vr:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la vereda. El ancho se define en Ajustes.',ca:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la calle. El ancho se define en Ajustes.',
+  cal:'Arrastrá para mover el plano. Tocá dos puntos de la foto cuya distancia real conozcas y escribí esa distancia en milímetros. Los puntos quedan marcados en rojo.',img:'Arrastrá la foto para acomodarla. Con dos dedos acercás o alejás todo.',lm:'Arrastrá para mover el plano. Tocá los dos extremos de la línea municipal (límite entre el lote y la vereda).',le:'Arrastrá para mover el plano. Tocá los dos extremos de la línea de edificación (hasta dónde se puede construir).',vr:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la vereda. El ancho se define en Ajustes.',ca:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la calle. El ancho se define en Ajustes.',
   door:'Arrastrá para mover el plano. Tocá sobre una pared para poner la puerta.',win:'Arrastrá para mover el plano. Tocá sobre una pared para poner la ventana.'};
 const plWeights={1:1,2:1.8,3:3.2};
 
@@ -976,10 +991,35 @@ function plShapeFrom(mode,a,b){
   return null;
 }
 /* ---- estado, historial, guardado ---- */
-function plSave(){persist('plano-d',{shapes:PL.shapes,view:PL.view,cfg:PL.cfg,last:PL.last});}
+function plSave(){persist('plano-d',{shapes:PL.shapes,view:PL.view,cfg:PL.cfg,last:PL.last,bg:PL.bg});}
 function plLoad(){
   const d=store('plano-d');
-  if(d&&Array.isArray(d.shapes)){PL.shapes=d.shapes;if(d.view&&d.view.s>0)PL.view=d.view;PL.last=d.last||[0,0];Object.assign(PL.cfg,d.cfg||{});}
+  if(d&&Array.isArray(d.shapes)){PL.shapes=d.shapes;if(d.view&&d.view.s>0)PL.view=d.view;PL.last=d.last||[0,0];Object.assign(PL.cfg,d.cfg||{});PL.bg=d.bg||null;}
+  PL.img=null;
+  if(PL.bg){const sv=store('plano-img');if(sv&&sv.src){const im=new Image();im.onload=()=>{PL.img=im;plDraw();};im.src=sv.src;}else PL.bg=null;}
+}
+function plDrawBg(ctx,bg,img,T,alpha){
+  if(!bg||!img||!img.complete||!img.naturalWidth)return;
+  ctx.save();ctx.globalAlpha=alpha;ctx.translate(T.x0+bg.x*T.s,T.y0-bg.y*T.s);ctx.rotate(-bg.rot*Math.PI/180);ctx.scale(bg.sc*T.s,bg.sc*T.s);ctx.drawImage(img,0,-bg.h,bg.w,bg.h);ctx.restore();
+}
+function plLoadPhoto(f){
+  if(!f)return;const msg=document.getElementById('plmsg');
+  const fr=new FileReader();
+  fr.onload=()=>{const im=new Image();im.onload=()=>{
+    const [w,h]=shrinkSize(im.naturalWidth,im.naturalHeight,1800),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(im,0,0,w,h);
+    const src=c.toDataURL('image/jpeg',.8),im2=new Image();
+    im2.onload=()=>{PL.img=im2;PL.bg={x:0,y:0,sc:10000/w,rot:0,w,h,op:.55};persist('plano-img',{src});plSave();plFit();plSetMode('cal');
+      if(msg)msg.textContent='Foto cargada. Ahora calibrá la escala: tocá dos puntos de una medida que conozcas (una pared, una puerta) y escribí cuánto mide en la realidad.';};
+    im2.src=src;};im.onerror=()=>{if(msg)msg.textContent='No pude abrir esa imagen.';};im.src=fr.result;};
+  fr.readAsDataURL(f);
+}
+function plRotImg(d){
+  if(!PL.bg)return;const c=bgCorners(PL.bg),cen=[(c[0][0]+c[2][0])/2,(c[0][1]+c[2][1])/2],P=rotAbout(cen,[PL.bg.x,PL.bg.y],d);
+  PL.bg=Object.assign({},PL.bg,{x:P[0],y:P[1],rot:PL.bg.rot+d});plSave();plDraw();
+}
+function plZoomTo(s){
+  const r=PL.cv.getBoundingClientRect(),c=[r.width/2,r.height/2],wc=plTW(c[0],c[1]);
+  PL.view={s,x0:c[0]-wc[0]*s,y0:c[1]+wc[1]*s};plSave();plDraw();
 }
 function plPush(){PL.hist.push(JSON.stringify(PL.shapes));if(PL.hist.length>60)PL.hist.shift();PL.redo=[];}
 function plUndo(){if(!PL.hist.length)return;PL.redo.push(JSON.stringify(PL.shapes));PL.shapes=JSON.parse(PL.hist.pop());PL.sel=-1;plChanged();}
@@ -988,6 +1028,8 @@ function plChanged(){plSave();plFill();plDraw();}
 function plAdd(s,last){plPush();PL.shapes.push(s);if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();}
 function plSync(){
   const c=PL.cfg;c.grid=+V('plG')||0;c.unit=V('plU')||'mm';c.th=N('plT')||150;c.lw=+V('plW')||2;c.title=V('plN');c.dw=N('plO')||900;c.vw=N('plV')||1200;c.ve=N('plVe')||3000;c.ca=N('plCa')||8000;{const n=N('plNo');c.no=isFinite(n)?n:90;}
+  if(PL.bg){const o=N('plIo');PL.bg.op=Math.max(0,Math.min(1,(isFinite(o)?o:55)/100));}
+  const vs=V('plVs');if(PL.vsLast===undefined)PL.vsLast=vs;else if(vs!==PL.vsLast){PL.vsLast=vs;if(+vs>0)plZoomTo(3.7795275/+vs);}
 }
 /* ---- pantalla ---- */
 const plTW=(px,py)=>[(px-PL.view.x0)/PL.view.s,(PL.view.y0-py)/PL.view.s];
@@ -997,6 +1039,7 @@ function plDraw(){
   if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
   const ctx=cv.getContext('2d'),C=plColors(false),V0=PL.view;
   ctx.setTransform(d,0,0,d,0,0);ctx.fillStyle=C.bg;ctx.fillRect(0,0,r.width,r.height);
+  plDrawBg(ctx,PL.bg,PL.img,V0,PL.bg?PL.bg.op:1);
   // cuadrícula
   let g=PL.cfg.grid||100;while(g*V0.s<9)g*=5;
   const x0w=plTW(0,0)[0],x1w=plTW(r.width,0)[0],y1w=plTW(0,0)[1],y0w=plTW(0,r.height)[1];
@@ -1015,12 +1058,13 @@ function plDraw(){
     ctx.font='600 13px sans-serif';ctx.fillStyle=C.accent;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(txt,8,8);
   }
   if(PL.hover){const q=PL.hover;ctx.strokeStyle=C.accent;ctx.lineWidth=1.6;ctx.strokeRect(V0.x0+q.p[0]*V0.s-4,V0.y0-q.p[1]*V0.s-4,8,8);}
+  if(PL.cal&&PL.cal.pts.length){ctx.strokeStyle='#d32f2f';ctx.lineWidth=2;PL.cal.pts.forEach(q=>{const x=V0.x0+q[0]*V0.s,y=V0.y0-q[1]*V0.s;ctx.beginPath();ctx.moveTo(x-9,y);ctx.lineTo(x+9,y);ctx.moveTo(x,y-9);ctx.lineTo(x,y+9);ctx.stroke();});}
   if(PL.cfg.cmp)plCompass(ctx,r.width-34,38,18,PL.cfg.no,C,1);
   ctx.font='500 11px sans-serif';ctx.fillStyle=C.muted;ctx.textAlign='right';ctx.textBaseline='bottom';
   ctx.fillText('Cuadrícula '+dimTxt(g,PL.cfg.unit)+(PL.cfg.unit==='mm'?' mm':''),r.width-8,r.height-6);
 }
 function plFit(){
-  const cv=PL.cv,r=cv.getBoundingClientRect(),b=sceneBounds(PL.shapes)||[0,0,3000,2000],pad=44;
+  const cv=PL.cv,r=cv.getBoundingClientRect(),b=unionB(sceneBounds(PL.shapes),PL.bg?bgBounds(PL.bg):null)||[0,0,3000,2000],pad=44;
   const w=Math.max(b[2]-b[0],100),h=Math.max(b[3]-b[1],100),s=Math.min((r.width-2*pad)/w,(r.height-2*pad)/h);
   PL.view={s,x0:r.width/2-(b[0]+w/2)*s,y0:r.height/2+(b[1]+h/2)*s};plSave();plDraw();
 }
@@ -1051,6 +1095,10 @@ function plDown(ev){
     else PL.drag={pan:true,px,v:Object.assign({},PL.view)};
     plDraw();return;
   }
+  if(m==='img'){
+    if(PL.bg)PL.drag={imgMove:true,start:plTW(px[0],px[1]),orig:{x:PL.bg.x,y:PL.bg.y}};else PL.drag={pan:true,px,v:Object.assign({},PL.view)};
+    return;
+  }
   PL.dn={px,moved:false,multi:false,v:Object.assign({},PL.view)};
 }
 function plMove(ev){
@@ -1067,6 +1115,7 @@ function plMove(ev){
   }
   const dr=PL.drag;
   if(dr&&dr.pan){PL.view={s:dr.v.s,x0:dr.v.x0+px[0]-dr.px[0],y0:dr.v.y0+px[1]-dr.px[1]};plDraw();return;}
+  if(dr&&dr.imgMove){const w=plTW(px[0],px[1]);PL.bg=Object.assign({},PL.bg,{x:dr.orig.x+w[0]-dr.start[0],y:dr.orig.y+w[1]-dr.start[1]});plDraw();return;}
   if(dr&&dr.move){
     const w=plTW(px[0],px[1]);let dx=w[0]-dr.start[0],dy=w[1]-dr.start[1];const g=PL.cfg.grid;
     if(g>0){dx=Math.round(dx/g)*g;dy=Math.round(dy/g)*g;}
@@ -1095,6 +1144,16 @@ function plUp(ev){
   const dn=PL.dn;PL.dn=null;if(!dn||dn.multi)return;
   if(dn.moved){plSave();return;}
   const m=PL.mode,px=plPt(ev);
+  if(m==='cal'){
+    if(!PL.bg){const mg=document.getElementById('plmsg');if(mg)mg.textContent='Primero cargá una foto en la sección Foto de un plano.';return;}
+    const wp=plTW(px[0],px[1]);PL.cal=PL.cal||{pts:[]};PL.cal.pts.push(wp);
+    if(PL.cal.pts.length<2){plDraw();return;}
+    const [A,B]=PL.cal.pts;PL.cal=null;
+    const t=window.prompt('¿Cuánto mide en la realidad la distancia entre esos dos puntos? Escribila en milímetros (por ejemplo 4200).');
+    const real=parseFloat(String(t||'').replace(',','.'));
+    if(real>0){PL.bg=calibImage(PL.bg,A,B,real,V('plKa'));plSave();plFit();const mg=document.getElementById('plmsg');if(mg)mg.textContent='Escala calibrada. Comprobala con la herramienta Cota sobre otra medida conocida de la foto.';}
+    plDraw();return;
+  }
   if(m==='tx'){
     const q=plSnap(px,ev,null),t=window.prompt('Texto:');
     if(t&&t.trim())plAdd({t:'tx',p:q.p,s:t.trim(),h:Math.round(Math.max(40,14/PL.view.s))},q.p);
@@ -1163,12 +1222,14 @@ function plAction(a){
   else if(a==='flip'&&s&&s.t==='door'){plPush();s.o=((s.o||0)+1)%4;plChanged();}
   else if(a==='edt'&&s&&s.t==='tx'){const t=window.prompt('Texto:',s.s);if(t&&t.trim()){plPush();s.s=t.trim();plChanged();}}
   else if(a==='cancel'){PL.draft=null;PL.hover=null;plFill();plDraw();}
+  else if(a==='ir-')plRotImg(-1);else if(a==='ir+')plRotImg(1);else if(a==='ir90')plRotImg(90);
+  else if(a==='rmimg'){PL.bg=null;PL.img=null;persist('plano-img',{});plSave();plDraw();}
   else if(a==='undo')plUndo();else if(a==='redo')plRedo();else if(a==='fit')plFit();
   else if(a==='ort'){PL.cfg.ortho=!PL.cfg.ortho;plSave();plFill();}
   else if(a==='cmp'){PL.cfg.cmp=!PL.cfg.cmp;plSave();plFill();plDraw();}
   else if(a==='dms'){PL.cfg.dims=!PL.cfg.dims;plSave();plFill();plDraw();}
   else if(a==='big'){PL.cfg.big=!PL.cfg.big;document.getElementById('plwrap').classList.toggle('big',PL.cfg.big);plSave();setTimeout(plDraw,30);}
-  else if(a==='new'){if(!PL.shapes.length||window.confirm('¿Borrar todo el dibujo y empezar uno nuevo?')){plPush();PL.shapes=[];PL.sel=-1;PL.last=[0,0];plChanged();}}
+  else if(a==='new'){if(!PL.shapes.length||window.confirm('¿Borrar todo el dibujo y empezar uno nuevo?')){plPush();PL.shapes=[];PL.bg=null;PL.img=null;persist('plano-img',{});PL.sel=-1;PL.last=[0,0];plChanged();}}
   else if(a==='add')plNumAdd();else if(a==='apply')plNumApply();
   else if(a==='lote'){
     const w=N('plTw'),h=N('plTh');if(!pos(w,h))return;const o=PL.last;plPush();
@@ -1181,11 +1242,11 @@ function plAction(a){
     PL.shapes.push(...nw);PL.sel=-1;plChanged();plFit();
   }
 }
-function plSetMode(m){PL.mode=m;PL.draft=null;PL.dn=null;PL.hover=null;PL.hover=null;if(m!=='sel')PL.sel=-1;plFill();plDraw();}
+function plSetMode(m){PL.cal=null;PL.mode=m;PL.draft=null;PL.dn=null;PL.hover=null;PL.hover=null;if(m!=='sel')PL.sel=-1;plFill();plDraw();}
 /* ---- exportar ---- */
 function plSheet(dpi){
-  const sh=PL.shapes,b=sceneBounds(sh);if(!b)return null;
-  const w=b[2]-b[0],h=b[3]-b[1],forced=+V('plS')||0,ps=paperScale(w,h,forced),mm=dpi/25.4;
+  const sh=PL.shapes,inc=V('plIn')==='1'&&PL.bg&&PL.img,b=unionB(sceneBounds(sh),inc?bgBounds(PL.bg):null);if(!b)return null;
+  const w=b[2]-b[0],h=b[3]-b[1],forced=+N('plSc')||+V('plS')||0,ps=paperScale(w,h,forced),mm=dpi/25.4;
   const cv=document.createElement('canvas');cv.width=Math.round(ps.pw*mm);cv.height=Math.round(ps.ph*mm);
   const ctx=cv.getContext('2d'),C=plColors(true);
   ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
@@ -1193,6 +1254,7 @@ function plSheet(dpi){
   const areaX=16*mm,areaY=16*mm,aw=ps.aw*mm,ah=ps.ah*mm,s=mm/ps.den;
   const T={s,x0:areaX+(aw-w*s)/2-b[0]*s,y0:areaY+(ah+h*s)/2+b[1]*s};
   ctx.save();ctx.beginPath();ctx.rect(areaX-6*mm,areaY-6*mm,aw+12*mm,ah+12*mm);ctx.clip();
+  if(inc)plDrawBg(ctx,PL.bg,PL.img,T,PL.bg.op);
   drawScene(ctx,sh,T,{k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit});ctx.restore();
   if(PL.cfg.cmp)plCompass(ctx,(ps.pw-10-14)*mm,(24)*mm,8*mm,PL.cfg.no,C,dpi/96*.9);
   // cuadro de datos
@@ -1214,7 +1276,7 @@ function plDownload(blob,name){
 }
 function plExport(kind){
   const msg=document.getElementById('plmsg');
-  if(!PL.shapes.length){msg.textContent='Primero dibujá algo.';return;}
+  if(!PL.shapes.length&&!(V('plIn')==='1'&&PL.bg)){msg.textContent='Primero dibujá algo.';return;}
   const dpi=200,r=plSheet(dpi);if(!r)return;msg.textContent='Escala 1:'+r.ps.den+(r.ps.fits?'':'. No entra en la hoja con esa escala: elegí una más chica.')+' Hoja A4 '+(r.ps.land?'horizontal':'vertical')+'. Imprimila al 100 % (sin ajustar a la página) para que las medidas sean reales.';
   if(kind==='png'){
     r.cv.toBlob(b=>plDownload(b,plSlug()+'.png'),'image/png');
@@ -1231,7 +1293,7 @@ function plExport(kind){
 }
 function plInit(){
   const cv=document.getElementById('plcv');if(!cv||cv.dataset.on)return;cv.dataset.on='1';
-  PL.cv=cv;PL.sel=-1;PL.draft=null;PL.ptr.clear();PL.gest=null;PL.drag=null;PL.hist=[];PL.redo=[];
+  PL.vsLast=undefined;PL.cal=null;PL.cv=cv;PL.sel=-1;PL.draft=null;PL.ptr.clear();PL.gest=null;PL.drag=null;PL.hist=[];PL.redo=[];
   plLoad();
   cv.addEventListener('pointerdown',plDown);cv.addEventListener('pointermove',plMove);cv.addEventListener('pointerup',plUp);cv.addEventListener('pointercancel',plUp);
   cv.addEventListener('wheel',plWheel,{passive:false});
@@ -1240,6 +1302,7 @@ function plInit(){
     const b=e.target.closest('button');if(!b)return;
     if(b.dataset.m)plSetMode(b.dataset.m);else if(b.dataset.a)plAction(b.dataset.a);else if(b.dataset.x)plExport(b.dataset.x);
   });
+  box.addEventListener('change',e=>{if(e.target.classList&&e.target.classList.contains('plfile')){plLoadPhoto(e.target.files[0]);e.target.value='';}});
   box.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'&&e.key==='Enter'&&/^pl[LAXY]$/.test(e.target.id)){e.preventDefault();plAction('add');}});
   document.getElementById('plwrap').classList.toggle('big',!!PL.cfg.big);
   if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>plDraw()).observe(cv);
@@ -1955,9 +2018,18 @@ P4 1.298</textarea></div></label>
    ${fld('plO','Ancho de puerta','900','mm')}${fld('plV','Ancho de ventana','1200','mm')}
    ${fld('plVe','Ancho de vereda','3000','mm')}${fld('plCa','Ancho de calle (calzada)','8000','mm')}
    ${fld('plNo','Norte hacia (0° = derecha, 90° = arriba)','90','°')}
+   <h3 class="sec">Foto de un plano</h3>
+   <label class="f full"><span>Sacá una foto o elegí la imagen de un plano</span><div class="in"><input type="file" accept="image/*" class="plfile"></div></label>
+   <div class="btns full"><button type="button" class="pb on" data-m="cal">Calibrar escala</button><button type="button" class="pb" data-m="img">Mover foto</button><button type="button" class="pb" data-a="ir-">Girar −1°</button><button type="button" class="pb" data-a="ir+">Girar +1°</button><button type="button" class="pb" data-a="ir90">Girar 90°</button><button type="button" class="pb" data-a="rmimg">Quitar foto</button></div>
+   ${fld('plIo','Transparencia de la foto (100 = se ve toda)','55','%')}${sel('plKa','Al calibrar, enderezar',[['h','Esa medida horizontal'],['v','Esa medida vertical'],['0','No enderezar']],'h')}
+   <p class="hint">Sacá la foto de frente y bien plana, sin que el papel quede inclinado: si hay inclinación, las medidas salen con error. Después de calibrar con una medida conocida podés dibujar encima con todas las herramientas. Verificá con la herramienta Cota sobre otra medida del plano.</p>
+   <h3 class="sec">Ver a escala</h3>
+   ${sel('plVs','Acercar a escala (referencia en pantalla)',[['0','Elegir escala…']].concat(PSCALES.map(d=>[String(d),'1:'+d])),'0','','full')}
+   <p class="hint">En pantalla la escala es una referencia, porque cada celular muestra a distinto tamaño. En el PDF impreso al 100 % las medidas sí son exactas.</p>
    <h3 class="sec">Exportar</h3>
    <label class="f full" for="plN"><span>Título del plano</span><div class="in"><input id="plN" type="text" autocomplete="off" placeholder="Ej.: Reja ventana cocina" value=""></div></label>
-   ${sel('plS','Escala en la hoja',[['0','Automática (la más grande que entra)'],['1','1:1'],['2','1:2'],['5','1:5'],['10','1:10'],['20','1:20'],['25','1:25'],['50','1:50'],['100','1:100'],['200','1:200']],'0','','full')}
+   ${sel('plS','Escala en la hoja (como el escalímetro)',[['0','Automática (la más grande que entra)']].concat(PSCALES.map(d=>[String(d),'1:'+d])),'0','','full')}
+   ${fld('plSc','Otra escala 1:','','')}${sel('plIn','Foto de fondo en el PNG/PDF',[['0','No'],['1','Sí']],'0')}
    <div class="btns full"><button type="button" class="pb on" data-x="png">Guardar PNG</button><button type="button" class="pb on" data-x="pdf">Guardar PDF (A4)</button><button type="button" class="pb" data-x="share">Compartir imagen</button></div>
    <p class="hint" id="plmsg"></p>
    <div class="btns full"><button type="button" class="pb" data-a="new">Nuevo plano (borra todo)</button></div>
