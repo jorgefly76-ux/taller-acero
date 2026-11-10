@@ -607,6 +607,94 @@ function tplLote(x,y,frente,fondo,vereda,calle,retiro,ext){
   if(retiro>0)o.push({t:'l',a:[x,y+retiro],b:[x+frente,y+retiro],w:2,ls:'le'});
   return o;
 }
+/* ---- Detección de líneas en una foto (solo horizontales y verticales) ---- */
+function binarize(gray,W,H,win,k){
+  const W1=W+1,I=new Float64Array(W1*(H+1));
+  for(let y=0;y<H;y++){let row=0;for(let x=0;x<W;x++){row+=gray[y*W+x];I[(y+1)*W1+x+1]=I[y*W1+x+1]+row;}}
+  const bin=new Uint8Array(W*H),r=win>>1;
+  for(let y=0;y<H;y++){
+    const y0=Math.max(0,y-r),y1=Math.min(H,y+r+1);
+    for(let x=0;x<W;x++){
+      const x0=Math.max(0,x-r),x1=Math.min(W,x+r+1),n=(x1-x0)*(y1-y0);
+      const mean=(I[y1*W1+x1]-I[y0*W1+x1]-I[y1*W1+x0]+I[y0*W1+x0])/n,g=gray[y*W+x];
+      bin[y*W+x]=((g<mean*k&&g<215)||g<60)?1:0;
+    }
+  }
+  return bin;
+}
+function hBands(bin,W,H,minLen,gap){
+  let active=[];const done=[];
+  for(let y=0;y<H;y++){
+    const runs=[];let x=0;
+    while(x<W){
+      if(!bin[y*W+x]){x++;continue;}
+      const st=x;let e=x,g=0;x++;
+      while(x<W){if(bin[y*W+x]){e=x;g=0;}else{g++;if(g>gap)break;}x++;}
+      if(e-st+1>=minLen)runs.push([st,e]);
+    }
+    const next=[];
+    runs.forEach(r=>{
+      let best=null;
+      for(const b of active){
+        if(b.last<y-1)continue;
+        const o=Math.min(r[1],b.b)-Math.max(r[0],b.a);
+        if(o>0.5*Math.min(r[1]-r[0],b.b-b.a)){best=b;break;}
+      }
+      if(best){if(best.last!==y){best.rows.push(y);best.last=y;}best.a=Math.min(best.a,r[0]);best.b=Math.max(best.b,r[1]);}
+      else best={rows:[y],last:y,a:r[0],b:r[1]};
+      if(!next.includes(best))next.push(best);
+    });
+    active.forEach(b=>{if(!next.includes(b))done.push(b);});
+    active=next;
+  }
+  active.forEach(b=>done.push(b));
+  return done.map(b=>({c:(b.rows[0]+b.rows[b.rows.length-1])/2,th:b.rows.length,a:b.a,b:b.b}));
+}
+function mergeBands(bs,gapTol){
+  bs=bs.slice().sort((p,q)=>p.c-q.c||p.a-q.a);const out=[];
+  bs.forEach(b=>{
+    const t=out.find(o=>Math.abs(o.c-b.c)<=Math.max(2,(o.th+b.th)/4)&&b.a<=o.b+gapTol&&b.b>=o.a-gapTol);
+    if(t){const L1=t.b-t.a,L2=b.b-b.a;t.c=(t.c*L1+b.c*L2)/(L1+L2);t.th=Math.max(t.th,b.th);t.a=Math.min(t.a,b.a);t.b=Math.max(t.b,b.b);}
+    else out.push(Object.assign({},b));
+  });
+  return out;
+}
+/* gray: Uint8 (W×H). Devuelve líneas horizontales h:{c=fila,a,b=columnas,th} y verticales v:{c=columna,a,b=filas,th}, todo en píxeles */
+function traceLines(gray,W,H,o){
+  o=o||{};const minLen=o.minLen||30,win=o.win||Math.max(15,(Math.round(Math.min(W,H)/40)|1)),k=o.k||.82,gap=o.gap==null?3:o.gap,mg=o.margin==null?Math.round(Math.min(W,H)*.02):o.margin;
+  const bin=binarize(gray,W,H,win,k),maxTh=Math.max(6,Math.round(Math.min(W,H)*.06));
+  const bT=new Uint8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++)bT[x*H+y]=bin[y*W+x];
+  const keep=b=>b.th<=maxTh&&b.th*3<=(b.b-b.a);
+  let h=mergeBands(hBands(bin,W,H,minLen,gap).filter(keep),gap*2+2).filter(b=>b.c>=mg&&b.c<=H-1-mg);
+  let v=mergeBands(hBands(bT,H,W,minLen,gap).filter(keep),gap*2+2).filter(b=>b.c>=mg&&b.c<=W-1-mg);
+  return {h,v};
+}
+/* Tamaños de hoja (mm, lado largo × corto) y escala de una foto que muestra la hoja entera */
+const PAPER={A4:[297,210],A3:[420,297],A2:[594,420],A1:[841,594],A0:[1189,841]};
+function sheetScale(sheet,den,w,h){const p=PAPER[sheet];return p&&den>0&&w>0&&h>0?p[0]*den/Math.max(w,h):0;}
+/* Importar / exportar un plano en texto (JSON) */
+function parsePlanoJson(txt){
+  let j;try{j=JSON.parse(String(txt).trim());}catch(e){return {error:'El texto no es un plano válido (JSON).'};}
+  const arr=Array.isArray(j)?j:(j&&Array.isArray(j.shapes)?j.shapes:null);
+  if(!arr)return {error:'No encontré la lista de figuras.'};
+  const P=a=>Array.isArray(a)&&a.length===2&&isFinite(a[0])&&isFinite(a[1])?[+a[0],+a[1]]:null,out=[];let dropped=0;
+  arr.slice(0,3000).forEach(s=>{
+    if(!s||typeof s!=='object'){dropped++;return;}
+    let o=null;
+    if(s.t==='l'||s.t==='dim'||s.t==='r'||s.t==='w'){
+      const a=P(s.a),b=P(s.b);if(a&&b){o={t:s.t,a,b};
+        if(s.t==='l'){o.w=[1,2,3].includes(+s.w)?+s.w:2;if(['lm','le','cor'].includes(s.ls))o.ls=s.ls;}
+        if((s.t==='l'||s.t==='w')&&s.nd)o.nd=1;
+        if(s.t==='r')o.w=[1,2,3].includes(+s.w)?+s.w:2;
+        if(s.t==='w'){o.th=+s.th>0?+s.th:150;if(s.k==='v'||s.k==='c')o.k=s.k;}
+        if(s.t==='dim')o.off=isFinite(s.off)?+s.off:100;}
+    }else if(s.t==='c'){const c=P(s.c);if(c&&+s.r>0)o={t:'c',c,r:+s.r,w:[1,2,3].includes(+s.w)?+s.w:2};}
+    else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,120),h:+s.h>0?+s.h:150};}
+    else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0)o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};}
+    if(o)out.push(o);else dropped++;
+  });
+  return {shapes:out,dropped,title:j&&typeof j.title==='string'?j.title.slice(0,60):'',no:j&&isFinite(j.north)?+j.north:null};
+}
 /* Foto de un plano: origen (x,y) = esquina inferior izquierda de la imagen; sc = mm por píxel; rot en grados */
 function bgWorld(bg,u,v){const r=bg.rot*Math.PI/180,c=Math.cos(r),s=Math.sin(r);return [bg.x+c*u-s*v,bg.y+s*u+c*v];}
 function bgCorners(bg){const W=bg.w*bg.sc,H=bg.h*bg.sc;return [[0,0],[W,0],[W,H],[0,H]].map(q=>bgWorld(bg,q[0],q[1]));}
@@ -969,8 +1057,8 @@ function drawScene(ctx,sh,T,o){
   sh.forEach((s,i)=>{
     if(s.t==='dim'){dm(s.a,s.b,-s.off*S*(1),dimTxt(pdist(s.a,s.b),u),true);}
     else if(o.dims){
-      if(s.t==='l'){if(s.ls!=='cor'&&s.ls!=='le')dm(s.a,s.b,-16*k,dimTxt(pdist(s.a,s.b),u),false);}
-      else if(s.t==='w'){if(!s.k){const th=(s.th||150)*S/2;dm(s.a,s.b,-(th+16*k),dimTxt(pdist(s.a,s.b),u),false);}}
+      if(s.t==='l'){if(s.ls!=='cor'&&s.ls!=='le'&&!s.nd)dm(s.a,s.b,-16*k,dimTxt(pdist(s.a,s.b),u),false);}
+      else if(s.t==='w'){if(!s.k&&!s.nd){const th=(s.th||150)*S/2;dm(s.a,s.b,-(th+16*k),dimTxt(pdist(s.a,s.b),u),false);}}
       else if(s.t==='r'){const x0=Math.min(s.a[0],s.b[0]),x1=Math.max(s.a[0],s.b[0]),y0=Math.min(s.a[1],s.b[1]),y1=Math.max(s.a[1],s.b[1]);
         dm([x0,y0],[x1,y0],16*k,dimTxt(x1-x0,u),false);dm([x1,y0],[x1,y1],16*k,dimTxt(y1-y0,u),false);}
       else if(s.t==='c'){ctx.save();ctx.fillStyle=C.ink;ctx.font='600 '+(11*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Ø '+dimTxt(2*s.r,u),X(s.c[0]),Y(s.c[1]));ctx.restore();}
@@ -1012,6 +1100,44 @@ function plLoadPhoto(f){
       if(msg)msg.textContent='Foto cargada. Ahora calibrá la escala: tocá dos puntos de una medida que conozcas (una pared, una puerta) y escribí cuánto mide en la realidad.';};
     im2.src=src;};im.onerror=()=>{if(msg)msg.textContent='No pude abrir esa imagen.';};im.src=fr.result;};
   fr.readAsDataURL(f);
+}
+
+function plTrace(){
+  const msg=document.getElementById('plmsg');
+  if(!PL.bg||!PL.img){msg.textContent='Primero cargá una foto y calibrá la escala.';return;}
+  const b=bgBounds(PL.bg),bw=b[2]-b[0],bh=b[3]-b[1],mmpp=Math.max(bw,bh)/1500,W=Math.max(20,Math.round(bw/mmpp)),H=Math.max(20,Math.round(bh/mmpp));
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;const cx=cv.getContext('2d');
+  cx.fillStyle='#fff';cx.fillRect(0,0,W,H);plDrawBg(cx,PL.bg,PL.img,{s:1/mmpp,x0:-b[0]/mmpp,y0:b[3]/mmpp},1);
+  const d=cx.getImageData(0,0,W,H).data,g=new Uint8Array(W*H);
+  for(let i=0;i<W*H;i++)g[i]=(d[4*i]*.299+d[4*i+1]*.587+d[4*i+2]*.114)|0;
+  const minMm=Math.max(100,N('plTm')||600),tr=traceLines(g,W,H,{minLen:Math.max(6,Math.round(minMm/mmpp))});
+  const R=v=>Math.round(v/10)*10,out=[];let nw=0;
+  const mk=(a,bb,th)=>{const thm=th*mmpp;if(thm>=70){nw++;return {t:'w',a,b:bb,th:Math.max(70,R(thm)),nd:1};}return {t:'l',a,b:bb,w:1,nd:1};};
+  tr.h.forEach(l=>out.push({len:l.b-l.a,s:mk([R(b[0]+l.a*mmpp),R(b[3]-l.c*mmpp)],[R(b[0]+l.b*mmpp),R(b[3]-l.c*mmpp)],l.th)}));
+  tr.v.forEach(l=>out.push({len:l.b-l.a,s:mk([R(b[0]+l.c*mmpp),R(b[3]-l.a*mmpp)],[R(b[0]+l.c*mmpp),R(b[3]-l.b*mmpp)],l.th)}));
+  out.sort((p,q)=>q.len-p.len);const cut=out.length>400;const sh=out.slice(0,400).map(x=>x.s);
+  if(!sh.length){msg.textContent='No detecté líneas. Probá con un largo mínimo menor o una foto más nítida y con más contraste.';return;}
+  plPush();PL.shapes.push(...sh);PL.sel=-1;plChanged();
+  msg.textContent='Detecté '+sh.length+' líneas y paredes'+(cut?' (solo las 400 más largas)':'')+'. Revisalas: con Elegir borrás las que sobren. Las medidas escritas en el plano de papel tenés que agregarlas con Cota o Texto.';
+}
+function plCalSheet(){
+  const msg=document.getElementById('plmsg');
+  if(!PL.bg){msg.textContent='Primero cargá una foto.';return;}
+  const sc=sheetScale(V('plHj'),N('plHs'),PL.bg.w,PL.bg.h);if(!(sc>0)){msg.textContent='Elegí la hoja y la escala impresa.';return;}
+  const c=bgCorners(PL.bg),cen=[(c[0][0]+c[2][0])/2,(c[0][1]+c[2][1])/2],f=sc/PL.bg.sc;
+  PL.bg=Object.assign({},PL.bg,{sc,x:cen[0]+f*(PL.bg.x-cen[0]),y:cen[1]+f*(PL.bg.y-cen[1])});plSave();plFit();
+  msg.textContent='Escala calculada suponiendo que la foto muestra la hoja '+V('plHj')+' completa, de borde a borde. Si sobra o falta margen, calibrá con dos puntos para más precisión.';
+}
+function plJson(){return JSON.stringify({app:'taller-acero-plano',version:1,unit:'mm',title:PL.cfg.title||'',north:PL.cfg.no,shapes:PL.shapes});}
+function plImport(txt){
+  const msg=document.getElementById('plmsg'),r=parsePlanoJson(txt);
+  if(r.error){msg.textContent=r.error;return;}
+  if(!r.shapes.length){msg.textContent='El plano no tiene figuras válidas.';return;}
+  plPush();PL.shapes=PL.shapes.concat(r.shapes);
+  if(r.title){const e=document.getElementById('plN');if(e&&!e.value){e.value=r.title;PL.cfg.title=r.title;}}
+  if(r.no!=null){const e=document.getElementById('plNo');if(e)e.value=r.no;PL.cfg.no=r.no;}
+  PL.sel=-1;plChanged();plFit();
+  msg.textContent='Se importaron '+r.shapes.length+' figuras'+(r.dropped?' ('+r.dropped+' no se pudieron leer)':'')+'.';
 }
 function plRotImg(d){
   if(!PL.bg)return;const c=bgCorners(PL.bg),cen=[(c[0][0]+c[2][0])/2,(c[0][1]+c[2][1])/2],P=rotAbout(cen,[PL.bg.x,PL.bg.y],d);
@@ -1222,6 +1348,12 @@ function plAction(a){
   else if(a==='flip'&&s&&s.t==='door'){plPush();s.o=((s.o||0)+1)%4;plChanged();}
   else if(a==='edt'&&s&&s.t==='tx'){const t=window.prompt('Texto:',s.s);if(t&&t.trim()){plPush();s.s=t.trim();plChanged();}}
   else if(a==='cancel'){PL.draft=null;PL.hover=null;plFill();plDraw();}
+  else if(a==='trace')plTrace();else if(a==='calsheet')plCalSheet();
+  else if(a==='jsout'){const t=plJson(),ta=document.querySelector('.pljs');if(ta)ta.value=t;
+    const mg=document.getElementById('plmsg');
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>{mg.textContent='Plano copiado. Pegalo donde lo quieras guardar.';},()=>{mg.textContent='El código quedó en el cuadro de texto: copialo desde ahí.';});
+    else mg.textContent='El código quedó en el cuadro de texto: copialo desde ahí.';}
+  else if(a==='jsin'){const ta=document.querySelector('.pljs');plImport(ta?ta.value:'');}
   else if(a==='ir-')plRotImg(-1);else if(a==='ir+')plRotImg(1);else if(a==='ir90')plRotImg(90);
   else if(a==='rmimg'){PL.bg=null;PL.img=null;persist('plano-img',{});plSave();plDraw();}
   else if(a==='undo')plUndo();else if(a==='redo')plRedo();else if(a==='fit')plFit();
@@ -1302,7 +1434,8 @@ function plInit(){
     const b=e.target.closest('button');if(!b)return;
     if(b.dataset.m)plSetMode(b.dataset.m);else if(b.dataset.a)plAction(b.dataset.a);else if(b.dataset.x)plExport(b.dataset.x);
   });
-  box.addEventListener('change',e=>{if(e.target.classList&&e.target.classList.contains('plfile')){plLoadPhoto(e.target.files[0]);e.target.value='';}});
+  box.addEventListener('change',e=>{if(e.target.classList&&e.target.classList.contains('pljfile')&&e.target.files[0]){const fr=new FileReader();fr.onload=()=>plImport(String(fr.result));fr.readAsText(e.target.files[0]);e.target.value='';return;}
+    if(e.target.classList&&e.target.classList.contains('plfile')){plLoadPhoto(e.target.files[0]);e.target.value='';}});
   box.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'&&e.key==='Enter'&&/^pl[LAXY]$/.test(e.target.id)){e.preventDefault();plAction('add');}});
   document.getElementById('plwrap').classList.toggle('big',!!PL.cfg.big);
   if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>plDraw()).observe(cv);
@@ -2023,6 +2156,18 @@ P4 1.298</textarea></div></label>
    <div class="btns full"><button type="button" class="pb on" data-m="cal">Calibrar escala</button><button type="button" class="pb" data-m="img">Mover foto</button><button type="button" class="pb" data-a="ir-">Girar −1°</button><button type="button" class="pb" data-a="ir+">Girar +1°</button><button type="button" class="pb" data-a="ir90">Girar 90°</button><button type="button" class="pb" data-a="rmimg">Quitar foto</button></div>
    ${fld('plIo','Transparencia de la foto (100 = se ve toda)','55','%')}${sel('plKa','Al calibrar, enderezar',[['h','Esa medida horizontal'],['v','Esa medida vertical'],['0','No enderezar']],'h')}
    <p class="hint">Sacá la foto de frente y bien plana, sin que el papel quede inclinado: si hay inclinación, las medidas salen con error. Después de calibrar con una medida conocida podés dibujar encima con todas las herramientas. Verificá con la herramienta Cota sobre otra medida del plano.</p>
+   <h3 class="sec">Pasar la foto a líneas</h3>
+   <div class="btns full"><button type="button" class="pb on" data-a="trace">Detectar líneas y paredes de la foto</button></div>
+   ${fld('plTm','Largo mínimo de línea a detectar','600','mm')}
+   <p class="hint">Detecta las líneas horizontales y verticales de la foto, ya a la escala calibrada, y las convierte en líneas y paredes que podés mover, borrar y medir. No lee los números ni el texto del plano: esas medidas las agregás con Cota o Texto. Va mejor con una foto nítida, de frente y con buen contraste.</p>
+   <p class="sec" style="font-size:15px">Calibrar con la hoja y la escala impresa</p>
+   ${sel('plHj','Tamaño de la hoja del plano',[['A4','A4'],['A3','A3'],['A2','A2'],['A1','A1'],['A0','A0']],'A3')}${fld('plHs','Escala impresa 1:','50','')}
+   <div class="btns full"><button type="button" class="pb" data-a="calsheet">Calibrar con hoja y escala</button></div>
+   <p class="hint">Solo sirve si la foto muestra la hoja entera, de borde a borde. Es aproximado: para más precisión calibrá con dos puntos.</p>
+   <h3 class="sec">Importar y guardar el plano</h3>
+   <label class="f full"><span>Código del plano</span><div class="in"><textarea class="pljs" spellcheck="false" placeholder="Pegá acá el plano en formato JSON"></textarea></div></label>
+   <div class="btns full"><button type="button" class="pb on" data-a="jsin">Importar lo pegado</button><button type="button" class="pb" data-a="jsout">Copiar este plano como código</button></div>
+   <label class="f full"><span>O elegí un archivo de plano (.json o .txt)</span><div class="in"><input type="file" accept=".json,.txt,application/json,text/plain" class="pljfile"></div></label>
    <h3 class="sec">Ver a escala</h3>
    ${sel('plVs','Acercar a escala (referencia en pantalla)',[['0','Elegir escala…']].concat(PSCALES.map(d=>[String(d),'1:'+d])),'0','','full')}
    <p class="hint">En pantalla la escala es una referencia, porque cada celular muestra a distinto tamaño. En el PDF impreso al 100 % las medidas sí son exactas.</p>
