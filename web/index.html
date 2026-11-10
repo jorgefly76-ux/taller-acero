@@ -607,6 +607,44 @@ function tplLote(x,y,frente,fondo,vereda,calle,retiro,ext){
   if(retiro>0)o.push({t:'l',a:[x,y+retiro],b:[x+frente,y+retiro],w:2,ls:'le'});
   return o;
 }
+/* ---- Tabique de perfiles (montantes y soleras) ----
+   o: {L,H (mm), sep (mm entre ejes de montantes), reparto 'fijo'|'parejo', bar (mm, largo de barra),
+       vano: null | {x (desde la izquierda), w (ancho), h (altura libre desde el piso), sill (alféizar, 0 en puerta)}} */
+function splitBar(len,bar){const full=Math.floor(len/bar+1e-9),rest=len-full*bar;return {full,rest:rest>1e-6?rest:0};}
+function tabiqueCalc(o){
+  const L=o.L,H=o.H,sep=o.sep,bar=o.bar,eps=1;
+  let pos=[];
+  if(o.reparto==='parejo'){const n=Math.max(2,Math.ceil(L/sep-1e-9)+1);for(let i=0;i<n;i++)pos.push(L*i/(n-1));}
+  else{for(let x=0;x<L-1e-9;x+=sep)pos.push(x);pos.push(L);}
+  let v=o.vano&&o.vano.w>0?Object.assign({},o.vano):null,x0=0,x1=0,notes=[];
+  if(v){x0=Math.max(0,Math.min(L,v.x));x1=Math.max(x0,Math.min(L,v.x+v.w));v.sill=Math.max(0,v.sill||0);v.h=Math.min(H,Math.max(v.sill,v.h));if(v.x+v.w>L+eps)notes.push('El vano se sale del tabique y se recortó.');}
+  const inside=v?pos.filter(p=>p>x0+eps&&p<x1-eps):[];
+  let regular=v?pos.filter(p=>!(p>x0+eps&&p<x1-eps)):pos.slice();
+  if(v){[x0,x1].forEach(x=>{if(!regular.some(p=>Math.abs(p-x)<=eps))regular.push(x);});regular.sort((a,b)=>a-b);}
+  // jambas: un montante extra a cada lado del vano (montante doble)
+  const jamb=v?2:0;
+  const pieces=[];
+  regular.forEach(()=>pieces.push(H));
+  for(let i=0;i<jamb;i++)pieces.push(H);
+  let cripAbove=0,cripBelow=0;
+  if(v){
+    inside.forEach(()=>{if(H-v.h>1){pieces.push(H-v.h);cripAbove++;}if(v.sill>1){pieces.push(v.sill);cripBelow++;}});
+  }
+  let mont=0,long=false;
+  const full=pieces.filter(p=>p>bar),short=pieces.filter(p=>p<=bar);
+  full.forEach(p=>{mont+=Math.ceil(p/bar-1e-9);long=true;});
+  if(short.length)mont+=packCuts(bar,0,short).length;
+  // soleras: se pueden empalmar, así que se cuentan barras enteras + recortes juntados
+  const runs=[L];                                  // solera superior
+  runs.push(v&&v.sill<=0?Math.max(0,L-(x1-x0)):L); // solera inferior (se interrumpe en una puerta)
+  if(v){runs.push(x1-x0);if(v.sill>0)runs.push(x1-x0);} // dintel y, en ventana, alféizar
+  let sol=0;const rests=[];
+  runs.forEach(r=>{if(r<=0)return;const sp=splitBar(r,bar);sol+=sp.full;if(sp.rest)rests.push(sp.rest);});
+  if(rests.length)sol+=packCuts(bar,0,rests).length;
+  const gaps=[];for(let i=1;i<pos.length;i++)gaps.push(pos[i]-pos[i-1]);
+  return {pos,gaps,regular,jamb,cripAbove,cripBelow,mont,sol,long,notes,total:regular.length+jamb+cripAbove+cripBelow,
+          perfilM:(mont+sol)*bar/1000};
+}
 /* ---- Detección de líneas en una foto (solo horizontales y verticales) ---- */
 function binarize(gray,W,H,win,k){
   const W1=W+1,I=new Float64Array(W1*(H+1));
@@ -897,6 +935,7 @@ const FIG={
 const glossHtml=items=>`<details class="gloss"><summary>Qué significa cada término</summary><dl>${items.map(x=>`<div><dt>${x[0]}</dt><dd>${x[1]}</dd></div>`).join('')}</dl></details>`;
 
 FIG.obra=()=>svg(`<rect class="sh" x="30" y="30" width="230" height="90"/><rect x="170" y="62" width="40" height="58" style="fill:var(--bg,#fff);stroke:var(--ink,#333)"/><text class="t2" x="190" y="54" text-anchor="middle">Abertura</text><text class="t2" x="95" y="80" text-anchor="middle">Superficie neta</text>${dh(30,260,20,'Largo')}${dv(276,30,120,'Alto',8)}`,'Se mide el largo y el alto de la superficie y se restan puertas y ventanas. Con el desperdicio se obtienen las cantidades a comprar.');
+FIG.tab=()=>svg(`<rect class="sh" x="30" y="22" width="230" height="8"/><rect class="sh" x="30" y="120" width="230" height="8"/>${[30,70,110,150,190,230,255].map((x,i)=>`<rect class="${i===3?'fl':'sh'}" x="${x}" y="30" width="5" height="90"/>`).join('')}${dh(32.5,72.5,142,'Separación')}${dv(272,22,128,'Alto',7)}${lead(150,25,200,10)}${lbl(204,12,'Solera superior')}${lead(190,124,226,146)}${lbl(230,148,'Solera inferior')}${lead(152.5,75,100,56)}${lbl(96,52,'Montante','end')}`,'Vista de frente. Los montantes (verticales) van atornillados a las soleras (horizontales) de arriba y abajo, cada tanto, a la separación elegida.');
 const GLOBRA=[['Aberturas','Puertas y ventanas: su superficie se resta de la total.'],['Desperdicio','Porcentaje extra por cortes, roturas y recortes. Sobre placas, chapas, ladrillos y piezas.'],['Modulación','Separación entre montantes: 40 cm (más rígida) o 48 cm.'],['Solera','Perfil horizontal que se fija a piso y techo y guía a los montantes.'],['Montante','Perfil vertical donde se atornillan las placas.'],['T1','Tornillo punta aguja para unir perfiles.'],['T2','Tornillo para fijar la placa al perfil.'],['T3','Tornillo para la segunda capa de placa (pared doble).'],['Cinta y masilla','Se usan para tomar las juntas entre placas.'],['Junta','Separación entre piezas o ladrillos, rellena con mortero o pastina.']];
 let cDeg=true,cAns=0,cFresh=false;const cHistory=[];
 function cEl(){return document.getElementById('cx');}
@@ -1448,6 +1487,51 @@ function plInit(){
   setTimeout(()=>{if(PL.shapes.length)plFit();else{const r=cv.getBoundingClientRect();PL.view={s:Math.min(.12,(r.width-40)/3000),x0:24,y0:r.height-24};}plFill();plDraw();},0);
 }
 
+
+function tabSvg(r,L,H,v){
+  const W=300,sc=Math.min(W/L,130/H),w=L*sc,h=H*sc,x0=10,y0=12,th=5;
+  let o=`<rect x="${x0}" y="${y0}" width="${w}" height="${th}" class="sh"/><rect x="${x0}" y="${y0+h-th}" width="${w}" height="${th}" class="sh"/>`;
+  r.regular.forEach(p=>{o+=`<rect x="${x0+p*sc-2}" y="${y0+th}" width="4" height="${h-2*th}" class="sh"/>`;});
+  if(v){
+    const a=x0+Math.min(L,v.x)*sc,b=x0+Math.min(L,v.x+v.w)*sc,top=y0+h-v.h*sc,bot=y0+h-v.sill*sc;
+    o+=`<rect x="${a-6}" y="${y0+th}" width="4" height="${h-2*th}" class="fl"/><rect x="${b+2}" y="${y0+th}" width="4" height="${h-2*th}" class="fl"/>`;
+    o+=`<rect x="${a}" y="${top}" width="${b-a}" height="${th}" class="fl"/>`;
+    if(v.sill>0)o+=`<rect x="${a}" y="${bot-th}" width="${b-a}" height="${th}" class="fl"/>`;
+    o+=`<rect x="${a}" y="${top+th}" width="${b-a}" height="${bot-top-th*(v.sill>0?2:1)}" style="fill:none;stroke:var(--muted);stroke-dasharray:3 3"/>`;
+    r.pos.filter(p=>p>v.x+1&&p<v.x+v.w-1).forEach(p=>{const x=x0+p*sc-2;if(H-v.h>1)o+=`<rect x="${x}" y="${y0+th}" width="4" height="${Math.max(2,top-y0-th)}" class="sh"/>`;if(v.sill>0)o+=`<rect x="${x}" y="${bot}" width="4" height="${Math.max(2,y0+h-th-bot)}" class="sh"/>`;});
+  }
+  o+=`<text x="${x0}" y="${y0+h+14}" style="font:600 11px var(--font-body);fill:var(--muted)">${fmt(L,0)} × ${fmt(H,0)} mm</text>`;
+  return `<figure class="fig" style="margin-top:12px"><svg viewBox="0 0 ${W+20} ${h+30}" role="img" aria-label="Esquema del tabique">${o}</svg><figcaption>Azul: montantes del tramo. Amarillo: montantes dobles de jamba y piezas del vano.</figcaption></figure>`;
+}
+function tabiqueTool(){
+  const sync=()=>{const el=document.getElementById('tv');if(!el.dataset.s){el.dataset.s=el.value;return;}if(el.dataset.s===el.value)return;el.dataset.s=el.value;
+    const d={1:[900,2050,0],2:[1200,2100,900]}[el.value];if(d){document.getElementById('tvw').value=d[0];document.getElementById('tvh').value=d[1];document.getElementById('tvs').value=d[2];}};
+  sync();
+  const tv=V('tv');$$('[data-g=tvg]').forEach(e=>e.hidden=tv==='0');
+  document.getElementById('tvs').closest('.f').hidden=tv!=='2';
+  const L=N('tl'),H=N('th'),sep=N('tso')>0?N('tso'):+V('ts'),bar=N('tb');
+  const v=tv==='0'?null:{x:N('tvx')||0,w:N('tvw'),h:N('tvh'),sill:tv==='2'?N('tvs')||0:0};
+  if(!pos(L,H,sep,bar)||(v&&!pos(v.w,v.h))) return $('#out').innerHTML=need;
+  if(sep>L) return $('#out').innerHTML='<p class="msg">La separación es mayor que el largo del tabique.</p>';
+  const r=tabiqueCalc({L,H,sep,bar,reparto:V('tr'),vano:v});
+  const gs={};r.gaps.forEach(g=>{const k=Math.round(g*10)/10;gs[k]=(gs[k]||0)+1;});
+  const summ=Object.keys(gs).sort((a,b)=>gs[b]-gs[a]).map(k=>gs[k]+' de '+fmt(+k,1)+' mm').join(' + ');
+  const lista=r.regular.map(p=>fmt(p,0)+(v&&(Math.abs(p-v.x)<1.5||Math.abs(p-(v.x+v.w))<1.5)?' (doble)':'')).join(' · ');
+  $('#out').innerHTML=res(
+    row('Montantes (barras de '+fmt(bar/1000,2)+' m)',r.mont,'u.','key')+
+    row('Soleras (barras de '+fmt(bar/1000,2)+' m)',r.sol,'u.','key')+
+    row('Montantes colocados en total',r.total,'u.')+
+    row('Espacios entre montantes',summ,'')+
+    (V('tr')==='fijo'&&r.gaps.length>1&&r.gaps[r.gaps.length-1]<sep-1?row('Último espacio',fmt(r.gaps[r.gaps.length-1],1),'mm','warn'):'')+
+    (r.jamb?row('Montantes extra de jamba',r.jamb,'u.'):'')+
+    ((r.cripAbove+r.cripBelow)?row('Montantes cortos en el vano',r.cripAbove+r.cripBelow,'u.'):'')+
+    row('Perfil total comprado',fmt(r.perfilM,1),'m')
+  )+tabSvg(r,L,H,v?Object.assign({},v):null)+
+  `<details class="gloss" open><summary>Posición de cada montante</summary><p class="note" style="margin:10px 0 0">Distancia al borde izquierdo, en mm, medida al eje de cada montante de altura completa${v?' (los de jamba van dobles)':''}:<br><b>${lista}</b></p></details>`+
+  (r.long?'<p class="note">El alto supera el largo de la barra: cada montante necesita empalme o una barra más larga.</p>':'')+r.notes.map(n=>'<p class="note">'+n+'</p>').join('')+
+  '<p class="note">Cuenta de perfiles para el pedido. Las placas, tornillos y masilla de este mismo tabique los calculás en Cantidades de obra. Verificá largos de barra y separaciones con el sistema que uses.</p>';
+}
+
 const TOOLS=[
 {id:'cientifica',name:'Calculadora científica',desc:'Funciones, potencias, grados y radianes',
  html:()=>{
@@ -1614,8 +1698,19 @@ const TOOLS=[
  }},
 
 {id:'reja',name:'Reja y baranda',desc:'Separación de barrotes y peso',
- fig:()=>FIG.reja(),
- html:()=>`<div class="form">
+ fig:()=>V('jt')==='tab'?FIG.tab():FIG.reja(),
+ html:()=>`<div class="form">${sel('jt','Trabajo',[['reja','Reja o baranda (barrotes)'],['tab','Tabique: montantes y soleras']],'reja','','full')}</div>
+  <div class="form" id="jtab">
+   ${fld('tl','Largo del tabique','4000','mm')}${fld('th','Alto del tabique','2400','mm')}
+   ${sel('ts','Separación entre montantes',[['400','40 cm (más rígido)'],['480','48 cm (habitual)'],['600','60 cm']],'480')}${fld('tso','Otra separación (opcional)','','mm')}
+   ${sel('tr','Reparto',[['fijo','Medida fija (el último espacio queda menor)'],['parejo','Repartido parejo (todos iguales)']],'fijo','','full')}
+   ${fld('tb','Largo de la barra de perfil','2600','mm')}
+   ${sel('tv','Vano',[['0','Sin vano'],['1','Puerta'],['2','Ventana']],'0')}
+   ${fld('tvx','Vano: distancia desde la izquierda','1000','mm','tvg')}${fld('tvw','Vano: ancho','900','mm','tvg')}
+   ${fld('tvh','Vano: altura libre','2050','mm','tvg')}${fld('tvs','Alféizar (altura desde el piso)','0','mm','tvg')}
+   <p class="hint">Cada montante se corta a la altura del tabique y el recorte no se reutiliza. Las soleras se pueden empalmar. En el vano se cuentan montantes dobles a cada lado, el dintel y los montantes cortos que quedan sobre la puerta o ventana.</p>
+  </div>
+  <div class="form" id="jrj">
   ${sel('jm','Calcular por',[['g','Separación libre máxima'],['n','Cantidad de barrotes']],'g','','full')}
   ${fld('jw','Ancho total del vano','1200','mm')}${fld('jh','Alto total','1000','mm')}
   ${fld('jg','Separación libre máxima permitida','100','mm')}${fld('jn','Cantidad de barrotes','8','u.')}
@@ -1630,6 +1725,9 @@ const TOOLS=[
   ${fld('jp','Precio por kg (opcional)','','$')}
   <p class="hint">Los barrotes van entre el marco de arriba y el de abajo, con la misma separación libre contra los costados. El marco se calcula con uniones a tope, sin pérdidas por corte.</p></div><div id="out"></div>`,
  calc(){
+  const tabm=V('jt')==='tab';
+  document.getElementById('jtab').hidden=!tabm;document.getElementById('jrj').hidden=tabm;
+  if(tabm)return tabiqueTool();
   const hide=(id,c)=>{document.getElementById(id).closest('.f').hidden=c;};
   const LABB={square:['Lado'],round:['Diámetro'],flat:['Ancho','Espesor'],tube:['Diámetro exterior','Pared'],rect:['Ancho','Alto','Pared']};
   const LABF={rect:['Ancho visible','Alto','Pared'],flat:['Ancho visible','Espesor'],angle:['Ala visible','Otra ala','Espesor'],none:[]};
