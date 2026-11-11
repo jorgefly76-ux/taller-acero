@@ -530,6 +530,7 @@ function shapeBounds(s){
   if(s.t==='c')return [s.c[0]-s.r,s.c[1]-s.r,s.c[0]+s.r,s.c[1]+s.r];
   if(s.t==='tx')return [s.p[0],s.p[1],s.p[0]+s.s.length*.6*s.h,s.p[1]+s.h];
   if(s.t==='door'||s.t==='win'){const h=s.wd/2;return [s.p[0]-h,s.p[1]-h,s.p[0]+h,s.p[1]+h];}
+  if(s.t==='it'){const h=Math.hypot(s.w,s.h)/2;return [s.p[0]-h,s.p[1]-h,s.p[0]+h,s.p[1]+h];}
   return [0,0,0,0];
 }
 function sceneBounds(sh){
@@ -551,6 +552,7 @@ function hitDist(s,p){
   if(s.t==='c')return Math.abs(pdist(p,s.c)-s.r);
   if(s.t==='tx'){const b=shapeBounds(s);const dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.hypot(dx,dy);}
   if(s.t==='door'||s.t==='win')return Math.max(0,pdist(p,s.p)-s.wd/2);
+  if(s.t==='it'){const r=-(s.ang||0)*Math.PI/180,dx=p[0]-s.p[0],dy=p[1]-s.p[1],lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r),ex=Math.max(Math.abs(lx)-s.w/2,0),ey=Math.max(Math.abs(ly)-s.h/2,0);return ex===0&&ey===0?2:Math.hypot(ex,ey);}
   return Infinity;
 }
 /* Puntos a los que se "imanta" el cursor */
@@ -596,9 +598,15 @@ function tplRoom(x,y,w,h,th){
 }
 /* Lote con línea municipal, vereda y calle. El frente del lote está al sur (abajo); (x,y) = esquina del frente izquierda.
    La L.M. separa el lote de la vereda; el cordón separa vereda y calzada. retiro > 0 agrega la línea de edificación. */
-function tplLote(x,y,frente,fondo,vereda,calle,retiro,ext){
+function tplLote(x,y,frente,fondo,vereda,calle,retiro,ext,solo){
   ext=ext==null?Math.min(frente*.3,3000):ext;
   const o=[],xl=x-ext,xr=x+frente+ext;
+  if(solo){
+    o.push({t:'l',a:[x,y],b:[x+frente,y],w:3,ls:'lm'});
+    o.push({t:'l',a:[x,y],b:[x,y+fondo],w:2},{t:'l',a:[x+frente,y],b:[x+frente,y+fondo],w:2},{t:'l',a:[x,y+fondo],b:[x+frente,y+fondo],w:2});
+    if(retiro>0)o.push({t:'l',a:[x,y+retiro],b:[x+frente,y+retiro],w:2,ls:'le'});
+    return o;
+  }
   o.push({t:'w',a:[xl,y-vereda/2],b:[xr,y-vereda/2],th:vereda,k:'v'});
   o.push({t:'w',a:[xl,y-vereda-calle/2],b:[xr,y-vereda-calle/2],th:calle,k:'c'});
   o.push({t:'l',a:[xl,y-vereda],b:[xr,y-vereda],w:2,ls:'cor'});
@@ -726,14 +734,15 @@ function parsePlanoJson(txt){
         if(s.t==='l'){o.w=[1,2,3].includes(+s.w)?+s.w:2;if(['lm','le','cor'].includes(s.ls))o.ls=s.ls;}
         if((s.t==='l'||s.t==='w')&&s.nd)o.nd=1;
         if(s.t==='r')o.w=[1,2,3].includes(+s.w)?+s.w:2;
-        if(s.t==='w'){o.th=+s.th>0?+s.th:150;if(s.k==='v'||s.k==='c')o.k=s.k;}
+        if(s.t==='w'){o.th=+s.th>0?+s.th:150;if(s.k==='v'||s.k==='c')o.k=s.k;else Object.assign(o,wallProps(s.m,s.x,s.r));}
         if(s.t==='dim')o.off=isFinite(s.off)?+s.off:100;}
     }else if(s.t==='rj'||s.t==='cl'){const a=P(s.a),b=P(s.b);if(a&&b){o={t:s.t,a,b};
       if(s.t==='rj'){o.fr=+s.fr>0?+s.fr:40;o.bw=+s.bw>0?+s.bw:12;o.sp=+s.sp>0?+s.sp:110;o.dir=s.dir==='h'?'h':'v';o.n=+s.n>0?Math.round(+s.n):0;}
       else{o.ins=+s.ins>=0?+s.ins:0;o.dir=s.dir==='y'?'y':'x';o.sp=+s.sp>0?+s.sp:400;o.bar=+s.bar>0?+s.bar:2600;}}
     }else if(s.t==='c'){const c=P(s.c);if(c&&+s.r>0)o={t:'c',c,r:+s.r,w:[1,2,3].includes(+s.w)?+s.w:2};}
     else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,120),h:+s.h>0?+s.h:150};}
-    else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0)o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};}
+    else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;}}
+    else if(s.t==='it'){const p=P(s.p);if(p&&ITEMS[s.k]&&+s.w>0&&+s.h>0)o={t:'it',k:s.k,p,w:+s.w,h:+s.h,ang:isFinite(s.ang)?+s.ang:0};}
     if(o)out.push(o);else dropped++;
   });
   return {shapes:out,dropped,title:j&&typeof j.title==='string'?j.title.slice(0,60):'',no:j&&isFinite(j.north)?+j.north:null};
@@ -849,6 +858,51 @@ function cieloSum(list,bar){
   const mp=[],sp=[];let vigas=0,velas=0,splices=0,n=0,solM=0,montM=0;
   list.forEach(c=>{mp.push(...c.montPieces);sp.push(...c.solPieces);vigas+=c.vigas;velas+=c.velas;splices+=c.splices+c.solSplices;n+=c.n;solM+=c.solM;montM+=c.montM;});
   return {mont:mp.length?packCuts(bar,0,mp).length:0,sol:sp.length?packCuts(bar,0,sp).length:0,vigas,velas,splices,n,solM,montM};
+}
+
+/* ---- Paredes con material, aberturas e ítems ---- */
+const WMAT={ot:'Sin definir',lh:'Ladrillo hueco',lc:'Ladrillo común',bl:'Bloque de hormigón',ho:'Hormigón armado',dr:'Durlock / steel frame',mo:'Madera'};
+const WREV={no:'Sin revestimiento',rv:'Revoque y pintura',lv:'Ladrillo visto',ce:'Cerámico / porcelanato',pc:'Placa cementicia',tx:'Texturado / símil piedra'};
+const OPEN_D={p1:'Puerta 1 hoja batiente',p2:'Puerta 2 hojas batientes',pc:'Puerta corrediza'};
+const OPEN_V={v1:'Ventana fija o simple',vc:'Ventana corrediza',v2:'Ventana 2 hojas de abrir'};
+const OPEN_G={g2:'Portón 2 hojas batientes',gc:'Portón corredizo'};
+const ITEMS={esc:['Escalera recta',900,2800],eca:['Escalera caracol',1500,1500],inod:['Inodoro',400,700],bide:['Bidet',400,600],lava:['Lavatorio',500,400],bana:['Bañera',700,1700],duch:['Ducha',800,800],coci:['Cocina',600,600],mesd:['Mesada con pileta',600,1800],hela:['Heladera',700,700],cama:['Cama 2 plazas',1600,2000],mesa:['Mesa con sillas',900,1500],plac:['Placard',600,1800],sofa:['Sillón',800,2000],col:['Columna',300,300]};
+function wallProps(mt,mx,mr){const o={};if(mt&&mt!=='ot'&&WMAT[mt])o.m=mt;if(mx==='e'||mx==='i')o.x=mx;if(mr&&mr!=='no'&&WREV[mr])o.r=mr;return o;}
+/* Mitad del espesor de la pared que se une en cada extremo (para pasar de medida de eje a interior y exterior) */
+function wallEnds(sh,i){
+  const s=sh[i],r=[0,0];
+  [s.a,s.b].forEach((P,e)=>{let t=0;sh.forEach((o,j)=>{if(j===i||o.t!=='w'||o.k)return;if(pdist(o.a,P)<2||pdist(o.b,P)<2)t=Math.max(t,o.th||150);});r[e]=t/2;});
+  return r;
+}
+function wallLens(sh,i){const s=sh[i],L=pdist(s.a,s.b),e=wallEnds(sh,i);return {c:L,i:Math.max(0,L-e[0]-e[1]),e:L+e[0]+e[1],e0:e[0],e1:e[1]};}
+function wallCentroid(sh){let sx=0,sy=0,n=0;sh.forEach(s=>{if(s.t==='w'&&!s.k){sx+=(s.a[0]+s.b[0])/2;sy+=(s.a[1]+s.b[1])/2;n++;}});return n?[sx/n,sy/n]:null;}
+/* +1 si el lado izquierdo de a→b (en el plano, y hacia arriba) es el que mira hacia afuera de la construcción */
+function outerSide(s,cen){if(!cen)return 1;const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],mx=(s.a[0]+s.b[0])/2-cen[0],my=(s.a[1]+s.b[1])/2-cen[1];return (-dy*mx+dx*my)>=0?1:-1;}
+function rectWalls(a,b,th,pr){
+  const r=normRect(a,b,0),p=[[r.x0,r.y0],[r.x0+r.W,r.y0],[r.x0+r.W,r.y0+r.H],[r.x0,r.y0+r.H]];
+  return p.map((q,i)=>Object.assign({t:'w',a:q,b:p[(i+1)%4],th},pr||{}));
+}
+function circleWalls(c,r,th,pr,n){
+  n=n||36;const o=[],P=i=>[c[0]+r*Math.cos(2*Math.PI*i/n),c[1]+r*Math.sin(2*Math.PI*i/n)];
+  for(let i=0;i<n;i++)o.push(Object.assign({t:'w',a:P(i),b:P(i+1),th,nd:1},pr||{}));
+  return o;
+}
+function shapeToWalls(s,th,pr){
+  if(s.t==='l'&&pdist(s.a,s.b)>0)return [Object.assign({t:'w',a:s.a,b:s.b,th},pr||{})];
+  if(s.t==='r')return Math.abs(s.b[0]-s.a[0])>0&&Math.abs(s.b[1]-s.a[1])>0?rectWalls(s.a,s.b,th,pr):null;
+  if(s.t==='c'&&s.r>0)return circleWalls(s.c,s.r,th,pr);
+  return null;
+}
+/* Resumen de paredes por ubicación y material. h = altura (mm). Sin descontar aberturas. */
+function wallStats(sh,h){
+  const rows={},rev={};let len=0;
+  sh.forEach((s,i)=>{
+    if(s.t!=='w'||s.k)return;
+    const ln=wallLens(sh,i),th=s.th||150,key=(s.x||'-')+'|'+(s.m||'ot'),r=rows[key]||(rows[key]={x:s.x||'',m:s.m||'ot',len:0,area:0,vol:0});
+    r.len+=ln.c;r.area+=ln.c*h;r.vol+=ln.c*th*h;len+=ln.c;
+    if(s.r)rev[s.r]=(rev[s.r]||0)+(s.x==='e'?ln.e*h:2*ln.c*h);
+  });
+  return {rows:Object.values(rows),rev,len};
 }
 /*CALC-END*/
 
@@ -1050,18 +1104,20 @@ function matRows(d){
   const o=Object.assign({},store('mats'));o.mrows=String(matN);persist('mats',o);
   openTool(TOOLS.find(x=>x.id==='mats'));
 }
-const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el norte en otra dirección, cambiá el ángulo en Ajustes (90° = arriba, 0° = derecha, 180° = izquierda, 270° = abajo). Sale también en el PDF y el PNG.'],['Línea municipal (L.M.)','Límite entre tu lote y la vereda, o sea el espacio público. Se dibuja con trazo y punto.'],['Línea de edificación (L.E.)','Línea hasta donde se puede construir. A veces coincide con la línea municipal y a veces hay un retiro de frente.'],['Vereda y calle','La vereda va entre la línea municipal y el cordón, y la calle (calzada) está del otro lado del cordón. Los anchos que vienen cargados son de ejemplo: usá los de tu municipio.'],['Escuadra','Obliga a que las líneas queden horizontales o verticales. Apagala para dibujar en diagonal.'],['Imán','Los puntos se ajustan a la cuadrícula elegida y a las esquinas de lo ya dibujado, así las medidas salen redondas.'],['Cotas auto','Muestra la medida de cada línea, pared o rectángulo. La herramienta Cota agrega una medida entre dos puntos que vos elegís.'],['Pared','Línea gruesa con el espesor indicado. Su medida es de eje a eje (por el centro de la pared).'],['Puerta y ventana','Se apoyan sobre la pared que tocás y se alinean con ella. Elegida una puerta, Invertir cambia el lado de la bisagra y hacia dónde abre.'],['Escala','1:50 quiere decir que 50 mm reales se dibujan como 1 mm en el papel. Imprimí al 100 % para que las medidas sean exactas.'],['Elegir','Tocá una figura para moverla, borrarla o cambiarle la medida desde los campos de Medida exacta.']];
+const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el norte en otra dirección, cambiá el ángulo en Ajustes (90° = arriba, 0° = derecha, 180° = izquierda, 270° = abajo). Sale también en el PDF y el PNG.'],['Línea municipal (L.M.)','Límite entre tu lote y la vereda, o sea el espacio público. Se dibuja con trazo y punto.'],['Línea de edificación (L.E.)','Línea hasta donde se puede construir. A veces coincide con la línea municipal y a veces hay un retiro de frente.'],['Vereda y calle','La vereda va entre la línea municipal y el cordón, y la calle (calzada) está del otro lado del cordón. Los anchos que vienen cargados son de ejemplo: usá los de tu municipio.'],['Escuadra','Obliga a que las líneas queden horizontales o verticales. Apagala para dibujar en diagonal.'],['Imán','Los puntos se ajustan a la cuadrícula elegida y a las esquinas de lo ya dibujado, así las medidas salen redondas.'],['Cotas auto','Muestra la medida de cada línea, pared o rectángulo. La herramienta Cota agrega una medida entre dos puntos que vos elegís.'],['Pared','Línea gruesa con el espesor indicado. Su medida es de eje a eje (por el centro de la pared).'],['Puerta y ventana','Se apoyan sobre la pared que tocás y se alinean con ella. Elegida una puerta, Invertir cambia el lado de la bisagra y hacia dónde abre.'],['Aberturas','Puerta, ventana y portón tienen varios tipos: de una hoja o dos, batientes o corredizos. Elegida una, Girar sentido cambia el lado de la bisagra o de corrida. Arrastrándola con Elegir se desliza sobre las paredes.'],['Pared exterior e interior','Cada pared puede tener ubicación, material (ladrillo, bloque, hormigón, Durlock, madera) y revestimiento. Se ve con un rayado distinto por material, un borde más grueso en las exteriores y una franja de color para el revestimiento.'],['Medidas de eje, interior y exterior','Eje es por el centro de la pared. Interior y exterior descuentan o suman el espesor donde se une otra pared. El lado «exterior» se decide con el centro de todas las paredes del plano, así que en construcciones raras revisalo. Cada medida se prende y apaga con su botón.'],['Ítems','Escaleras, sanitarios y muebles vistos desde arriba, para ubicar cada cosa a escala. Sirven de referencia: no reemplazan el cálculo de la escalera.'],['Escala','1:50 quiere decir que 50 mm reales se dibujan como 1 mm en el papel. Imprimí al 100 % para que las medidas sean exactas.'],['Elegir','Tocá una figura para moverla, borrarla o cambiarle la medida desde los campos de Medida exacta.']];
 
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
   cfg:{ortho:true,dims:true,big:false,grid:100,unit:'mm',th:150,lw:2,title:'',dw:900,vw:1200,ve:3000,ca:8000,no:90,cmp:true}};
-const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['door','Puerta'],['win','Ventana'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
+const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['door','Puerta'],['win','Ventana'],['gate','Portón'],['it','Ítem / escalera'],['wr','Pared rect.'],['wc','Pared círculo'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
 const PLLINE=['l','w','dim','lm','le','vr','ca'];
 const PLHINT={ver:'Arrastrá con un dedo para mover el plano. Con dos dedos acercás o alejás.',sel:'Tocá una figura para elegirla. Arrastrala para moverla.',
   l:'Arrastrá para mover el plano. Tocá donde empieza la línea y después donde termina. Para una medida exacta usá los campos de abajo.',w:'Arrastrá para mover el plano. Tocá el inicio y el final de la pared. El espesor se define abajo.',
   r:'Arrastrá para mover el plano. Tocá una esquina y la esquina opuesta.',c:'Arrastrá para mover el plano. Tocá el centro y después un punto del borde.',dim:'Arrastrá para mover el plano. Tocá los dos puntos que querés medir.',tx:'Arrastrá para mover el plano. Tocá donde va el texto.',
   cal:'Arrastrá para mover el plano. Tocá dos puntos de la foto cuya distancia real conozcas y escribí esa distancia en milímetros. Los puntos quedan marcados en rojo.',img:'Arrastrá la foto para acomodarla. Con dos dedos acercás o alejás todo.',lm:'Arrastrá para mover el plano. Tocá los dos extremos de la línea municipal (límite entre el lote y la vereda).',le:'Arrastrá para mover el plano. Tocá los dos extremos de la línea de edificación (hasta dónde se puede construir).',vr:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la vereda. El ancho se define en Ajustes.',ca:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la calle. El ancho se define en Ajustes.',
   rj:'Arrastrá para mover el plano. Tocá dos esquinas opuestas de la reja (frente de la ventana o del portón). Los barrotes se calculan con los datos de abajo.',cl:'Arrastrá para mover el plano. Tocá dos esquinas opuestas del ambiente. Se dibujan soleras en el perímetro y montantes en el sentido elegido abajo.',
+  gate:'Arrastrá para mover el plano. Tocá sobre una pared (o el límite del terreno) para poner el portón.',it:'Arrastrá para mover el plano. Tocá donde va el ítem elegido abajo (escalera, baño, mueble). Después podés girarlo y moverlo con Elegir.',
+  wr:'Arrastrá para mover el plano. Tocá dos esquinas opuestas: se crean las 4 paredes con el espesor y material de abajo.',wc:'Arrastrá para mover el plano. Tocá el centro y un punto del borde: se crea una pared circular.',
   door:'Arrastrá para mover el plano. Tocá sobre una pared para poner la puerta.',win:'Arrastrá para mover el plano. Tocá sobre una pared para poner la ventana.'};
 const plWeights={1:1,2:1.8,3:3.2};
 
@@ -1099,6 +1155,35 @@ function plCompass(ctx,cx,cy,r,northDeg,C,k){
   ctx.fillText('N',cx+ux*(r+r*.5),cy+uy*(r+r*.5));
   ctx.restore();
 }
+/* Ítems (escaleras, sanitarios, muebles) vistos desde arriba */
+function plItem(ctx,s,cx,cy,S,col,k,C){
+  const W=s.w*S,H=s.h*S,hx=W/2,hy=H/2,kd=s.k;
+  ctx.save();ctx.translate(cx,cy);ctx.rotate(-(s.ang||0)*Math.PI/180);
+  ctx.strokeStyle=col;ctx.fillStyle=C.bg;ctx.lineWidth=1.2*k;ctx.lineJoin='round';ctx.lineCap='round';
+  const R=(x,y,w,h,f)=>{ctx.beginPath();ctx.rect(x,y,w,h);if(f)ctx.fill();ctx.stroke();};
+  const E=(x,y,rx,ry,f)=>{ctx.beginPath();ctx.ellipse(x,y,Math.max(.1,Math.abs(rx)),Math.max(.1,Math.abs(ry)),0,0,7);if(f)ctx.fill();ctx.stroke();};
+  const Ln=(a,b,c,d)=>{ctx.beginPath();ctx.moveTo(a,b);ctx.lineTo(c,d);ctx.stroke();};
+  if(kd==='esc'){R(-hx,-hy,W,H,1);const n=Math.max(2,Math.round(s.h/250));for(let i=1;i<n;i++)Ln(-hx,-hy+H*i/n,hx,-hy+H*i/n);Ln(0,hy*.82,0,-hy*.82);Ln(0,-hy*.82,-W*.13,-hy*.82+W*.13);Ln(0,-hy*.82,W*.13,-hy*.82+W*.13);}
+  else if(kd==='eca'){const r=Math.min(hx,hy);E(0,0,r,r,1);for(let i=0;i<16;i++){const a=i*Math.PI/8;Ln(Math.cos(a)*r*.14,Math.sin(a)*r*.14,Math.cos(a)*r,Math.sin(a)*r);}E(0,0,r*.14,r*.14,1);}
+  else if(kd==='inod'){R(-hx,-hy,W,H*.3,1);E(0,H*.12,hx*.82,hy*.62,1);}
+  else if(kd==='bide'){R(-hx*.7,-hy,W*.7,H*.16,1);E(0,H*.1,hx*.8,hy*.7,1);}
+  else if(kd==='lava'){R(-hx,-hy,W,H,1);E(0,0,hx*.62,hy*.6,0);Ln(0,-hy*.6,0,-hy*.85);}
+  else if(kd==='bana'){R(-hx,-hy,W,H,1);R(-hx*.82,-hy*.9,W*.82,H*.9,0);E(0,hy*.62,hx*.12,hx*.12,0);}
+  else if(kd==='duch'){R(-hx,-hy,W,H,1);Ln(-hx,-hy,hx,hy);E(0,0,hx*.12,hx*.12,1);}
+  else if(kd==='coci'){R(-hx,-hy,W,H,1);[[-.5,-.5],[.5,-.5],[-.5,.5],[.5,.5]].forEach(q=>E(q[0]*hx*.9,q[1]*hy*.9,hx*.3,hx*.3,0));}
+  else if(kd==='mesd'){R(-hx,-hy,W,H,1);R(-hx*.55,-hy*.55,W*.5*1.1,H*.33,0);E(hx*.45,0,hy*.38,hy*.38,0);}
+  else if(kd==='hela'){R(-hx,-hy,W,H,1);Ln(-hx,-hy,hx,hy);Ln(hx,-hy,-hx,hy);}
+  else if(kd==='cama'){R(-hx,-hy,W,H,1);R(-hx*.9,-hy*.94,hx*.84,H*.18,0);R(hx*.06,-hy*.94,hx*.84,H*.18,0);Ln(-hx,-hy+H*.28,hx,-hy+H*.28);}
+  else if(kd==='mesa'){const cw=Math.min(W,H)*.2;R(-hx*.7,-hy*.8,W*.7,H*.8,1);for(let i=0;i<3;i++){const y=-hy*.8+H*.8*(i+.5)/3-cw/2;R(-hx,y,cw*.9,cw,0);R(hx-cw*.9,y,cw*.9,cw,0);}}
+  else if(kd==='plac'){R(-hx,-hy,W,H,1);Ln(-hx,-hy,hx,hy);Ln(hx,-hy,-hx,hy);}
+  else if(kd==='sofa'){R(-hx,-hy,W,H,1);R(-hx,-hy,W,H*.22,0);R(-hx,-hy,W*.1,H,0);R(hx-W*.1,-hy,W*.1,H,0);}
+  else if(kd==='col'){ctx.fillStyle=col;R(-hx,-hy,W,H,1);}
+  else R(-hx,-hy,W,H,1);
+  ctx.restore();
+  if(kd!=='col'&&Math.min(W,H)>26*k&&Math.max(W,H)>70*k){ctx.save();ctx.fillStyle=C.muted;ctx.font='600 '+(9*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';const lb=(ITEMS[kd]||[''])[0];if(ctx.measureText(lb).width<Math.min(W,H)*.92)ctx.fillText(lb,cx,cy);ctx.restore();}
+}
+const MATCOL={lh:'rgba(214,120,70,.42)',lc:'rgba(176,64,44,.45)',bl:'rgba(120,130,142,.5)',ho:'rgba(90,92,104,.55)',dr:'rgba(110,170,215,.42)',mo:'rgba(190,140,70,.5)'};
+const REVCOL={rv:'#d9b894',lv:'#b3452d',ce:'#3d8fa8',pc:'#8c9097',tx:'#c9ad5f'};
 function drawScene(ctx,sh,T,o){
   const k=o.k||1,C=o.col,sel=o.sel||[],S=T.s,X=x=>T.x0+x*S,Y=y=>T.y0-y*S,u=o.unit||'mm';
   ctx.lineCap='round';ctx.lineJoin='round';
@@ -1118,8 +1203,35 @@ function drawScene(ctx,sh,T,o){
   });
   const walls=sh.map((s,i)=>[s,i]).filter(x=>x[0].t==='w'&&!x[0].k);
   ctx.lineCap='square';
-  walls.forEach(([s,i])=>seg(s.a,s.b,inkOf(i),(s.th||150)*S+2.6*k));
+  const cen=wallCentroid(sh);
+  walls.forEach(([s,i])=>seg(s.a,s.b,inkOf(i),(s.th||150)*S+(s.x==='e'?4.8:2.6)*k));
   walls.forEach(([s])=>seg(s.a,s.b,C.wall,(s.th||150)*S));
+  walls.forEach(([s])=>{
+    const th=s.th||150;if(!MATCOL[s.m]||th*S<3)return;
+    const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L,nx=-uy,ny=ux,h=th/2,T=L+th;
+    const P=(t,q)=>[X(s.a[0]-ux*h+ux*t+nx*q*h),Y(s.a[1]-uy*h+uy*t+ny*q*h)];
+    ctx.save();ctx.beginPath();[P(0,-1),P(T,-1),P(T,1),P(0,1)].forEach((q,j)=>j?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));ctx.closePath();
+    ctx.fillStyle=MATCOL[s.m];ctx.fill();ctx.clip();
+    ctx.strokeStyle=C.muted;ctx.fillStyle=C.muted;ctx.lineWidth=.7*k;ctx.lineCap='butt';
+    const step=(s.m==='bl'?9:6)*k/S,cnt=T/step,ln=(a,b)=>{ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);};
+    if(cnt<1500){
+      ctx.beginPath();
+      if(s.m==='lh'||s.m==='lc')for(let t=-th;t<T;t+=step)ln(P(t,-1),P(t+th,1));
+      if(s.m==='lc')for(let t=0;t<T+th;t+=step)ln(P(t,-1),P(t-th,1));
+      if(s.m==='bl')for(let t=0;t<=T;t+=step)ln(P(t,-1),P(t,1));
+      if(s.m==='dr'){ln(P(0,-.45),P(T,-.45));ln(P(0,.45),P(T,.45));}
+      if(s.m==='mo'){ln(P(0,-.5),P(T,-.5));ln(P(0,0),P(T,0));ln(P(0,.5),P(T,.5));}
+      ctx.stroke();
+      if(s.m==='ho'){const r=.9*k;for(let t=0,j=0;t<T;t+=step*.7,j++){const q=P(t,j%2?.4:-.4);ctx.fillRect(q[0]-r,q[1]-r,2*r,2*r);}}
+    }
+    ctx.restore();
+  });
+  walls.forEach(([s])=>{
+    if(!REVCOL[s.r])return;
+    const th=s.th||150,dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L,off=th/2+2.2*k/S,osd=outerSide(s,cen);
+    const sides=s.x==='e'?[osd]:[1,-1];ctx.lineCap='butt';
+    sides.forEach(g=>seg([s.a[0]+nx*off*g,s.a[1]+ny*off*g],[s.b[0]+nx*off*g,s.b[1]+ny*off*g],REVCOL[s.r],3.2*k));
+  });
   ctx.lineCap='round';
   // aberturas
   sh.forEach((s,i)=>{
@@ -1129,14 +1241,24 @@ function drawScene(ctx,sh,T,o){
     ctx.lineCap='butt';seg(p1,p2,C.bg,th*S+1.2*k);ctx.lineCap='round';
     const col=inkOf(i),jm=th/2;
     [p1,p2].forEach(q=>seg([q[0]-n[0]*jm,q[1]-n[1]*jm],[q[0]+n[0]*jm,q[1]+n[1]*jm],col,1.4*k));
-    if(s.t==='win'){[-.28,0,.28].forEach(f=>seg([p1[0]+n[0]*th*f,p1[1]+n[1]*th*f],[p2[0]+n[0]*th*f,p2[1]+n[1]*th*f],col,(f===0?1.4:1)*k));}
-    else{
-      const o2=s.o||0,hinge=(o2&1)?p2:p1,free=(o2&1)?p1:p2,sd=(o2&2)?-1:1;
-      const leaf=[hinge[0]+n[0]*sd*s.wd,hinge[1]+n[1]*sd*s.wd];
-      seg(hinge,leaf,col,1.6*k);
-      const a0=Math.atan2(Y(leaf[1])-Y(hinge[1]),X(leaf[0])-X(hinge[0])),a1=Math.atan2(Y(free[1])-Y(hinge[1]),X(free[0])-X(hinge[0]));
+    const kd=s.k||(s.t==='win'?'v1':'p1'),sd=(s.o&2)?-1:1,mp=[s.p[0],s.p[1]];
+    const sw=(hg,fr,len,w)=>{const lf=[hg[0]+n[0]*sd*len,hg[1]+n[1]*sd*len];seg(hg,lf,col,w);
+      const a0=Math.atan2(Y(lf[1])-Y(hg[1]),X(lf[0])-X(hg[0])),a1=Math.atan2(Y(fr[1])-Y(hg[1]),X(fr[0])-X(hg[0]));
       let df=a1-a0;while(df>Math.PI)df-=2*Math.PI;while(df<-Math.PI)df+=2*Math.PI;
-      ctx.beginPath();ctx.arc(X(hinge[0]),Y(hinge[1]),s.wd*S,a0,a1,df<0);ctx.strokeStyle=col;ctx.lineWidth=.9*k;ctx.stroke();
+      ctx.beginPath();ctx.arc(X(hg[0]),Y(hg[1]),len*S,a0,a1,df<0);ctx.strokeStyle=col;ctx.lineWidth=.9*k;ctx.stroke();};
+    const at=(q,t,off)=>[q[0]+d[0]*t+n[0]*off,q[1]+d[1]*t+n[1]*off];
+    if(kd==='v1'){[-.28,0,.28].forEach(f=>seg([p1[0]+n[0]*th*f,p1[1]+n[1]*th*f],[p2[0]+n[0]*th*f,p2[1]+n[1]*th*f],col,(f===0?1.4:1)*k));}
+    else if(kd==='vc'){const o1=th*.17;seg(at(p1,0,o1),at(p1,h*1.08,o1),col,1.5*k);seg(at(p2,0,-o1),at(p2,-h*1.08,-o1),col,1.5*k);seg(at(p1,0,0),at(p2,0,0),col,.7*k);}
+    else if(kd==='v2'){sw(p1,mp,h,1.2*k);sw(p2,mp,h,1.2*k);}
+    else if(kd==='p2'||kd==='g2'){const w=(kd==='g2'?2.4:1.6)*k;sw(p1,mp,h,w);sw(p2,mp,h,w);}
+    else if(kd==='pc'||kd==='gc'){
+      const g=kd==='gc',off=(g?th/2+70:th*.24)*sd;
+      seg(at(p1,0,off),at(p2,0,off),col,(g?2.6:1.8)*k);
+      ctx.setLineDash([6*k,4*k]);seg(at(p2,0,off),at(p2,s.wd,off),col,1*k);ctx.setLineDash([]);
+      const e=at(p2,s.wd,off),ah=8*k/S;[1,-1].forEach(z=>seg(e,[e[0]-d[0]*ah+n[0]*ah*.5*z,e[1]-d[1]*ah+n[1]*ah*.5*z],col,1*k));
+    }
+    else{
+      const o2=s.o||0,hinge=(o2&1)?p2:p1,free=(o2&1)?p1:p2;sw(hinge,free,s.wd,1.6*k);
     }
   });
   // líneas, rectángulos, círculos
@@ -1173,6 +1295,7 @@ function drawScene(ctx,sh,T,o){
       }
     }
     else if(s.t==='c'){ctx.beginPath();ctx.arc(X(s.c[0]),Y(s.c[1]),s.r*S,0,7);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();}
+    else if(s.t==='it'){plItem(ctx,s,X(s.p[0]),Y(s.p[1]),S,col,k,C);}
     else if(s.t==='tx'){ctx.fillStyle=col;ctx.font='600 '+Math.max(4,s.h*S)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText(s.s,X(s.p[0]),Y(s.p[1]));}
   });
   // cotas
@@ -1181,7 +1304,18 @@ function drawScene(ctx,sh,T,o){
     if(s.t==='dim'){dm(s.a,s.b,-s.off*S*(1),dimTxt(pdist(s.a,s.b),u),true);}
     else if(o.dims){
       if(s.t==='l'){if(s.ls!=='cor'&&s.ls!=='le'&&!s.nd)dm(s.a,s.b,-16*k,dimTxt(pdist(s.a,s.b),u),false);}
-      else if(s.t==='w'){if(!s.k&&!s.nd){const th=(s.th||150)*S/2;dm(s.a,s.b,-(th+16*k),dimTxt(pdist(s.a,s.b),u),false);}}
+      else if(s.t==='w'){if(!s.k&&!s.nd){
+        const th=(s.th||150)*S/2,wm=o.wm||{c:true},ln=wallLens(sh,i),osd=outerSide(s,cen),multi=(wm.c?1:0)+(wm.i?1:0)+(wm.e?1:0)>1;
+        const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],L0=Math.hypot(dx,dy)||1,ux=dx/L0,uy=dy/L0;
+        const tt=(lab,v)=>(multi?lab+' ':'')+dimTxt(v,u),off=(inner,v)=>((inner?osd!==1:osd===1)?-v:v);
+        const ends=(e0,e1)=>[[s.a[0]+ux*e0,s.a[1]+uy*e0],[s.b[0]-ux*e1,s.b[1]-uy*e1]];
+        if(!wm.i&&!wm.e){if(wm.c)dm(s.a,s.b,-(th+16*k),dimTxt(ln.c,u),false);}
+        else{
+          if(wm.i){const q=ends(ln.e0,ln.e1);dm(q[0],q[1],off(true,th+14*k),tt('int',ln.i),false);}
+          if(wm.e){const q=ends(-ln.e0,-ln.e1);dm(q[0],q[1],off(false,th+14*k),tt('ext',ln.e),false);}
+          if(wm.c)dm(s.a,s.b,off(true,th+32*k),tt('eje',ln.c),false);
+        }
+      }}
       else if(s.t==='r'||s.t==='rj'){const x0=Math.min(s.a[0],s.b[0]),x1=Math.max(s.a[0],s.b[0]),y0=Math.min(s.a[1],s.b[1]),y1=Math.max(s.a[1],s.b[1]);
         dm([x0,y0],[x1,y0],16*k,dimTxt(x1-x0,u),false);dm([x1,y0],[x1,y1],16*k,dimTxt(y1-y0,u),false);}
       else if(s.t==='c'){ctx.save();ctx.fillStyle=C.ink;ctx.font='600 '+(11*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Ø '+dimTxt(2*s.r,u),X(s.c[0]),Y(s.c[1]));ctx.restore();}
@@ -1191,13 +1325,15 @@ function drawScene(ctx,sh,T,o){
 }
 function plShapeFrom(mode,a,b){
   if(mode==='l')return {t:'l',a,b,w:PL.cfg.lw};
-  if(mode==='w')return {t:'w',a,b,th:PL.cfg.th};
+  if(mode==='w')return Object.assign({t:'w',a,b,th:PL.cfg.th},wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr));
   if(mode==='r')return {t:'r',a,b,w:PL.cfg.lw};
   if(mode==='c')return {t:'c',c:a,r:pdist(a,b),w:PL.cfg.lw};
   if(mode==='dim')return {t:'dim',a,b,off:16/PL.view.s};
   if(mode==='rj'){if(Math.abs(b[0]-a[0])<1||Math.abs(b[1]-a[1])<1)return null;return {t:'rj',a,b,fr:PL.cfg.rm,bw:PL.cfg.rb,sp:PL.cfg.rs,dir:PL.cfg.ro,n:PL.cfg.rn};}
   if(mode==='cl'){const ins=PL.cfg.cw?PL.cfg.th/2:0,g=normRect(a,b,ins);if(g.W<=1||g.H<=1)return null;
     const dir=PL.cfg.cd==='a'?cieloAdvice(g.W,g.H,PL.cfg.cs,PL.cfg.cb).best:PL.cfg.cd;return {t:'cl',a,b,ins,dir,sp:PL.cfg.cs,bar:PL.cfg.cb};}
+  if(mode==='wr')return {t:'r',a,b,w:PL.cfg.lw};
+  if(mode==='wc')return {t:'c',c:a,r:pdist(a,b),w:PL.cfg.lw};
   if(mode==='lm')return {t:'l',a,b,w:3,ls:'lm'};
   if(mode==='le')return {t:'l',a,b,w:2,ls:'le'};
   if(mode==='vr')return {t:'w',a,b,th:PL.cfg.ve,k:'v'};
@@ -1278,6 +1414,18 @@ function plUndo(){if(!PL.hist.length)return;PL.redo.push(JSON.stringify(PL.shape
 function plRedo(){if(!PL.redo.length)return;PL.hist.push(JSON.stringify(PL.shapes));PL.shapes=JSON.parse(PL.redo.pop());PL.sel=-1;plChanged();}
 function plReport(){
   const o=document.getElementById('out');if(!o||!document.getElementById('plcv'))return;
+  let h0='';
+  {
+    const st=wallStats(PL.shapes,PL.cfg.mh||2600),op={},it={};
+    PL.shapes.forEach(s=>{if(s.t==='door'||s.t==='win'){const kk=s.k||(s.t==='win'?'v1':'p1'),nm=(OPEN_D[kk]||OPEN_V[kk]||OPEN_G[kk]);op[nm]=(op[nm]||0)+1;}else if(s.t==='it'){const nm=ITEMS[s.k][0];it[nm]=(it[nm]||0)+1;}});
+    let rows='';
+    if(st.len>0){
+      st.rows.forEach((r,i)=>{rows+=row((r.x==='e'?'Exterior':r.x==='i'?'Interior':'Sin ubicación')+' · '+WMAT[r.m],fmt(r.len/1000,2),'m'+' · '+fmt(r.area/1e6,2)+' m² · '+fmt(r.vol/1e9,2)+' m³',i?'':'key');});
+      Object.keys(st.rev).forEach(k=>{rows+=row('Revestimiento: '+WREV[k],fmt(st.rev[k]/1e6,2),'m²');});
+    }
+    Object.keys(op).forEach(k=>{rows+=row(k,op[k],'u.');});Object.keys(it).forEach(k=>{rows+=row(k,it[k],'u.');});
+    if(rows)h0='<h3 class="sec">Paredes, aberturas e ítems</h3>'+res(rows)+(st.len>0?'<p class="hint">Superficies con altura de '+fmt(PL.cfg.mh||2600,0)+' mm, sin descontar puertas ni ventanas. La superficie de revestimiento cuenta la cara exterior de las paredes exteriores y las dos caras de las demás.</p>':'');
+  }
   const rj=PL.shapes.filter(s=>s.t==='rj'),cl=PL.shapes.filter(s=>s.t==='cl');let h='';
   const m=v=>fmt(v/1000,3);
   if(rj.length){
@@ -1305,13 +1453,17 @@ function plReport(){
         +row('Si es suspendido: vigas maestras c/1,20 m',t.vigas,'u. (aprox.)')+row('Si es suspendido: velas rígidas c/1,00 m',t.velas,'u. (aprox.)'))
         +notes+'<p class="hint">Los perfiles se ordenan juntos entre ambientes para aprovechar los sobrantes. Durlock indica montantes cada 0,40 m, vigas maestras cada 1,20 m y velas rígidas cada 1,00 m en su sistema de junta tomada; no fija un sentido de los perfiles respecto del ambiente. La recomendación sale de contar empalmes y barras, y de colocar la placa cruzada a los montantes. Confirmá con el manual del fabricante.</p>';}
   }
-  o.innerHTML=h;
+  o.innerHTML=h0+h;
 }
 function plChanged(){plSave();plFill();plDraw();plReport();}
 function plAdd(s,last){plPush();PL.shapes.push(s);if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();}
 function plSync(){
   const c=PL.cfg;c.grid=+V('plG')||0;c.unit=V('plU')||'mm';c.th=N('plT')||150;c.lw=+V('plW')||2;c.title=V('plN');c.dw=N('plO')||900;c.vw=N('plV')||1200;c.ve=N('plVe')||3000;c.ca=N('plCa')||8000;{const n=N('plNo');c.no=isFinite(n)?n:90;}
   c.rs=N('plRs')>0?N('plRs'):110;c.rb=N('plRb')>0?N('plRb'):12;c.rm=N('plRm')>0?N('plRm'):40;c.ro=V('plRo')==='h'?'h':'v';c.rn=N('plRn')>0?Math.round(N('plRn')):0;
+  c.dk=OPEN_D[V('plDk')]?V('plDk'):'p1';c.wk=OPEN_V[V('plWk')]?V('plWk'):'v1';c.gk=OPEN_G[V('plGk')]?V('plGk'):'g2';c.gw=N('plGw')>0?N('plGw'):3000;
+  c.mt=WMAT[V('plMt')]?V('plMt'):'ot';c.mx=['e','i'].includes(V('plMx'))?V('plMx'):'';c.mr=WREV[V('plMr')]?V('plMr'):'no';c.mh=N('plMh')>0?N('plMh'):2600;
+  c.ik=ITEMS[V('plIk')]?V('plIk'):'esc';c.iw=N('plIw')>0?N('plIw'):900;c.ih=N('plIh')>0?N('plIh'):2800;
+  if(PL.ikLast===undefined)PL.ikLast=c.ik;else if(c.ik!==PL.ikLast){PL.ikLast=c.ik;c.iw=ITEMS[c.ik][1];c.ih=ITEMS[c.ik][2];const a1=document.getElementById('plIw'),a2=document.getElementById('plIh');if(a1)a1.value=c.iw;if(a2)a2.value=c.ih;}
   c.cd=['x','y'].includes(V('plCd'))?V('plCd'):'a';c.cs=N('plCs')>0?N('plCs'):400;c.cb=N('plCb')>0?N('plCb'):2600;c.cw=V('plCw')==='0'?0:1;
   if(PL.bg){const o=N('plIo');PL.bg.op=Math.max(0,Math.min(1,(isFinite(o)?o:55)/100));}
   const vs=V('plVs');if(PL.vsLast===undefined)PL.vsLast=vs;else if(vs!==PL.vsLast){PL.vsLast=vs;if(+vs>0)plZoomTo(3.7795275/+vs);}
@@ -1337,9 +1489,9 @@ function plDraw(){
   ctx.strokeStyle=C.muted;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(V0.x0-8,V0.y0);ctx.lineTo(V0.x0+8,V0.y0);ctx.moveTo(V0.x0,V0.y0-8);ctx.lineTo(V0.x0,V0.y0+8);ctx.stroke();
   const list=PL.shapes.slice(),selA=PL.sel>=0?[PL.sel]:[];
   if(PL.draft&&PL.draft.cur){const ds=plShapeFrom(PL.mode,PL.draft.a,PL.draft.cur);if(ds){ds.w=1;list.push(ds);selA.push(list.length-1);}}
-  drawScene(ctx,list,V0,{k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit});
+  drawScene(ctx,list,V0,{k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we}});
   if(PL.draft&&PL.draft.cur&&PL.mode!=='dim'){
-    const a=PL.draft.a,b=PL.draft.cur,txt=PL.mode==='r'?dimTxt(Math.abs(b[0]-a[0]),PL.cfg.unit)+' × '+dimTxt(Math.abs(b[1]-a[1]),PL.cfg.unit):PL.mode==='c'?'Ø '+dimTxt(2*pdist(a,b),PL.cfg.unit):dimTxt(pdist(a,b),PL.cfg.unit)+'  '+Math.round(((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)+360)%360)+'°';
+    const a=PL.draft.a,b=PL.draft.cur,txt=(PL.mode==='r'||PL.mode==='wr')?dimTxt(Math.abs(b[0]-a[0]),PL.cfg.unit)+' × '+dimTxt(Math.abs(b[1]-a[1]),PL.cfg.unit):(PL.mode==='c'||PL.mode==='wc')?'Ø '+dimTxt(2*pdist(a,b),PL.cfg.unit):dimTxt(pdist(a,b),PL.cfg.unit)+'  '+Math.round(((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)+360)%360)+'°';
     ctx.font='600 13px sans-serif';ctx.fillStyle=C.accent;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(txt,8,8);
   }
   if(PL.hover){const q=PL.hover;ctx.strokeStyle=C.accent;ctx.lineWidth=1.6;ctx.strokeRect(V0.x0+q.p[0]*V0.s-4,V0.y0-q.p[1]*V0.s-4,8,8);}
@@ -1405,6 +1557,10 @@ function plMove(ev){
     const w=plTW(px[0],px[1]);let dx=w[0]-dr.start[0],dy=w[1]-dr.start[1];const g=PL.cfg.grid;
     if(g>0){dx=Math.round(dx/g)*g;dy=Math.round(dy/g)*g;}
     if(!dr.pushed&&(dx||dy)){plPush();dr.pushed=true;}
+    if(dr.orig.t==='door'||dr.orig.t==='win'){
+      const ws=wallSnap(w,PL.shapes.filter((x,j)=>j!==dr.i),30/PL.view.s);
+      if(ws){if(!dr.pushed){plPush();dr.pushed=true;}PL.shapes[dr.i]=Object.assign({},dr.orig,{p:ws.p,ang:ws.ang,th:ws.th});plDraw();return;}
+    }
     PL.shapes[dr.i]=moveShape(dr.orig,dx,dy);plDraw();return;
   }
   const dn=PL.dn;
@@ -1444,10 +1600,13 @@ function plUp(ev){
     if(t&&t.trim())plAdd({t:'tx',p:q.p,s:t.trim(),h:Math.round(Math.max(40,14/PL.view.s))},q.p);
     return;
   }
-  if(m==='door'||m==='win'){
-    const wp=plTW(px[0],px[1]),ws=wallSnap(wp,PL.shapes,16/PL.view.s),wd=m==='door'?PL.cfg.dw:PL.cfg.vw;
+  if(m==='door'||m==='win'||m==='gate'){
+    const wp=plTW(px[0],px[1]),ws=wallSnap(wp,PL.shapes,16/PL.view.s),wd=m==='door'?PL.cfg.dw:m==='win'?PL.cfg.vw:PL.cfg.gw;
     const q=ws?{p:ws.p,ang:ws.ang,th:ws.th}:{p:snapTo(wp,[],0,PL.cfg.grid).p,ang:0,th:PL.cfg.th};
-    plAdd({t:m,p:q.p,ang:q.ang,wd,th:q.th,o:0});return;
+    plAdd({t:m==='win'?'win':'door',p:q.p,ang:q.ang,wd,th:q.th,o:0,k:m==='door'?PL.cfg.dk:m==='win'?PL.cfg.wk:PL.cfg.gk});return;
+  }
+  if(m==='it'){
+    const q=plSnap(px,ev,null);plAdd({t:'it',k:PL.cfg.ik,p:q.p,w:PL.cfg.iw,h:PL.cfg.ih,ang:0},q.p);return;
   }
   const q=plSnap(px,ev,PL.draft?PL.draft.a:null);
   if(!PL.draft){PL.draft={a:q.p,cur:q.p};PL.hover=q.kind==='free'?null:q;plFill();plDraw();}
@@ -1455,6 +1614,10 @@ function plUp(ev){
 }
 function plFinish(){
   const d=PL.draft;PL.draft=null;PL.hover=null;plFill();
+  if(d&&(PL.mode==='wr'||PL.mode==='wc')&&pdist(d.a,d.cur)>0.5){
+    const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr),l=PL.mode==='wr'?rectWalls(d.a,d.cur,PL.cfg.th,pr):circleWalls(d.a,pdist(d.a,d.cur),PL.cfg.th,pr);
+    if(l.length&&(PL.mode==='wc'||(Math.abs(d.cur[0]-d.a[0])>0&&Math.abs(d.cur[1]-d.a[1])>0))){plPush();PL.shapes.push(...l);PL.last=d.cur;PL.sel=-1;plChanged();return;}
+  }
   if(d&&pdist(d.a,d.cur)>0.5){const s=plShapeFrom(PL.mode,d.a,d.cur);if(s){plAdd(s,PL.mode==='c'?d.a:d.cur);return;}}
   plDraw();
 }
@@ -1473,17 +1636,21 @@ function plFill(){
     if(s.t==='l'||s.t==='w'||s.t==='dim'){set('plL',+pdist(s.a,s.b).toFixed(1));set('plA',+(((Math.atan2(s.b[1]-s.a[1],s.b[0]-s.a[0])*180/Math.PI)+360)%360).toFixed(2));}
     else if(s.t==='r'){set('plL',Math.abs(s.b[0]-s.a[0]));set('plA',Math.abs(s.b[1]-s.a[1]));}
     else if(s.t==='c'){set('plL',+(2*s.r).toFixed(1));}
+    else if(s.t==='it'){set('plL',s.w);set('plA',s.h);}
+    else if(s.t==='door'||s.t==='win'){set('plL',s.wd);}
+    if(s.t==='w'&&!s.k){set('plT',s.th||150);set('plMt',s.m||'ot');set('plMx',s.x||'');set('plMr',s.r||'no');}
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
-  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'));q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&s.t==='tx');
-  const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?(s.t==='r'?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
+  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&s.t==='tx');
+  const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?((s.t==='r'||s.t==='it')?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
   if(lab)lab.textContent=m==='r'?'Ancho':m==='c'?'Diámetro':'Largo';
   if(lb2)lb2.textContent=m==='r'?'Alto':'Ángulo (0° = derecha, 90° = arriba)';
   const un=document.querySelector('label[for=plA] em');if(un)un.textContent=m==='r'?'mm':'°';
   document.querySelectorAll('#plbar [data-m]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===PL.mode?'true':'false'));
   const h=document.getElementById('plhint');if(h)h.textContent=PLHINT[PL.mode];
-  [['plOrt','ortho'],['plDms','dims'],['plCmp','cmp']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
+  [['plOrt','ortho'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
+  {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc!==false?'true':'false');}
 }
 function plNumAdd(){
   const L=N('plL'),A=N('plA'),p=[N('plX')||0,N('plY')||0],m=PL.mode;
@@ -1498,14 +1665,23 @@ function plNumApply(){
   if(s.t==='l'||s.t==='w'||s.t==='dim'){if(pos(L))s.b=polarPt(s.a,L,isFinite(A)?A:0);}
   else if(s.t==='r'){if(pos(L,A)){const sx=s.b[0]>=s.a[0]?1:-1,sy=s.b[1]>=s.a[1]?1:-1;s.b=[s.a[0]+sx*L,s.a[1]+sy*A];}}
   else if(s.t==='c'){if(pos(L))s.r=L/2;}
+  else if(s.t==='it'){if(pos(L,A)){s.w=L;s.h=A;}}
+  else if(s.t==='door'||s.t==='win'){if(pos(L))s.wd=L;}
   plChanged();
 }
 function plAction(a){
   const s=PL.shapes[PL.sel];
   if(a==='del'&&s){plPush();PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
   else if(a==='dup'&&s){plPush();const c=moveShape(s,Math.max(100,PL.cfg.grid||100),-Math.max(100,PL.cfg.grid||100));PL.shapes.push(c);PL.sel=PL.shapes.length-1;plChanged();}
+  else if(a==='towall'&&s){const w=shapeToWalls(s,PL.cfg.th,wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr));if(w&&w.length){plPush();PL.shapes.splice(PL.sel,1,...w);PL.sel=-1;plChanged();}}
+  else if((a==='wapp'||a==='wappall')&&(a==='wappall'||(s&&s.t==='w'&&!s.k))){
+    const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr);plPush();
+    PL.shapes.forEach((w,j)=>{if(w.t==='w'&&!w.k&&(a==='wappall'||j===PL.sel)){w.th=PL.cfg.th;delete w.m;delete w.x;delete w.r;Object.assign(w,pr);}});
+    plChanged();}
+  else if(a==='rot'&&s&&s.t==='it'){plPush();s.ang=((s.ang||0)+90)%360;plChanged();}
+  else if(a==='wc'||a==='wi'||a==='we'){if(a==='wc')PL.cfg.wc=!(PL.cfg.wc!==false);else PL.cfg[a]=!PL.cfg[a];plSave();plFill();plDraw();}
   else if(a==='cflip'&&s&&s.t==='cl'){plPush();s.dir=s.dir==='x'?'y':'x';plChanged();}
-  else if(a==='flip'&&s&&s.t==='door'){plPush();s.o=((s.o||0)+1)%4;plChanged();}
+  else if(a==='flip'&&s&&(s.t==='door'||s.t==='win')){plPush();s.o=((s.o||0)+1)%4;plChanged();}
   else if(a==='edt'&&s&&s.t==='tx'){const t=window.prompt('Texto:',s.s);if(t&&t.trim()){plPush();s.s=t.trim();plChanged();}}
   else if(a==='cancel'){PL.draft=null;PL.hover=null;plFill();plDraw();}
   else if(a==='trace')plTrace();else if(a==='calsheet')plCalSheet();
@@ -1525,12 +1701,12 @@ function plAction(a){
   else if(a==='add')plNumAdd();else if(a==='apply')plNumApply();
   else if(a==='lote'){
     const w=N('plTw'),h=N('plTh');if(!pos(w,h))return;const o=PL.last;plPush();
-    PL.shapes.push(...tplLote(o[0],o[1],w,h,PL.cfg.ve,PL.cfg.ca,N('plTr')||0));PL.sel=-1;plChanged();plFit();
+    PL.shapes.push(...tplLote(o[0],o[1],w,h,PL.cfg.ve,PL.cfg.ca,N('plTr')||0,undefined,V('plTs')==='1'));PL.sel=-1;plChanged();plFit();
   }
   else if(a==='reja'||a==='room'){
     const w=N('plTw'),h=N('plTh'),n=Math.max(0,Math.round(N('plTn')||0));if(!pos(w,h))return;
     const o=[PL.last[0],PL.last[1]];plPush();
-    const nw=a==='reja'?tplReja(o[0],o[1],w,h,n,N('plTf')||40):tplRoom(o[0],o[1],w,h,PL.cfg.th);
+    const nw=a==='reja'?tplReja(o[0],o[1],w,h,n,N('plTf')||40):tplRoom(o[0],o[1],w,h,PL.cfg.th).map(q=>Object.assign(q,wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr)));
     PL.shapes.push(...nw);PL.sel=-1;plChanged();plFit();
   }
 }
@@ -1547,7 +1723,7 @@ function plSheet(dpi){
   const T={s,x0:areaX+(aw-w*s)/2-b[0]*s,y0:areaY+(ah+h*s)/2+b[1]*s};
   ctx.save();ctx.beginPath();ctx.rect(areaX-6*mm,areaY-6*mm,aw+12*mm,ah+12*mm);ctx.clip();
   if(inc)plDrawBg(ctx,PL.bg,PL.img,T,PL.bg.op);
-  drawScene(ctx,sh,T,{k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit});ctx.restore();
+  drawScene(ctx,sh,T,{k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we}});ctx.restore();
   if(PL.cfg.cmp)plCompass(ctx,(ps.pw-10-14)*mm,(24)*mm,8*mm,PL.cfg.no,C,dpi/96*.9);
   // cuadro de datos
   const bw=112*mm,bh=24*mm,bx=(ps.pw-10)*mm-bw,by=(ps.ph-10)*mm-bh;
@@ -2346,18 +2522,29 @@ P4 1.298</textarea></div></label>
   <div id="plwrap" class="plwrap"><canvas id="plcv" aria-label="Zona de dibujo"></canvas></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
    <button type="button" class="pb" data-a="del">Borrar</button><button type="button" class="pb" data-a="dup">Duplicar</button>
-   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Invertir puerta</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button></div>
+   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plRt" data-a="rot" hidden>Girar 90°</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button></div>
   <div class="form" style="margin-top:14px">
    <h3 class="sec">Medida exacta</h3>
    ${fld('plL','Largo','1000','mm')}${fld('plA','Ángulo (0° = derecha, 90° = arriba)','0','°')}
    ${fld('plX','Desde X','0','mm')}${fld('plY','Desde Y','0','mm')}
    <div class="btns full"><button type="button" class="pb on" data-a="add">Agregar con esta medida</button><button type="button" class="pb" data-a="apply">Cambiar lo elegido</button></div>
    <p class="hint">Elegí Línea, Pared, Rectángulo o Círculo arriba. Se agrega desde el punto X, Y, que es el final de lo último que dibujaste.</p>
+   <h3 class="sec">Aberturas: puertas, ventanas y portones</h3>
+   ${sel('plDk','Puerta',Object.entries(OPEN_D),'p1')}${sel('plWk','Ventana',Object.entries(OPEN_V),'v1')}
+   ${sel('plGk','Portón',Object.entries(OPEN_G),'g2')}${fld('plGw','Ancho del portón','3000','mm')}
+   <p class="hint">Elegí Puerta, Ventana o Portón arriba y tocá una pared. Para moverla usá Elegir y arrastrala: se desliza sobre las paredes. «Girar sentido» cambia el lado de la bisagra y hacia dónde abre o corre. El ancho de la puerta y de la ventana está en Ajustes.</p>
+   <h3 class="sec">Paredes: espesor, material y revestimiento</h3>
+   ${sel('plMx','Ubicación',[['','Sin definir'],['e','Pared exterior'],['i','Pared interior']],'')}${sel('plMt','Material',Object.entries(WMAT),'ot')}
+   ${sel('plMr','Revestimiento',Object.entries(WREV),'no','','full')}${fld('plMh','Altura de paredes (para superficies)','2600','mm')}
+   <p class="hint">Estos datos valen para las paredes nuevas (también Pared rect. y Pared círculo). Para cambiar una que ya dibujaste, elegila, ajustá espesor y material y tocá «Aplicar». Las líneas, rectángulos y círculos se convierten con «Convertir en pared». Las medidas interior y exterior se prenden en los botones de arriba.</p>
+   <h3 class="sec">Ítems y escaleras</h3>
+   ${sel('plIk','Ítem',Object.keys(ITEMS).map(k=>[k,ITEMS[k][0]]),'esc','','full')}${fld('plIw','Ancho','900','mm')}${fld('plIh','Largo','2800','mm')}
+   <p class="hint">Elegí Ítem / escalera arriba y tocá donde va. Se mueve con Elegir y se gira con «Girar 90°». Al elegir uno, Medida exacta cambia su ancho y largo.</p>
    <h3 class="sec">Reja de frente (modo Reja)</h3>
    ${sel('plRo','Barrotes',[['v','Verticales'],['h','Horizontales']],'v')}${fld('plRs','Luz máxima entre barrotes','110','mm')}
    ${fld('plRb','Ancho del barrote','12','mm')}${fld('plRm','Ancho del marco','40','mm')}
@@ -2370,7 +2557,7 @@ P4 1.298</textarea></div></label>
    <h3 class="sec">Plantillas</h3>
    ${fld('plTw','Ancho o frente','2000','mm')}${fld('plTh','Alto o fondo','1000','mm')}
    ${fld('plTn','Barrotes (reja)','12','u.')}${fld('plTf','Marco (reja)','40','mm')}
-   ${fld('plTr','Retiro de frente (lote)','0','mm')}
+   ${fld('plTr','Retiro de frente (lote)','0','mm')}${sel('plTs','Lote',[['0','Con vereda y calle'],['1','Solo línea municipal y límites']],'0')}
    <div class="btns full"><button type="button" class="pb" data-a="reja">Insertar reja</button><button type="button" class="pb" data-a="room">Insertar ambiente (4 paredes)</button><button type="button" class="pb" data-a="lote">Insertar lote con vereda y calle</button></div>
    <h3 class="sec">Ajustes</h3>
    ${sel('plG','Imán a la cuadrícula',[['0','Sin imán'],['10','10 mm'],['50','50 mm'],['100','100 mm'],['500','500 mm'],['1000','1 m']],'100')}
