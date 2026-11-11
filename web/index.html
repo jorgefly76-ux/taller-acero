@@ -525,7 +525,7 @@ function dimTxt(mm,u){
 }
 function shapeBounds(s){
   const mm=pts=>[Math.min(...pts.map(p=>p[0])),Math.min(...pts.map(p=>p[1])),Math.max(...pts.map(p=>p[0])),Math.max(...pts.map(p=>p[1]))];
-  if(s.t==='l'||s.t==='dim'||s.t==='r')return mm([s.a,s.b]);
+  if(s.t==='l'||s.t==='dim'||s.t==='r'||s.t==='rj'||s.t==='cl')return mm([s.a,s.b]);
   if(s.t==='w'){const b=mm([s.a,s.b]),h=(s.th||150)/2;return [b[0]-h,b[1]-h,b[2]+h,b[3]+h];}
   if(s.t==='c')return [s.c[0]-s.r,s.c[1]-s.r,s.c[0]+s.r,s.c[1]+s.r];
   if(s.t==='tx')return [s.p[0],s.p[1],s.p[0]+s.s.length*.6*s.h,s.p[1]+s.h];
@@ -546,6 +546,8 @@ function hitDist(s,p){
   if(s.t==='l'||s.t==='dim')return segDist(p,s.a,s.b);
   if(s.t==='w')return Math.max(0,segDist(p,s.a,s.b)-(s.th||150)/2)+(s.k?.5:0);
   if(s.t==='r'){const a=s.a,b=s.b,c=[[a[0],a[1]],[b[0],a[1]],[b[0],b[1]],[a[0],b[1]]];return Math.min(...c.map((q,i)=>segDist(p,q,c[(i+1)%4])));}
+  if(s.t==='rj'||s.t==='cl'){const a=s.a,b=s.b,c=[[a[0],a[1]],[b[0],a[1]],[b[0],b[1]],[a[0],b[1]]],ed=Math.min(...c.map((q,i)=>segDist(p,q,c[(i+1)%4])));
+    const ins=p[0]>=Math.min(a[0],b[0])&&p[0]<=Math.max(a[0],b[0])&&p[1]>=Math.min(a[1],b[1])&&p[1]<=Math.max(a[1],b[1]);return ins?Math.min(ed,2):ed;}
   if(s.t==='c')return Math.abs(pdist(p,s.c)-s.r);
   if(s.t==='tx'){const b=shapeBounds(s);const dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.hypot(dx,dy);}
   if(s.t==='door'||s.t==='win')return Math.max(0,pdist(p,s.p)-s.wd/2);
@@ -556,7 +558,7 @@ function snapPoints(sh){
   const o=[];
   sh.forEach(s=>{
     if(s.t==='l'||s.t==='w'||s.t==='dim'){o.push(s.a,s.b);}
-    else if(s.t==='r'){o.push([s.a[0],s.a[1]],[s.b[0],s.a[1]],[s.b[0],s.b[1]],[s.a[0],s.b[1]]);}
+    else if(s.t==='r'||s.t==='rj'||s.t==='cl'){o.push([s.a[0],s.a[1]],[s.b[0],s.a[1]],[s.b[0],s.b[1]],[s.a[0],s.b[1]]);}
     else if(s.t==='c'){o.push(s.c,[s.c[0]+s.r,s.c[1]],[s.c[0]-s.r,s.c[1]],[s.c[0],s.c[1]+s.r],[s.c[0],s.c[1]-s.r]);}
   });
   return o;
@@ -726,6 +728,9 @@ function parsePlanoJson(txt){
         if(s.t==='r')o.w=[1,2,3].includes(+s.w)?+s.w:2;
         if(s.t==='w'){o.th=+s.th>0?+s.th:150;if(s.k==='v'||s.k==='c')o.k=s.k;}
         if(s.t==='dim')o.off=isFinite(s.off)?+s.off:100;}
+    }else if(s.t==='rj'||s.t==='cl'){const a=P(s.a),b=P(s.b);if(a&&b){o={t:s.t,a,b};
+      if(s.t==='rj'){o.fr=+s.fr>0?+s.fr:40;o.bw=+s.bw>0?+s.bw:12;o.sp=+s.sp>0?+s.sp:110;o.dir=s.dir==='h'?'h':'v';o.n=+s.n>0?Math.round(+s.n):0;}
+      else{o.ins=+s.ins>=0?+s.ins:0;o.dir=s.dir==='y'?'y':'x';o.sp=+s.sp>0?+s.sp:400;o.bar=+s.bar>0?+s.bar:2600;}}
     }else if(s.t==='c'){const c=P(s.c);if(c&&+s.r>0)o={t:'c',c,r:+s.r,w:[1,2,3].includes(+s.w)?+s.w:2};}
     else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,120),h:+s.h>0?+s.h:150};}
     else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0)o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};}
@@ -785,6 +790,65 @@ function buildPdf(jpg,pw,ph,wPt,hPt,title){
   push(enc(x+'trailer\n<< /Size 7 /Root 1 0 R /Info 6 0 R >>\nstartxref\n'+xr+'\n%%EOF\n'));
   const out=new Uint8Array(len);let o=0;parts.forEach(u=>{out.set(u,o);o+=u.length;});
   return out;
+}
+
+/* ---- Reja y cielorraso dibujados en el plano ---- */
+function normRect(a,b,ins){
+  ins=ins||0;const x0=Math.min(a[0],b[0])+ins,x1=Math.max(a[0],b[0])-ins,y0=Math.min(a[1],b[1])+ins,y1=Math.max(a[1],b[1])-ins;
+  return {x0,y0,W:x1-x0,H:y1-y0};
+}
+/* Reja de frente: marco fw, barrotes de ancho bw. dir 'v' = barrotes verticales, 'h' = horizontales.
+   Si nIn>0 se usa esa cantidad; si no, la mayor luz que no pase de gmax. */
+function rejaLayout(a,b,fw,bw,gmax,dir,nIn){
+  const r=normRect(a,b,0),hz=dir==='h',Wc=hz?r.H:r.W,Hc=hz?r.W:r.H;
+  const c=rejaCalc(Wc,Hc,fw,bw,nIn>0?'n':'g',gmax,nIn),lines=[];
+  for(let i=1;i<=c.n;i++){
+    const t=fw+c.g*i+bw*(i-1)+bw/2;
+    lines.push(hz?[[r.x0+fw,r.y0+t],[r.x0+r.W-fw,r.y0+t]]:[[r.x0+t,r.y0+fw],[r.x0+t,r.y0+r.H-fw]]);
+  }
+  return Object.assign({},c,{x0:r.x0,y0:r.y0,W:r.W,H:r.H,lines,dir:hz?'h':'v'});
+}
+/* Cielorraso de un ambiente de W (lado a lado, eje x) por H (frente a fondo, eje y).
+   dir 'x': montantes corren de lado a lado. dir 'y': de frente a fondo. Soleras en todo el perímetro. */
+const CIEL_OV=100;
+function cielPieces(L,bar){
+  let k=1;while(k*bar-(k-1)*CIEL_OV<L-1e-9&&k<60)k++;
+  const p=[];for(let i=0;i<k-1;i++)p.push(bar);p.push(L+(k-1)*CIEL_OV-(k-1)*bar);
+  return {pieces:p,splices:k-1};
+}
+function cieloCalc(W,H,dir,sp,bar){
+  const span=dir==='x'?W:H,across=dir==='x'?H:W;
+  const n=Math.max(0,Math.ceil(across/sp-1e-9)-1);
+  const one=cielPieces(span,bar),mp=[];
+  for(let i=0;i<n;i++)mp.push(...one.pieces);
+  const sp2=[];let sSpl=0;[W,H,W,H].forEach(L=>{const q=cielPieces(L,bar);sp2.push(...q.pieces);sSpl+=q.splices;});
+  const nV=Math.max(0,Math.ceil(span/1200-1e-9)-1),nVel=nV*Math.max(1,Math.ceil(across/1000-1e-9)-1);
+  return {dir,span,across,n,L:span,splices:n*one.splices,perLine:one.splices,montPieces:mp,
+    montBars:mp.length?packCuts(bar,0,mp).length:0,montM:n*span/1000,
+    solPieces:sp2,solBars:packCuts(bar,0,sp2).length,solM:2*(W+H)/1000,solSplices:sSpl,vigas:nV,velas:nVel};
+}
+function cieloAdvice(W,H,sp,bar){
+  const x=cieloCalc(W,H,'x',sp,bar),y=cieloCalc(W,H,'y',sp,bar);
+  const key=c=>[c.splices,c.montBars,c.n];
+  let best='x';const kx=key(x),ky=key(y);
+  for(let i=0;i<3;i++){if(kx[i]!==ky[i]){best=ky[i]<kx[i]?'y':'x';break;}if(i===2)best=W<=H?'x':'y';}
+  const b=best==='x'?x:y,o=best==='x'?y:x,nm=d=>d==='x'?'de lado a lado':'de frente a fondo';
+  let why;
+  if(b.splices<o.splices)why='así los montantes ('+Math.round(b.L)+' mm) '+(b.splices?'llevan menos empalmes':'entran enteros en la barra de '+bar+' mm')+' (empalmes: '+b.splices+' contra '+o.splices+').';
+  else if(b.montBars<o.montBars)why='así pedís menos barras de montante ('+b.montBars+' contra '+o.montBars+').';
+  else if(b.n<o.n)why='así hay menos montantes ('+b.n+' contra '+o.n+').';
+  else why='los dos sentidos cuestan casi lo mismo; elegí el que apoye mejor en las vigas o en el lado más corto.';
+  return {best,x,y,why,text:'Conviene '+nm(best)+': '+why};
+}
+function cieloLines(x0,y0,W,H,dir,sp){
+  const o=[],across=dir==='x'?H:W,n=Math.max(0,Math.ceil(across/sp-1e-9)-1);
+  for(let i=1;i<=n;i++){const t=i*sp;o.push(dir==='x'?[[x0,y0+t],[x0+W,y0+t]]:[[x0+t,y0],[x0+t,y0+H]]);}
+  return o;
+}
+function cieloSum(list,bar){
+  const mp=[],sp=[];let vigas=0,velas=0,splices=0,n=0,solM=0,montM=0;
+  list.forEach(c=>{mp.push(...c.montPieces);sp.push(...c.solPieces);vigas+=c.vigas;velas+=c.velas;splices+=c.splices+c.solSplices;n+=c.n;solM+=c.solM;montM+=c.montM;});
+  return {mont:mp.length?packCuts(bar,0,mp).length:0,sol:sp.length?packCuts(bar,0,sp).length:0,vigas,velas,splices,n,solM,montM};
 }
 /*CALC-END*/
 
@@ -991,12 +1055,13 @@ const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el nor
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
   cfg:{ortho:true,dims:true,big:false,grid:100,unit:'mm',th:150,lw:2,title:'',dw:900,vw:1200,ve:3000,ca:8000,no:90,cmp:true}};
-const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['door','Puerta'],['win','Ventana'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['cal','Calibrar foto'],['img','Mover foto']];
+const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['door','Puerta'],['win','Ventana'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
 const PLLINE=['l','w','dim','lm','le','vr','ca'];
 const PLHINT={ver:'Arrastrá con un dedo para mover el plano. Con dos dedos acercás o alejás.',sel:'Tocá una figura para elegirla. Arrastrala para moverla.',
   l:'Arrastrá para mover el plano. Tocá donde empieza la línea y después donde termina. Para una medida exacta usá los campos de abajo.',w:'Arrastrá para mover el plano. Tocá el inicio y el final de la pared. El espesor se define abajo.',
   r:'Arrastrá para mover el plano. Tocá una esquina y la esquina opuesta.',c:'Arrastrá para mover el plano. Tocá el centro y después un punto del borde.',dim:'Arrastrá para mover el plano. Tocá los dos puntos que querés medir.',tx:'Arrastrá para mover el plano. Tocá donde va el texto.',
   cal:'Arrastrá para mover el plano. Tocá dos puntos de la foto cuya distancia real conozcas y escribí esa distancia en milímetros. Los puntos quedan marcados en rojo.',img:'Arrastrá la foto para acomodarla. Con dos dedos acercás o alejás todo.',lm:'Arrastrá para mover el plano. Tocá los dos extremos de la línea municipal (límite entre el lote y la vereda).',le:'Arrastrá para mover el plano. Tocá los dos extremos de la línea de edificación (hasta dónde se puede construir).',vr:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la vereda. El ancho se define en Ajustes.',ca:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la calle. El ancho se define en Ajustes.',
+  rj:'Arrastrá para mover el plano. Tocá dos esquinas opuestas de la reja (frente de la ventana o del portón). Los barrotes se calculan con los datos de abajo.',cl:'Arrastrá para mover el plano. Tocá dos esquinas opuestas del ambiente. Se dibujan soleras en el perímetro y montantes en el sentido elegido abajo.',
   door:'Arrastrá para mover el plano. Tocá sobre una pared para poner la puerta.',win:'Arrastrá para mover el plano. Tocá sobre una pared para poner la ventana.'};
 const plWeights={1:1,2:1.8,3:3.2};
 
@@ -1088,6 +1153,25 @@ function drawScene(ctx,sh,T,o){
       }else seg(s.a,s.b,col,lw);
     }
     else if(s.t==='r'){ctx.beginPath();ctx.rect(X(s.a[0]),Y(s.a[1]),(s.b[0]-s.a[0])*S,-(s.b[1]-s.a[1])*S);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();}
+    else if(s.t==='rj'){
+      const r=normRect(s.a,s.b,0),fw=Math.min(s.fr||40,r.W/3,r.H/3),L=rejaLayout(s.a,s.b,fw,s.bw||12,s.sp||110,s.dir,s.n||0);
+      ctx.beginPath();ctx.rect(X(r.x0),Y(r.y0),r.W*S,-r.H*S);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();
+      ctx.beginPath();ctx.rect(X(r.x0+fw),Y(r.y0+fw),(r.W-2*fw)*S,-(r.H-2*fw)*S);ctx.lineWidth=Math.max(.8*k,lw*.55);ctx.stroke();
+      L.lines.forEach(q=>seg(q[0],q[1],col,Math.max(1.1*k,(s.bw||12)*S)));
+      ctx.save();ctx.fillStyle=C.muted;ctx.font='700 '+(10.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
+      if(r.W*S>90*k)ctx.fillText('REJA · '+L.n+' barrotes · luz '+dimTxt(L.g,u),X(r.x0+r.W/2),Y(r.y0+r.H)-3*k);ctx.restore();
+    }
+    else if(s.t==='cl'){
+      const g=normRect(s.a,s.b,s.ins||0);if(g.W>1&&g.H>1){
+        ctx.beginPath();ctx.rect(X(g.x0),Y(g.y0),g.W*S,-g.H*S);ctx.strokeStyle=col;ctx.lineWidth=Math.max(2.4*k,lw*1.5);ctx.stroke();
+        cieloLines(g.x0,g.y0,g.W,g.H,s.dir,s.sp||400).forEach(q=>seg(q[0],q[1],col,Math.max(.9*k,.8*lw)));
+        const c=cieloCalc(g.W,g.H,s.dir,s.sp||400,s.bar||2600);
+        ctx.save();ctx.font='700 '+(10.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+        const tx=c.n+' montantes c/'+(s.sp||400)+' · '+(s.dir==='x'?'lado a lado':'frente a fondo');
+        if(g.W*S>tx.length*5.6*k){const tw=ctx.measureText(tx).width+8*k;ctx.fillStyle=C.bg;ctx.fillRect(X(g.x0+g.W/2)-tw/2,Y(g.y0+g.H/2)-8*k,tw,16*k);ctx.fillStyle=C.ink;ctx.fillText(tx,X(g.x0+g.W/2),Y(g.y0+g.H/2));}
+        ctx.restore();
+      }
+    }
     else if(s.t==='c'){ctx.beginPath();ctx.arc(X(s.c[0]),Y(s.c[1]),s.r*S,0,7);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();}
     else if(s.t==='tx'){ctx.fillStyle=col;ctx.font='600 '+Math.max(4,s.h*S)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText(s.s,X(s.p[0]),Y(s.p[1]));}
   });
@@ -1098,7 +1182,7 @@ function drawScene(ctx,sh,T,o){
     else if(o.dims){
       if(s.t==='l'){if(s.ls!=='cor'&&s.ls!=='le'&&!s.nd)dm(s.a,s.b,-16*k,dimTxt(pdist(s.a,s.b),u),false);}
       else if(s.t==='w'){if(!s.k&&!s.nd){const th=(s.th||150)*S/2;dm(s.a,s.b,-(th+16*k),dimTxt(pdist(s.a,s.b),u),false);}}
-      else if(s.t==='r'){const x0=Math.min(s.a[0],s.b[0]),x1=Math.max(s.a[0],s.b[0]),y0=Math.min(s.a[1],s.b[1]),y1=Math.max(s.a[1],s.b[1]);
+      else if(s.t==='r'||s.t==='rj'){const x0=Math.min(s.a[0],s.b[0]),x1=Math.max(s.a[0],s.b[0]),y0=Math.min(s.a[1],s.b[1]),y1=Math.max(s.a[1],s.b[1]);
         dm([x0,y0],[x1,y0],16*k,dimTxt(x1-x0,u),false);dm([x1,y0],[x1,y1],16*k,dimTxt(y1-y0,u),false);}
       else if(s.t==='c'){ctx.save();ctx.fillStyle=C.ink;ctx.font='600 '+(11*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Ø '+dimTxt(2*s.r,u),X(s.c[0]),Y(s.c[1]));ctx.restore();}
       else if(s.t==='door'||s.t==='win'){ctx.save();ctx.fillStyle=C.muted;ctx.font='600 '+(10*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(dimTxt(s.wd,u),X(s.p[0]),Y(s.p[1])+(s.t==='win'?-14*k:14*k));ctx.restore();}
@@ -1111,6 +1195,9 @@ function plShapeFrom(mode,a,b){
   if(mode==='r')return {t:'r',a,b,w:PL.cfg.lw};
   if(mode==='c')return {t:'c',c:a,r:pdist(a,b),w:PL.cfg.lw};
   if(mode==='dim')return {t:'dim',a,b,off:16/PL.view.s};
+  if(mode==='rj'){if(Math.abs(b[0]-a[0])<1||Math.abs(b[1]-a[1])<1)return null;return {t:'rj',a,b,fr:PL.cfg.rm,bw:PL.cfg.rb,sp:PL.cfg.rs,dir:PL.cfg.ro,n:PL.cfg.rn};}
+  if(mode==='cl'){const ins=PL.cfg.cw?PL.cfg.th/2:0,g=normRect(a,b,ins);if(g.W<=1||g.H<=1)return null;
+    const dir=PL.cfg.cd==='a'?cieloAdvice(g.W,g.H,PL.cfg.cs,PL.cfg.cb).best:PL.cfg.cd;return {t:'cl',a,b,ins,dir,sp:PL.cfg.cs,bar:PL.cfg.cb};}
   if(mode==='lm')return {t:'l',a,b,w:3,ls:'lm'};
   if(mode==='le')return {t:'l',a,b,w:2,ls:'le'};
   if(mode==='vr')return {t:'w',a,b,th:PL.cfg.ve,k:'v'};
@@ -1189,10 +1276,43 @@ function plZoomTo(s){
 function plPush(){PL.hist.push(JSON.stringify(PL.shapes));if(PL.hist.length>60)PL.hist.shift();PL.redo=[];}
 function plUndo(){if(!PL.hist.length)return;PL.redo.push(JSON.stringify(PL.shapes));PL.shapes=JSON.parse(PL.hist.pop());PL.sel=-1;plChanged();}
 function plRedo(){if(!PL.redo.length)return;PL.hist.push(JSON.stringify(PL.shapes));PL.shapes=JSON.parse(PL.redo.pop());PL.sel=-1;plChanged();}
-function plChanged(){plSave();plFill();plDraw();}
+function plReport(){
+  const o=document.getElementById('out');if(!o||!document.getElementById('plcv'))return;
+  const rj=PL.shapes.filter(s=>s.t==='rj'),cl=PL.shapes.filter(s=>s.t==='cl');let h='';
+  const m=v=>fmt(v/1000,3);
+  if(rj.length){
+    let tot=[],rows='';
+    rj.forEach((s,i)=>{const r=normRect(s.a,s.b,0),fw=Math.min(s.fr||40,r.W/3,r.H/3),L=rejaLayout(s.a,s.b,fw,s.bw||12,s.sp||110,s.dir,s.n||0);
+      for(let k=0;k<L.n;k++)tot.push(L.Lb);
+      rows+=row('Reja '+(i+1)+' · '+fmt(r.W,5)+' × '+fmt(r.H,5)+' mm',L.n+' barrotes','',i?'':'key')+row('Luz entre barrotes',fmt(L.g,4),'mm')+row('Largo de cada barrote',fmt(L.Lb,5),'mm')+row('Marco (perímetro)',m(2*(r.W+r.H)),'m');});
+    const bars=tot.length?packCuts(6000,3,tot).length:0;
+    h+='<h3 class="sec">Rejas del plano</h3>'+res(rows+row('Barrotes en total',tot.length,'u.','key')+(bars?row('Barras de 6 m para los barrotes',bars,'u.'):''));
+  }
+  if(cl.length){
+    const bar=cl[0].bar||2600,list=[];let rows='',notes='';
+    cl.forEach((s,i)=>{const g=normRect(s.a,s.b,s.ins||0);if(g.W<=1||g.H<=1)return;
+      const c=cieloCalc(g.W,g.H,s.dir,s.sp||400,s.bar||2600),ad=cieloAdvice(g.W,g.H,s.sp||400,s.bar||2600);list.push(c);
+      rows+=row('Ambiente '+(i+1)+' · '+fmt(g.W,5)+' × '+fmt(g.H,5)+' mm',c.n+' montantes','',i?'':'key')
+        +row('Sentido elegido',s.dir==='x'?'de lado a lado':'de frente a fondo','')
+        +row('Montantes de',fmt(c.L,5),'mm'+(c.perLine?' (empalmados)':''))
+        +row('Barras de montante / solera',c.montBars+' / '+c.solBars,'u.');
+      if(ad.best!==s.dir)notes+='<p class="hint"><b>Ambiente '+(i+1)+':</b> '+ad.text+' Tocá la figura y usá «Cambiar sentido».</p>';
+      else notes+='<p class="hint"><b>Ambiente '+(i+1)+':</b> '+ad.text+'</p>';});
+    if(list.length){const t=cieloSum(list,bar);
+      h+='<h3 class="sec">Cielorrasos del plano</h3>'+res(rows
+        +row('Total de montantes',t.n,'u.')+row('Barras de montante a pedir',t.mont,'u. de '+bar+' mm','key')+row('Barras de solera a pedir',t.sol,'u. de '+bar+' mm','key')
+        +row('Empalmes (solape de '+CIEL_OV+' mm)',t.splices,'u.')
+        +row('Si es suspendido: vigas maestras c/1,20 m',t.vigas,'u. (aprox.)')+row('Si es suspendido: velas rígidas c/1,00 m',t.velas,'u. (aprox.)'))
+        +notes+'<p class="hint">Los perfiles se ordenan juntos entre ambientes para aprovechar los sobrantes. Durlock indica montantes cada 0,40 m, vigas maestras cada 1,20 m y velas rígidas cada 1,00 m en su sistema de junta tomada; no fija un sentido de los perfiles respecto del ambiente. La recomendación sale de contar empalmes y barras, y de colocar la placa cruzada a los montantes. Confirmá con el manual del fabricante.</p>';}
+  }
+  o.innerHTML=h;
+}
+function plChanged(){plSave();plFill();plDraw();plReport();}
 function plAdd(s,last){plPush();PL.shapes.push(s);if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();}
 function plSync(){
   const c=PL.cfg;c.grid=+V('plG')||0;c.unit=V('plU')||'mm';c.th=N('plT')||150;c.lw=+V('plW')||2;c.title=V('plN');c.dw=N('plO')||900;c.vw=N('plV')||1200;c.ve=N('plVe')||3000;c.ca=N('plCa')||8000;{const n=N('plNo');c.no=isFinite(n)?n:90;}
+  c.rs=N('plRs')>0?N('plRs'):110;c.rb=N('plRb')>0?N('plRb'):12;c.rm=N('plRm')>0?N('plRm'):40;c.ro=V('plRo')==='h'?'h':'v';c.rn=N('plRn')>0?Math.round(N('plRn')):0;
+  c.cd=['x','y'].includes(V('plCd'))?V('plCd'):'a';c.cs=N('plCs')>0?N('plCs'):400;c.cb=N('plCb')>0?N('plCb'):2600;c.cw=V('plCw')==='0'?0:1;
   if(PL.bg){const o=N('plIo');PL.bg.op=Math.max(0,Math.min(1,(isFinite(o)?o:55)/100));}
   const vs=V('plVs');if(PL.vsLast===undefined)PL.vsLast=vs;else if(vs!==PL.vsLast){PL.vsLast=vs;if(+vs>0)plZoomTo(3.7795275/+vs);}
 }
@@ -1356,7 +1476,7 @@ function plFill(){
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
-  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'));q('plEdt',!!s&&s.t==='tx');
+  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'));q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&s.t==='tx');
   const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?(s.t==='r'?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
   if(lab)lab.textContent=m==='r'?'Ancho':m==='c'?'Diámetro':'Largo';
   if(lb2)lb2.textContent=m==='r'?'Alto':'Ángulo (0° = derecha, 90° = arriba)';
@@ -1384,6 +1504,7 @@ function plAction(a){
   const s=PL.shapes[PL.sel];
   if(a==='del'&&s){plPush();PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
   else if(a==='dup'&&s){plPush();const c=moveShape(s,Math.max(100,PL.cfg.grid||100),-Math.max(100,PL.cfg.grid||100));PL.shapes.push(c);PL.sel=PL.shapes.length-1;plChanged();}
+  else if(a==='cflip'&&s&&s.t==='cl'){plPush();s.dir=s.dir==='x'?'y':'x';plChanged();}
   else if(a==='flip'&&s&&s.t==='door'){plPush();s.o=((s.o||0)+1)%4;plChanged();}
   else if(a==='edt'&&s&&s.t==='tx'){const t=window.prompt('Texto:',s.s);if(t&&t.trim()){plPush();s.s=t.trim();plChanged();}}
   else if(a==='cancel'){PL.draft=null;PL.hover=null;plFill();plDraw();}
@@ -2230,13 +2351,22 @@ P4 1.298</textarea></div></label>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
    <button type="button" class="pb" data-a="del">Borrar</button><button type="button" class="pb" data-a="dup">Duplicar</button>
-   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Invertir puerta</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button></div>
+   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Invertir puerta</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button></div>
   <div class="form" style="margin-top:14px">
    <h3 class="sec">Medida exacta</h3>
    ${fld('plL','Largo','1000','mm')}${fld('plA','Ángulo (0° = derecha, 90° = arriba)','0','°')}
    ${fld('plX','Desde X','0','mm')}${fld('plY','Desde Y','0','mm')}
    <div class="btns full"><button type="button" class="pb on" data-a="add">Agregar con esta medida</button><button type="button" class="pb" data-a="apply">Cambiar lo elegido</button></div>
    <p class="hint">Elegí Línea, Pared, Rectángulo o Círculo arriba. Se agrega desde el punto X, Y, que es el final de lo último que dibujaste.</p>
+   <h3 class="sec">Reja de frente (modo Reja)</h3>
+   ${sel('plRo','Barrotes',[['v','Verticales'],['h','Horizontales']],'v')}${fld('plRs','Luz máxima entre barrotes','110','mm')}
+   ${fld('plRb','Ancho del barrote','12','mm')}${fld('plRm','Ancho del marco','40','mm')}
+   ${fld('plRn','Cantidad fija de barrotes (0 = automática)','0','u.')}
+   <h3 class="sec">Cielorraso por ambiente (modo Cielorraso)</h3>
+   ${sel('plCd','Los montantes van',[['a','Automático (el que conviene)'],['x','De lado a lado'],['y','De frente a fondo']],'a','','full')}
+   ${fld('plCs','Separación entre montantes','400','mm')}${fld('plCb','Largo de barra de perfil','2600','mm')}
+   ${sel('plCw','Las esquinas que tocás son',[['1','Eje de la pared (se resta medio espesor)'],['0','Cara interior del ambiente']],'1','','full')}
+   <p class="hint">Dibujá las paredes, elegí Cielorraso y tocá dos esquinas opuestas de cada ambiente. Abajo aparece cuánto perfil pedir. «De lado a lado» es en dirección izquierda-derecha del plano; «de frente a fondo» es de abajo hacia arriba.</p>
    <h3 class="sec">Plantillas</h3>
    ${fld('plTw','Ancho o frente','2000','mm')}${fld('plTh','Alto o fondo','1000','mm')}
    ${fld('plTn','Barrotes (reja)','12','u.')}${fld('plTf','Marco (reja)','40','mm')}
@@ -2277,7 +2407,7 @@ P4 1.298</textarea></div></label>
    <p class="hint" id="plmsg"></p>
    <div class="btns full"><button type="button" class="pb" data-a="new">Nuevo plano (borra todo)</button></div>
   </div></div><div id="out"></div>${glossHtml(GLPLANO)}`,
- calc(){plInit();plSync();plDraw();}},
+ calc(){plInit();plSync();plDraw();plReport();}},
 
 {id:'conv',name:'Conversor de unidades',desc:'Longitud, presión, fuerza, par',
  html:()=>`<div class="form">
