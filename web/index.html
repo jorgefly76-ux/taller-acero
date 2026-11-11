@@ -743,6 +743,7 @@ function parsePlanoJson(txt){
     else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,120),h:+s.h>0?+s.h:150};}
     else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;}}
     else if(s.t==='it'){const p=P(s.p);if(p&&ITEMS[s.k]&&+s.w>0&&+s.h>0)o={t:'it',k:s.k,p,w:+s.w,h:+s.h,ang:isFinite(s.ang)?+s.ang:0};}
+    if(o&&s.lk)o.lk=1;
     if(o)out.push(o);else dropped++;
   });
   return {shapes:out,dropped,title:j&&typeof j.title==='string'?j.title.slice(0,60):'',no:j&&isFinite(j.north)?+j.north:null};
@@ -1104,7 +1105,7 @@ function matRows(d){
   const o=Object.assign({},store('mats'));o.mrows=String(matN);persist('mats',o);
   openTool(TOOLS.find(x=>x.id==='mats'));
 }
-const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el norte en otra dirección, cambiá el ángulo en Ajustes (90° = arriba, 0° = derecha, 180° = izquierda, 270° = abajo). Sale también en el PDF y el PNG.'],['Línea municipal (L.M.)','Límite entre tu lote y la vereda, o sea el espacio público. Se dibuja con trazo y punto.'],['Línea de edificación (L.E.)','Línea hasta donde se puede construir. A veces coincide con la línea municipal y a veces hay un retiro de frente.'],['Vereda y calle','La vereda va entre la línea municipal y el cordón, y la calle (calzada) está del otro lado del cordón. Los anchos que vienen cargados son de ejemplo: usá los de tu municipio.'],['Escuadra','Obliga a que las líneas queden horizontales o verticales. Apagala para dibujar en diagonal.'],['Imán','Los puntos se ajustan a la cuadrícula elegida y a las esquinas de lo ya dibujado, así las medidas salen redondas.'],['Cotas auto','Muestra la medida de cada línea, pared o rectángulo. La herramienta Cota agrega una medida entre dos puntos que vos elegís.'],['Pared','Línea gruesa con el espesor indicado. Su medida es de eje a eje (por el centro de la pared).'],['Puerta y ventana','Se apoyan sobre la pared que tocás y se alinean con ella. Elegida una puerta, Invertir cambia el lado de la bisagra y hacia dónde abre.'],['Aberturas','Puerta, ventana y portón tienen varios tipos: de una hoja o dos, batientes o corredizos. Elegida una, Girar sentido cambia el lado de la bisagra o de corrida. Arrastrándola con Elegir se desliza sobre las paredes.'],['Pared exterior e interior','Cada pared puede tener ubicación, material (ladrillo, bloque, hormigón, Durlock, madera) y revestimiento. Se ve con un rayado distinto por material, un borde más grueso en las exteriores y una franja de color para el revestimiento.'],['Medidas de eje, interior y exterior','Eje es por el centro de la pared. Interior y exterior descuentan o suman el espesor donde se une otra pared. El lado «exterior» se decide con el centro de todas las paredes del plano, así que en construcciones raras revisalo. Cada medida se prende y apaga con su botón.'],['Ítems','Escaleras, sanitarios y muebles vistos desde arriba, para ubicar cada cosa a escala. Sirven de referencia: no reemplazan el cálculo de la escalera.'],['Escala','1:50 quiere decir que 50 mm reales se dibujan como 1 mm en el papel. Imprimí al 100 % para que las medidas sean exactas.'],['Elegir','Tocá una figura para moverla, borrarla o cambiarle la medida desde los campos de Medida exacta.']];
+const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el norte en otra dirección, cambiá el ángulo en Ajustes (90° = arriba, 0° = derecha, 180° = izquierda, 270° = abajo). Sale también en el PDF y el PNG.'],['Línea municipal (L.M.)','Límite entre tu lote y la vereda, o sea el espacio público. Se dibuja con trazo y punto.'],['Línea de edificación (L.E.)','Línea hasta donde se puede construir. A veces coincide con la línea municipal y a veces hay un retiro de frente.'],['Vereda y calle','La vereda va entre la línea municipal y el cordón, y la calle (calzada) está del otro lado del cordón. Los anchos que vienen cargados son de ejemplo: usá los de tu municipio.'],['Escuadra','Obliga a que las líneas queden horizontales o verticales. Apagala para dibujar en diagonal.'],['Imán','Los puntos se ajustan a la cuadrícula elegida y a las esquinas de lo ya dibujado, así las medidas salen redondas.'],['Cotas auto','Muestra la medida de cada línea, pared o rectángulo. La herramienta Cota agrega una medida entre dos puntos que vos elegís.'],['Pared','Línea gruesa con el espesor indicado. Su medida es de eje a eje (por el centro de la pared).'],['Puerta y ventana','Se apoyan sobre la pared que tocás y se alinean con ella. Elegida una puerta, Invertir cambia el lado de la bisagra y hacia dónde abre.'],['Aberturas','Puerta, ventana y portón tienen varios tipos: de una hoja o dos, batientes o corredizos. Elegida una, Girar sentido cambia el lado de la bisagra o de corrida. Arrastrándola con Elegir se desliza sobre las paredes.'],['Pared exterior e interior','Cada pared puede tener ubicación, material (ladrillo, bloque, hormigón, Durlock, madera) y revestimiento. Se ve con un rayado distinto por material, un borde más grueso en las exteriores y una franja de color para el revestimiento.'],['Medidas de eje, interior y exterior','Eje es por el centro de la pared. Interior y exterior descuentan o suman el espesor donde se une otra pared. El lado «exterior» se decide con el centro de todas las paredes del plano, así que en construcciones raras revisalo. Cada medida se prende y apaga con su botón.'],['Ítems','Escaleras, sanitarios y muebles vistos desde arriba, para ubicar cada cosa a escala. Sirven de referencia: no reemplazan el cálculo de la escalera.'],['Plano base','Es la planta (paredes, aberturas, medidas) que repetís en varios planos. Al abrirla bloqueada queda tenue y fija, para dibujar encima cada instalación sin mover nada de la base. Lo guardado no cambia al editar: solo si lo guardás de nuevo.'],['Escala','1:50 quiere decir que 50 mm reales se dibujan como 1 mm en el papel. Imprimí al 100 % para que las medidas sean exactas.'],['Elegir','Tocá una figura para moverla, borrarla o cambiarle la medida desde los campos de Medida exacta.']];
 
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
@@ -1181,6 +1182,13 @@ function plItem(ctx,s,cx,cy,S,col,k,C){
   else R(-hx,-hy,W,H,1);
   ctx.restore();
   if(kd!=='col'&&Math.min(W,H)>26*k&&Math.max(W,H)>70*k){ctx.save();ctx.fillStyle=C.muted;ctx.font='600 '+(9*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';const lb=(ITEMS[kd]||[''])[0];if(ctx.measureText(lb).width<Math.min(W,H)*.92)ctx.fillText(lb,cx,cy);ctx.restore();}
+}
+/* Dibuja la base bloqueada más tenue y lo nuevo encima */
+function sceneDraw(ctx,sh,T,o){
+  if(!sh.some(s=>s.lk))return drawScene(ctx,sh,T,o);
+  const lk=sh.filter(s=>s.lk),fr=[],map=[];sh.forEach((s,i)=>{if(!s.lk){map.push(i);fr.push(s);}});
+  ctx.save();ctx.globalAlpha=.5;drawScene(ctx,lk,T,Object.assign({},o,{sel:[]}));ctx.restore();
+  drawScene(ctx,fr,T,Object.assign({},o,{sel:(o.sel||[]).map(i=>map.indexOf(i)).filter(i=>i>=0)}));
 }
 const MATCOL={lh:'rgba(214,120,70,.42)',lc:'rgba(176,64,44,.45)',bl:'rgba(120,130,142,.5)',ho:'rgba(90,92,104,.55)',dr:'rgba(110,170,215,.42)',mo:'rgba(190,140,70,.5)'};
 const REVCOL={rv:'#d9b894',lv:'#b3452d',ce:'#3d8fa8',pc:'#8c9097',tx:'#c9ad5f'};
@@ -1489,7 +1497,7 @@ function plDraw(){
   ctx.strokeStyle=C.muted;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(V0.x0-8,V0.y0);ctx.lineTo(V0.x0+8,V0.y0);ctx.moveTo(V0.x0,V0.y0-8);ctx.lineTo(V0.x0,V0.y0+8);ctx.stroke();
   const list=PL.shapes.slice(),selA=PL.sel>=0?[PL.sel]:[];
   if(PL.draft&&PL.draft.cur){const ds=plShapeFrom(PL.mode,PL.draft.a,PL.draft.cur);if(ds){ds.w=1;list.push(ds);selA.push(list.length-1);}}
-  drawScene(ctx,list,V0,{k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we}});
+  sceneDraw(ctx,list,V0,{k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we}});
   if(PL.draft&&PL.draft.cur&&PL.mode!=='dim'){
     const a=PL.draft.a,b=PL.draft.cur,txt=(PL.mode==='r'||PL.mode==='wr')?dimTxt(Math.abs(b[0]-a[0]),PL.cfg.unit)+' × '+dimTxt(Math.abs(b[1]-a[1]),PL.cfg.unit):(PL.mode==='c'||PL.mode==='wc')?'Ø '+dimTxt(2*pdist(a,b),PL.cfg.unit):dimTxt(pdist(a,b),PL.cfg.unit)+'  '+Math.round(((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)+360)%360)+'°';
     ctx.font='600 13px sans-serif';ctx.fillStyle=C.accent;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(txt,8,8);
@@ -1517,7 +1525,7 @@ function plSnap(px,ev,anchor){
 }
 function plPick(px){
   const wp=plTW(px[0],px[1]),tol=14/PL.view.s;let best=-1,bd=tol;
-  PL.shapes.forEach((s,i)=>{const d=hitDist(s,wp);if(d<=bd){bd=d;best=i;}});return best;
+  PL.shapes.forEach((s,i)=>{if(s.lk)return;const d=hitDist(s,wp);if(d<=bd){bd=d;best=i;}});return best;
 }
 function plDown(ev){
   PL.cv.setPointerCapture&&PL.cv.setPointerCapture(ev.pointerId);
@@ -1673,6 +1681,12 @@ function plAction(a){
   const s=PL.shapes[PL.sel];
   if(a==='del'&&s){plPush();PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
   else if(a==='dup'&&s){plPush();const c=moveShape(s,Math.max(100,PL.cfg.grid||100),-Math.max(100,PL.cfg.grid||100));PL.shapes.push(c);PL.sel=PL.shapes.length-1;plChanged();}
+  else if(a==='bsave')plBaseSave();else if(a==='bopen')plBaseOpen(false);else if(a==='bopenlk')plBaseOpen(true);else if(a==='bdel')plBaseDel();
+  else if(a==='block'||a==='unblock'){
+    if(!PL.shapes.length)return;plPush();let n=0;
+    PL.shapes.forEach(x=>{if(a==='block'){if(!x.lk){x.lk=1;n++;}}else if(x.lk){delete x.lk;n++;}});
+    PL.sel=-1;plChanged();const mg=document.getElementById('plmsg');if(mg)mg.textContent=a==='block'?'Lo dibujado quedó como base bloqueada: se ve más tenue y no se mueve ni se elige. Lo que dibujes ahora va encima.':'Base desbloqueada ('+n+' figuras).';
+  }
   else if(a==='towall'&&s){const w=shapeToWalls(s,PL.cfg.th,wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr));if(w&&w.length){plPush();PL.shapes.splice(PL.sel,1,...w);PL.sel=-1;plChanged();}}
   else if((a==='wapp'||a==='wappall')&&(a==='wappall'||(s&&s.t==='w'&&!s.k))){
     const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr);plPush();
@@ -1723,7 +1737,7 @@ function plSheet(dpi){
   const T={s,x0:areaX+(aw-w*s)/2-b[0]*s,y0:areaY+(ah+h*s)/2+b[1]*s};
   ctx.save();ctx.beginPath();ctx.rect(areaX-6*mm,areaY-6*mm,aw+12*mm,ah+12*mm);ctx.clip();
   if(inc)plDrawBg(ctx,PL.bg,PL.img,T,PL.bg.op);
-  drawScene(ctx,sh,T,{k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we}});ctx.restore();
+  sceneDraw(ctx,sh,T,{k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we}});ctx.restore();
   if(PL.cfg.cmp)plCompass(ctx,(ps.pw-10-14)*mm,(24)*mm,8*mm,PL.cfg.no,C,dpi/96*.9);
   // cuadro de datos
   const bw=112*mm,bh=24*mm,bx=(ps.pw-10)*mm-bw,by=(ps.ph-10)*mm-bh;
@@ -1759,6 +1773,42 @@ function plExport(kind){
     plDownload(new Blob([pdf],{type:'application/pdf'}),plSlug()+'.pdf');
   }
 }
+/* ---- guardado rápido de planos y bases ---- */
+function plBases(){const o=store('plano-bases');return Array.isArray(o.list)?o.list:[];}
+function plBaseFill(){
+  const e=document.getElementById('plBs');if(!e)return;
+  const l=plBases(),sig=l.map(b=>b.id).join(',');
+  if(e.dataset.sig!==sig){const cur=e.value;e.innerHTML=l.length?l.map(b=>'<option value="'+b.id+'">'+b.name.replace(/[<&>"]/g,'')+' · '+b.n+' figuras · '+b.date+'</option>').join(''):'<option value="">(todavía no hay guardados)</option>';e.dataset.sig=sig;if(l.some(b=>b.id===cur))e.value=cur;}
+}
+function plBaseSave(){
+  const mg=document.getElementById('plmsg'),ne=document.getElementById('plBn');
+  if(!PL.shapes.length){mg.textContent='No hay nada dibujado para guardar.';return;}
+  const d=new Date(),ds=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+  const name=((ne&&ne.value)||PL.cfg.title||'Plano '+ds).trim().slice(0,50),l=plBases().slice(),ex=l.findIndex(b=>b.name===name);
+  const it={id:ex>=0?l[ex].id:'b'+Date.now().toString(36),name,date:ds,n:PL.shapes.length,shapes:JSON.parse(JSON.stringify(PL.shapes)),no:PL.cfg.no,title:PL.cfg.title||'',th:PL.cfg.th};
+  if(ex>=0)l[ex]=it;else l.unshift(it);
+  if(l.length>40)l.length=40;
+  try{localStorage.setItem('ta:plano-bases',JSON.stringify({list:l}));}catch(e){mg.textContent='No hay lugar para guardar en este dispositivo. Borrá alguno guardado o copiá el plano como código.';return;}
+  MEM['plano-bases']={list:l};plBaseFill();const sel=document.getElementById('plBs');if(sel)sel.value=it.id;
+  mg.textContent=(ex>=0?'Se actualizó «':'Guardado «')+name+'». Quedó en este dispositivo.';
+}
+function plBaseOpen(lock){
+  const mg=document.getElementById('plmsg'),e=document.getElementById('plBs'),b=plBases().find(x=>x.id===(e&&e.value));
+  if(!b){mg.textContent='Elegí un plano guardado de la lista.';return;}
+  plPush();PL.shapes=JSON.parse(JSON.stringify(b.shapes));
+  if(lock)PL.shapes.forEach(x=>{x.lk=1;});else PL.shapes.forEach(x=>{delete x.lk;});
+  if(b.no!=null){const n=document.getElementById('plNo');if(n)n.value=b.no;PL.cfg.no=b.no;}
+  const t=document.getElementById('plN');if(t&&!lock){t.value=b.title||'';PL.cfg.title=b.title||'';}
+  PL.sel=-1;PL.last=[0,0];plChanged();plFit();
+  mg.textContent=(lock?'Abierto «'+b.name+'» como base bloqueada: dibujá la instalación encima. ':'Abierto «'+b.name+'». ')+'Lo guardado no cambia hasta que vuelvas a guardar. Con Deshacer volvés al dibujo anterior.';
+}
+function plBaseDel(){
+  const mg=document.getElementById('plmsg'),e=document.getElementById('plBs'),l=plBases(),b=l.find(x=>x.id===(e&&e.value));
+  if(!b){mg.textContent='Elegí qué guardado borrar.';return;}
+  if(!window.confirm('¿Borrar «'+b.name+'» de los guardados?'))return;
+  const n=l.filter(x=>x!==b);try{localStorage.setItem('ta:plano-bases',JSON.stringify({list:n}));}catch(er){}
+  MEM['plano-bases']={list:n};plBaseFill();mg.textContent='Se borró «'+b.name+'».';
+}
 function plInit(){
   const cv=document.getElementById('plcv');if(!cv||cv.dataset.on)return;cv.dataset.on='1';
   PL.vsLast=undefined;PL.cal=null;PL.cv=cv;PL.sel=-1;PL.draft=null;PL.ptr.clear();PL.gest=null;PL.drag=null;PL.hist=[];PL.redo=[];
@@ -1781,6 +1831,7 @@ function plInit(){
     if(e.key==='Delete'||e.key==='Backspace')plAction('del');else if(e.key==='Escape'){PL.draft=null;PL.hover=null;plFill();plDraw();}
     else if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();plUndo();}
   });
+  plBaseFill();
   setTimeout(()=>{if(PL.shapes.length)plFit();else{const r=cv.getBoundingClientRect();PL.view={s:Math.min(.12,(r.width-40)/3000),x0:24,y0:r.height-24};}plFill();plDraw();},0);
 }
 
@@ -2579,6 +2630,12 @@ P4 1.298</textarea></div></label>
    ${sel('plHj','Tamaño de la hoja del plano',[['A4','A4'],['A3','A3'],['A2','A2'],['A1','A1'],['A0','A0']],'A3')}${fld('plHs','Escala impresa 1:','50','')}
    <div class="btns full"><button type="button" class="pb" data-a="calsheet">Calibrar con hoja y escala</button></div>
    <p class="hint">Solo sirve si la foto muestra la hoja entera, de borde a borde. Es aproximado: para más precisión calibrá con dos puntos.</p>
+   <h3 class="sec">Guardado rápido y plano base</h3>
+   <label class="f full" for="plBn"><span>Nombre para guardar</span><div class="in"><input id="plBn" type="text" autocomplete="off" placeholder="Ej.: Casa Pérez - planta base"></div></label>
+   <div class="btns full"><button type="button" class="pb on" data-a="bsave">Guardar este plano</button><button type="button" class="pb" data-a="block">Bloquear lo dibujado como base</button><button type="button" class="pb" data-a="unblock">Desbloquear</button></div>
+   ${sel('plBs','Planos guardados',[['','(todavía no hay guardados)']],'','','full')}
+   <div class="btns full"><button type="button" class="pb on" data-a="bopenlk">Abrir como base bloqueada</button><button type="button" class="pb" data-a="bopen">Abrir para editar</button><button type="button" class="pb" data-a="bdel">Borrar guardado</button></div>
+   <p class="hint">Para hacer distintos planos de instalaciones sobre la misma base: dibujá la planta, guardala, y después elegí «Abrir como base bloqueada». La base se ve más tenue y no se mueve, y dibujás la instalación encima (eléctrica, sanitaria, gas, cielorraso…). Guardala con otro nombre y repetí con la misma base. Se guarda en este dispositivo y en este navegador: para llevarlo a otro, usá «Copiar este plano como código».</p>
    <h3 class="sec">Importar y guardar el plano</h3>
    <label class="f full"><span>Código del plano</span><div class="in"><textarea class="pljs" spellcheck="false" placeholder="Pegá acá el plano en formato JSON"></textarea></div></label>
    <div class="btns full"><button type="button" class="pb on" data-a="jsin">Importar lo pegado</button><button type="button" class="pb" data-a="jsout">Copiar este plano como código</button></div>
