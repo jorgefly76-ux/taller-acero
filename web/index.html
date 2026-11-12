@@ -136,6 +136,11 @@ th:first-child,td:first-child{text-align:left}
 .plbar.sel{align-items:center;flex-wrap:wrap}.plbar.sel span{font-size:13px;color:var(--muted);font-weight:600}
 .plwrap{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;height:56vh;min-height:300px;max-height:640px}
 .plwrap.big{height:86vh;max-height:none}
+.plmenu{position:fixed;z-index:60;min-width:210px;max-width:88vw;max-height:80vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.28);padding:6px;display:flex;flex-direction:column;gap:2px}
+.plmenu button{all:unset;box-sizing:border-box;padding:11px 12px;border-radius:8px;font-size:15px;cursor:pointer;color:var(--ink)}
+.plmenu button:hover,.plmenu button:focus-visible{background:var(--accent-soft,rgba(120,120,120,.15))}
+.plmenu .mh{font-size:12px;color:var(--muted);padding:6px 12px 2px;text-transform:uppercase;letter-spacing:.04em}
+.plmenu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
 .plwrap canvas{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
 @media (max-width:380px){.form{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:no-preference){.view{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}}
@@ -766,11 +771,11 @@ function calibImage(bg,A,B,real,align){
 }
 function shrinkSize(w,h,max){const k=Math.min(1,max/Math.max(w,h));return [Math.max(1,Math.round(w*k)),Math.max(1,Math.round(h*k))];}
 /* Escala normalizada y hoja A4 que mejor entra (w,h en mm reales) */
-function paperScale(w,h,forced,sheet){
+function paperScale(w,h,forced,sheet,side){
   w=Math.max(w,1);h=Math.max(h,1);
   const M=10,TB=30,out=[],P=PAPER[sheet]||PAPER.A4;
   [true,false].forEach(land=>{
-    const pw=land?P[0]:P[1],ph=land?P[1]:P[0],aw=pw-2*M-12,ah=ph-2*M-TB-12;
+    const pw=land?P[0]:P[1],ph=land?P[1]:P[0],aw=pw-2*M-12-(side||0),ah=ph-2*M-TB-12;
     const fit=d=>w/d<=aw&&h/d<=ah;
     const den=forced||PSCALES.find(fit)||PSCALES[PSCALES.length-1];
     out.push({land,den,fits:fit(den),pw,ph,aw,ah});
@@ -912,8 +917,9 @@ function cieloSum(list,bar){
 
 /* ---- Paredes con material, aberturas e ítems ---- */
 const WMAT={ot:'Sin definir',lh:'Ladrillo hueco',lc:'Ladrillo común',bl:'Bloque de hormigón',ho:'Hormigón armado',dr:'Durlock / steel frame',mo:'Madera'};
-const WREV={no:'Sin revestimiento',rv:'Revoque y pintura',lv:'Ladrillo visto',ce:'Cerámico / porcelanato',pc:'Placa cementicia',tx:'Texturado / símil piedra',do:'Durlock sobre perfiles omega',dm:'Durlock sobre montantes y soleras'};
-const OPEN_D={p1:'Puerta 1 hoja batiente',p2:'Puerta 2 hojas batientes',pc:'Puerta corrediza'};
+const WREV={no:'Sin revestimiento',rv:'Revoque y pintura',lv:'Ladrillo visto',ce:'Cerámico / porcelanato',pc:'Placa cementicia',tx:'Texturado / símil piedra',os:'OSB',ca:'Chapa acanalada',si:'Siding (vinílico o fibrocemento)',ma:'Madera / machimbre',do:'Durlock sobre perfiles omega',dm:'Durlock sobre montantes y soleras'};
+const WREV_E=['no','rv','lv','tx','pc','os','ca','si'],WREV_I=['no','rv','ce','do','dm','pc','ma'];
+const OPEN_D={p1:'Puerta 1 hoja batiente',p2:'Puerta 2 hojas batientes',pc:'Puerta corrediza',sv:'Abertura sin puerta (paso libre)'};
 const OPEN_V={v1:'Ventana fija o simple',vc:'Ventana corrediza',v2:'Ventana 2 hojas de abrir'};
 const OPEN_G={g2:'Portón 2 hojas batientes',gc:'Portón corredizo'};
 const ITEMS={esc:['Escalera recta',900,2800],eca:['Escalera caracol',1500,1500],inod:['Inodoro',400,700],bide:['Bidet',400,600],lava:['Lavatorio',500,400],bana:['Bañera',700,1700],duch:['Ducha',800,800],coci:['Cocina',600,600],mesd:['Mesada con pileta',600,1800],hela:['Heladera',700,700],cama:['Cama 2 plazas',1600,2000],mesa:['Mesa con sillas',900,1500],plac:['Placard',600,1800],sofa:['Sillón',800,2000],col:['Columna',300,300]};
@@ -981,7 +987,7 @@ function itemGaps(sh,i){
 /* Resumen de paredes por ubicación y material, descontando puertas y ventanas.
    cara 1 = la que mira hacia afuera, cara 2 = la otra. h = altura (mm). */
 function wallStats(sh,h){
-  const rows={},rev={},dl={do:[],dm:[]},dlA={do:0,dm:0},openA={};
+  const rows={},rev={},revS={e:{},i:{},n:{}},dl={do:[],dm:[]},dlA={do:0,dm:0},openA={};
   sh.forEach((s,k)=>{
     if(s.t!=='door'&&s.t!=='win')return;
     const ow=openingWall(sh,k);if(!ow)return;
@@ -994,11 +1000,11 @@ function wallStats(sh,h){
     r.len+=ln.c;r.area+=net;r.vol+=net*th;len+=ln.c;open+=oa;
     const l1=s.x==='e'?ln.e:ln.c,l2=s.x==='e'?ln.i:ln.c;
     [[s.r,l1],[s.r2,l2]].forEach(([rv,fl])=>{
-      if(!rv)return;const a=Math.max(0,fl*h-oa);rev[rv]=(rev[rv]||0)+a;
+      if(!rv)return;const a=Math.max(0,fl*h-oa);rev[rv]=(rev[rv]||0)+a;{const g=s.x==='e'?(rv===s.r?'e':'i'):s.x==='i'?'i':'n';revS[g][rv]=(revS[g][rv]||0)+a;}
       if(rv==='do'||rv==='dm'){dl[rv].push({L:fl,H:h,q:1});dlA[rv]+=a;}
     });
   });
-  return {rows:Object.values(rows),rev,len,dl,dlA,open};
+  return {rows:Object.values(rows),rev,revS,len,dl,dlA,open};
 }
 /* Durlock sobre pared: dm = montantes y soleras, do = perfiles omega. items [{L,H,q}] y A en mm². */
 function durlockCalc(items,kind,o){
@@ -1017,6 +1023,104 @@ function durlockCalc(items,kind,o){
   }
   out.push({label:'Tornillos T2 (placa)',q:c(m2*scr2),u:'u.'},{label:'Cinta para juntas',q:m2*3.3,u:'m'},{label:'Masilla',q:m2*1.8,u:'kg'});
   return out;
+}
+
+/* ---- Instalaciones: líneas de color, tramos numerados, planilla y vínculo con la lista de corte ---- */
+const INSTS=[['','Ninguna (línea negra)','#111111',''],['gas','Gas','#d99a00','G'],['agf','Agua fría','#1e6fe0','AF'],['agc','Agua caliente','#d32f2f','AC'],['clo','Cloaca','#7a4a21','CL'],['plu','Pluvial','#2e9d4f','PL'],['elec','Electricidad','#f57c00','E'],['dat','Datos / TV','#8e44ad','D'],['inc','Incendio','#b71c1c','I'],['cal','Calefacción','#00897b','CA']];
+const instOf=k=>INSTS.find(x=>x[0]===k)||INSTS[0];
+function nextTramo(shapes,ins){let m=0;shapes.forEach(s=>{if(s.t==='l'&&s.ins===ins&&s.n>m)m=s.n;});return m+1;}
+function tramoList(shapes){
+  const out=[],cnt={};
+  shapes.forEach((s,i)=>{if(s.t!=='l'||!s.ins)return;cnt[s.ins]=(cnt[s.ins]||0)+1;const n=s.n||cnt[s.ins],I=instOf(s.ins);
+    out.push({i,id:I[3]+n,ins:s.ins,name:I[1],dia:s.dia||'',mat:s.mat||'',len:Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1])});});
+  const ord=INSTS.map(x=>x[0]);
+  out.sort((a,b)=>(ord.indexOf(a.ins)-ord.indexOf(b.ins))||(a.id.localeCompare(b.id,'es',{numeric:true})));
+  return out;
+}
+function planilla(shapes){
+  const g={};
+  tramoList(shapes).forEach(t=>{const k=t.ins+'|'+t.dia+'|'+t.mat;(g[k]=g[k]||{ins:t.ins,name:t.name,dia:t.dia,mat:t.mat,n:0,len:0});g[k].n++;g[k].len+=t.len;});
+  return Object.keys(g).map(k=>g[k]);
+}
+function tramoSetLength(s,len){
+  const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],L=Math.hypot(dx,dy);if(!(len>0))return s;
+  const ux=L>0?dx/L:1,uy=L>0?dy/L:0;return Object.assign({},s,{b:[s.a[0]+ux*len,s.a[1]+uy*len]});
+}
+/* Lista de corte desde los tramos: una línea por tramo, «largo x 1 # ID detalle». La marca # ID es el vínculo con el plano. */
+function cutsFromTramos(shapes,ins){
+  return tramoList(shapes).filter(t=>!ins||t.ins===ins).map(t=>Math.round(t.len)+' x 1 # '+t.id+' '+t.name+(t.dia?' Ø'+t.dia:'')+(t.mat?' '+t.mat:'')).join('\n');
+}
+function cutsTagged(text){
+  const o=[];String(text).split('\n').forEach((l,k)=>{const m=l.trim().match(/^([\d.,]+)\s*(?:[x×*]\s*(\d+))?\s*#\s*([A-Za-z]{1,2}\d+)\b/);if(m)o.push({k,len:parseFloat(m[1].replace(',','.')),id:m[3].toUpperCase()});});
+  return o;
+}
+/* Actualiza en el texto los largos de las líneas marcadas con el ID, tomándolos del plano */
+function cutsRefresh(text,shapes){
+  const tl={};tramoList(shapes).forEach(t=>{tl[t.id.toUpperCase()]=t;});let n=0;
+  const lines=String(text).split('\n').map(l=>{const m=l.match(/^(\s*)([\d.,]+)(\s*(?:[x×*]\s*\d+)?\s*#\s*([A-Za-z]{1,2}\d+)\b.*)$/);if(!m)return l;const t=tl[m[4].toUpperCase()];if(!t)return l;
+    const v=Math.round(t.len);if(v!==Math.round(parseFloat(m[2].replace(',','.')))){n++;return m[1]+v+m[3];}return l;});
+  return {text:lines.join('\n'),n};
+}
+/* Pasa al plano los largos editados en la lista de corte */
+function cutsToShapes(text,shapes){
+  const tl={};tramoList(shapes).forEach(t=>{tl[t.id.toUpperCase()]=t;});const changed=[];let out=shapes.slice();
+  cutsTagged(text).forEach(c=>{const t=tl[c.id];if(!t||!(c.len>0)||Math.round(t.len)===Math.round(c.len))return;out[t.i]=tramoSetLength(out[t.i],c.len);changed.push(c.id);});
+  return {shapes:out,changed};
+}
+function shapeCenter(s){
+  if(s.a&&s.b)return [(s.a[0]+s.b[0])/2,(s.a[1]+s.b[1])/2];
+  if(s.c)return s.c.slice();if(s.p)return s.p.slice();return [0,0];
+}
+/* Gira una figura alrededor de su centro. Rectángulos, rejas y cielorrasos solo en múltiplos de 90°. Devuelve null si no se puede. */
+function plRotate(s,deg){
+  const a=deg*Math.PI/180,c=shapeCenter(s),co=Math.cos(a),si=Math.sin(a),rot=q=>[c[0]+(q[0]-c[0])*co-(q[1]-c[1])*si,c[1]+(q[0]-c[0])*si+(q[1]-c[1])*co];
+  const q90=Math.abs(((deg%90)+90)%90)<1e-6||Math.abs(((deg%90)+90)%90-90)<1e-6;
+  const r=Object.assign({},s);
+  if(s.t==='l'||s.t==='w'||s.t==='dim'){r.a=rot(s.a);r.b=rot(s.b);return r;}
+  if(s.t==='r'||s.t==='rj'||s.t==='cl'){if(!q90)return null;r.a=rot(s.a);r.b=rot(s.b);if(s.t==='cl'&&Math.round(deg/90)%2!==0)r.dir=s.dir==='x'?'y':'x';return r;}
+  if(s.t==='it'){r.ang=(((s.ang||0)+deg)%360+360)%360;return r;}
+  if(s.t==='door'||s.t==='win'){if(!q90)return null;r.o=(((s.o||0)+Math.round(deg/90))%4+4)%4;return r;}
+  if(s.t==='c'||s.t==='tx')return r;
+  return null;
+}
+/* Paredes y aberturas del plano → líneas para Cantidades de obra (metros) */
+function surfFromShapes(shapes,mh){
+  const H=(mh>0?mh:2600)/1000,f=v=>String(Math.round(v/10)/100),out=[];
+  shapes.forEach(s=>{if(s.t==='w'&&!s.k){const L=Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1]);if(L>0)out.push(f(L)+' x '+f(H*1000));}});
+  shapes.forEach(s=>{if(s.t==='door'||s.t==='win'){out.push('-'+f(s.wd)+' x '+f(s.hh>0?s.hh:(s.t==='win'?1200:2050)));}});
+  return out.join('\n');
+}
+/* Mover una pared sin despegarla: arrastra sus puertas y ventanas, estira las paredes conectadas por los extremos y
+   corre las que terminan apoyadas sobre ella. da/db = desplazamiento del extremo a y del extremo b. */
+function wallMoveLinked(sh,i,da,db){
+  const w=sh[i];if(!w||w.t!=='w'||w.k)return sh;
+  const eq=(p,q)=>Math.abs(p[0]-q[0])<=1&&Math.abs(p[1]-q[1])<=1,add=(p,d)=>[p[0]+d[0],p[1]+d[1]];
+  const hosts={};sh.forEach((o,k)=>{if(o.t==='door'||o.t==='win'){const ow=openingWall(sh,k);if(ow)hosts[k]={j:ow.j,f:ow.L>0?ow.t/ow.L:0.5};}});
+  const nw={};nw[i]=[add(w.a,da),add(w.b,db)];
+  const dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1],L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L;
+  sh.forEach((o,j)=>{
+    if(j===i||o.t!=='w'||o.k)return;
+    const mv=P=>{
+      if(eq(P,w.a))return add(P,da);if(eq(P,w.b))return add(P,db);
+      if(segDist(P,w.a,w.b)<=(w.th||150)/2+1){const t=Math.max(0,Math.min(1,((P[0]-w.a[0])*ux+(P[1]-w.a[1])*uy)/L)),d=[da[0]+(db[0]-da[0])*t,da[1]+(db[1]-da[1])*t],al=d[0]*ux+d[1]*uy;return add(P,[d[0]-al*ux,d[1]-al*uy]);}
+      return P;};
+    const a2=mv(o.a),b2=mv(o.b);if(a2!==o.a||b2!==o.b)nw[j]=[a2,b2];
+  });
+  return sh.map((o,k)=>{
+    if(nw[k])return Object.assign({},o,{a:nw[k][0],b:nw[k][1]});
+    const h=hosts[k];
+    if(h&&nw[h.j]){const [a,b]=nw[h.j],ex=b[0]-a[0],ey=b[1]-a[1];return Object.assign({},o,{p:[a[0]+ex*h.f,a[1]+ey*h.f],ang:Math.atan2(ey,ex)*180/Math.PI});}
+    return o;
+  });
+}
+/* Si la pared está unida a otras, solo se mueve hacia los lados (perpendicular a sí misma): así las vecinas se estiran sin torcerse */
+function wallConstrain(sh,i,d){
+  const w=sh[i];if(!w||w.t!=='w'||w.k)return d;
+  const eq=(p,q)=>Math.abs(p[0]-q[0])<=1&&Math.abs(p[1]-q[1])<=1;
+  const con=sh.some((o,j)=>j!==i&&o.t==='w'&&!o.k&&([o.a,o.b].some(P=>eq(P,w.a)||eq(P,w.b)||segDist(P,w.a,w.b)<=(w.th||150)/2+1)));
+  if(!con)return d;
+  const dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1],L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L,k=d[0]*nx+d[1]*ny;
+  return [nx*k,ny*k];
 }
 /*CALC-END*/
 
@@ -1304,7 +1408,7 @@ function sceneDraw(ctx,sh,T,o){
   drawScene(ctx,fr,T,Object.assign({},o,{sel:(o.sel||[]).map(i=>map.indexOf(i)).filter(i=>i>=0)}));
 }
 const MATCOL={lh:'rgba(214,120,70,.42)',lc:'rgba(176,64,44,.45)',bl:'rgba(120,130,142,.5)',ho:'rgba(90,92,104,.55)',dr:'rgba(110,170,215,.42)',mo:'rgba(190,140,70,.5)'};
-const REVCOL={rv:'#d9b894',lv:'#b3452d',ce:'#3d8fa8',pc:'#8c9097',tx:'#c9ad5f',do:'#7fb2e0',dm:'#4f86c6'};
+const REVCOL={os:'#c8a26a',ca:'#6e7c88',si:'#8fae9a',ma:'#9a6b3c',rv:'#d9b894',lv:'#b3452d',ce:'#3d8fa8',pc:'#8c9097',tx:'#c9ad5f',do:'#7fb2e0',dm:'#4f86c6'};
 function drawScene(ctx,sh,T,o){
   const k=o.k||1,C=o.col,sel=o.sel||[],S=T.s,X=x=>T.x0+x*S,Y=y=>T.y0-y*S,u=o.unit||'mm';
   ctx.lineCap='round';ctx.lineJoin='round';
@@ -1372,6 +1476,7 @@ function drawScene(ctx,sh,T,o){
     else if(kd==='vc'){const o1=th*.17;seg(at(p1,0,o1),at(p1,h*1.08,o1),col,1.5*k);seg(at(p2,0,-o1),at(p2,-h*1.08,-o1),col,1.5*k);seg(at(p1,0,0),at(p2,0,0),col,.7*k);}
     else if(kd==='v2'){sw(p1,mp,h,1.2*k);sw(p2,mp,h,1.2*k);}
     else if(kd==='p2'||kd==='g2'){const w=(kd==='g2'?2.4:1.6)*k;sw(p1,mp,h,w);sw(p2,mp,h,w);}
+    else if(kd==='sv'){/* paso libre: solo las jambas */}
     else if(kd==='pc'||kd==='gc'){
       const g=kd==='gc',off=(g?th/2+70:th*.24)*sd;
       seg(at(p1,0,off),at(p2,0,off),col,(g?2.6:1.8)*k);
@@ -1393,6 +1498,11 @@ function drawScene(ctx,sh,T,o){
         ctx.save();const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1];let ang=Math.atan2(-dy,dx);if(ang>Math.PI/2||ang<-Math.PI/2)ang+=Math.PI;
         ctx.translate(X((s.a[0]+s.b[0])/2),Y((s.a[1]+s.b[1])/2));ctx.rotate(ang);ctx.fillStyle=col;ctx.font='700 '+(9.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
         if(Math.hypot(dx,dy)*S>tx.length*5.5*k)ctx.fillText(tx,0,-4*k);ctx.restore();
+      }else if(s.ins){
+        const I=instOf(s.ins),ic=sel.includes(i)?col:I[2];seg(s.a,s.b,ic,lw*1.3);
+        const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],tg=I[3]+(s.n||'')+(s.dia?' Ø'+s.dia:'');
+        if(Math.hypot(dx,dy)*S>tg.length*6.5*k){ctx.save();let ang=Math.atan2(-dy,dx);if(ang>Math.PI/2||ang<-Math.PI/2)ang+=Math.PI;
+          ctx.translate(X((s.a[0]+s.b[0])/2),Y((s.a[1]+s.b[1])/2));ctx.rotate(ang);ctx.fillStyle=ic;ctx.font='700 '+(9.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(tg,0,-4*k);ctx.restore();}
       }else seg(s.a,s.b,col,lw);
     }
     else if(s.t==='r'){ctx.beginPath();ctx.rect(X(s.a[0]),Y(s.a[1]),(s.b[0]-s.a[0])*S,-(s.b[1]-s.a[1])*S);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();}
@@ -1456,7 +1566,7 @@ function drawScene(ctx,sh,T,o){
   });
 }
 function plShapeFrom(mode,a,b){
-  if(mode==='l')return {t:'l',a,b,w:PL.cfg.lw};
+  if(mode==='l'){const o={t:'l',a,b,w:PL.cfg.lw};if(PL.cfg.ins){o.ins=PL.cfg.ins;o.n=nextTramo(PL.shapes,PL.cfg.ins);if(PL.cfg.dia)o.dia=PL.cfg.dia;if(PL.cfg.mat)o.mat=PL.cfg.mat;}return o;}
   if(mode==='w')return Object.assign({t:'w',a,b,th:PL.cfg.th},wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2));
   if(mode==='r')return {t:'r',a,b,w:PL.cfg.lw};
   if(mode==='c')return {t:'c',c:a,r:pdist(a,b),w:PL.cfg.lw};
@@ -1553,7 +1663,8 @@ function plReport(){
     let rows='';
     if(st.len>0){
       st.rows.forEach((r,i)=>{rows+=row((r.x==='e'?'Exterior':r.x==='i'?'Interior':'Sin ubicación')+' · '+WMAT[r.m],fmt(r.len/1000,2),'m'+' · '+fmt(r.area/1e6,2)+' m² · '+fmt(r.vol/1e9,2)+' m³',i?'':'key');});
-      Object.keys(st.rev).forEach(k=>{rows+=row('Revestimiento: '+WREV[k],fmt(st.rev[k]/1e6,2),'m²');});
+      [['e','Revestimiento de paredes exteriores'],['i','Revestimiento de paredes interiores'],['n','Revestimiento (pared sin ubicación)']].forEach(([g,tt])=>{const ks=Object.keys(st.revS[g]);if(!ks.length)return;
+        rows+='<h3 class="sec" style="margin:10px 0 0">'+tt+'</h3>';ks.forEach(k=>{rows+=row(WREV[k],fmt(st.revS[g][k]/1e6,2),'m²');if(k==='os')rows+=row('Placas de OSB 1,22 × 2,44 m (con 10 % de desperdicio)',Math.ceil(st.revS[g][k]/1e6*1.1/2.9768-1e-9),'u.');});});
       if(st.open>0)rows+=row('Aberturas descontadas',fmt(st.open/1e6,2),'m²');
       ['dm','do'].forEach(kd=>{const dq=durlockCalc(st.dl[kd],kd,{sep:PL.cfg.ds||400,bar:PL.cfg.db||2600,plate:PL.cfg.dp||2.88,waste:isFinite(PL.cfg.dw)?PL.cfg.dw:5,A:st.dlA[kd]});if(dq.length)rows+='<h3 class="sec" style="margin:10px 0 0">'+WREV[kd]+'</h3>'+dq.map(r=>row(r.label,fmt(r.q,r.u==='u.'?0:2),r.u,r.key?'key':'')).join('');});
     }
@@ -1587,11 +1698,22 @@ function plReport(){
         +row('Si es suspendido: vigas maestras c/1,20 m',t.vigas,'u. (aprox.)')+row('Si es suspendido: velas rígidas c/1,00 m',t.velas,'u. (aprox.)'))
         +notes+'<p class="hint">Los perfiles se ordenan juntos entre ambientes para aprovechar los sobrantes. Durlock indica montantes cada 0,40 m, vigas maestras cada 1,20 m y velas rígidas cada 1,00 m en su sistema de junta tomada; no fija un sentido de los perfiles respecto del ambiente. La recomendación sale de contar empalmes y barras, y de colocar la placa cruzada a los montantes. Confirmá con el manual del fabricante.</p>';}
   }
-  o.innerHTML=h0+h;
+  let hi='';
+  {const pl=planilla(PL.shapes),tl=tramoList(PL.shapes);
+   if(pl.length)hi='<h3 class="sec">Instalaciones del plano</h3>'+res(pl.map((g,i)=>row(g.name+(g.dia?' Ø'+g.dia:'')+(g.mat?' · '+g.mat:''),fmt(g.len/1000,2),'m · '+g.n+(g.n===1?' tramo':' tramos'),i?'':'key')).join('')+tl.map(t=>row(t.id+(t.dia?' · Ø'+t.dia:'')+' · '+t.name,fmt(t.len/1000,3),'m')).join(''))+'<p class="hint">Cada tramo tiene un número (G1, AF2…). Si guardás el plano como capa, esos tramos aparecen en la Lista de corte con el mismo número, y si cambiás un largo allá se actualiza acá.</p>';}
+  o.innerHTML=hi+h0+h;
 }
 function plChanged(){plSave();plFill();plDraw();plReport();}
 function plAdd(s,last){plPush();PL.shapes.push(s);if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();}
+function plRevSync(x){
+  const k=x||'-';if(PL.rvK===k)return;PL.rvK=k;
+  const all=Object.keys(WREV),L=x==='e'?[WREV_E,WREV_I]:x==='i'?[WREV_I,WREV_I]:[all,all];
+  const lab=x==='e'?['Revestimiento de la cara EXTERIOR (OSB, chapa acanalada, revoque…)','Revestimiento de la cara INTERIOR (Durlock, cerámico…)']:x==='i'?['Revestimiento del lado 1 (interior: Durlock, cerámico…)','Revestimiento del lado 2 (interior)']:['Revestimiento de la cara exterior (o lado 1)','Revestimiento de la cara interior (o lado 2)'];
+  ['plMr','plMr2'].forEach((id,j)=>{const e=document.getElementById(id);if(!e)return;const cur=e.value;e.innerHTML=L[j].map(q=>'<option value="'+q+'">'+WREV[q]+'</option>').join('');e.value=L[j].includes(cur)?cur:'no';
+    const sp=e.closest('label')&&e.closest('label').querySelector('span');if(sp)sp.textContent=lab[j];});
+}
 function plSync(){
+  plRevSync(V('plMx'));
   const c=PL.cfg;c.grid=+V('plG')||0;c.unit=V('plU')||'mm';c.th=N('plT')||150;c.lw=+V('plW')||2;c.title=V('plN');c.dw=N('plO')||900;c.vw=N('plV')||1200;c.ve=N('plVe')||3000;c.ca=N('plCa')||8000;{const n=N('plNo');c.no=isFinite(n)?n:90;}
   c.rs=N('plRs')>0?N('plRs'):110;c.rb=N('plRb')>0?N('plRb'):12;c.rm=N('plRm')>0?N('plRm'):40;c.ro=V('plRo')==='h'?'h':'v';c.rn=N('plRn')>0?Math.round(N('plRn')):0;
   c.dk=OPEN_D[V('plDk')]?V('plDk'):'p1';c.wk=OPEN_V[V('plWk')]?V('plWk'):'v1';c.gk=OPEN_G[V('plGk')]?V('plGk'):'g2';c.gw=N('plGw')>0?N('plGw'):3000;
@@ -1600,6 +1722,7 @@ function plSync(){
   c.mt=WMAT[V('plMt')]?V('plMt'):'ot';c.mx=['e','i'].includes(V('plMx'))?V('plMx'):'';c.mr=WREV[V('plMr')]?V('plMr'):'no';c.mh=N('plMh')>0?N('plMh'):2600;
   c.ik=ITEMS[V('plIk')]?V('plIk'):'esc';c.iw=N('plIw')>0?N('plIw'):900;c.ih=N('plIh')>0?N('plIh'):2800;
   if(PL.ikLast===undefined)PL.ikLast=c.ik;else if(c.ik!==PL.ikLast){PL.ikLast=c.ik;c.iw=ITEMS[c.ik][1];c.ih=ITEMS[c.ik][2];const a1=document.getElementById('plIw'),a2=document.getElementById('plIh');if(a1)a1.value=c.iw;if(a2)a2.value=c.ih;}
+  c.dia=(V('plDi')||'').trim().slice(0,14);c.mat=(V('plMa')||'').trim().slice(0,24);c.sd=['no','si'].includes(V('plSd'))?V('plSd'):'auto';
   c.cd=['x','y'].includes(V('plCd'))?V('plCd'):'a';c.cs=N('plCs')>0?N('plCs'):400;c.cb=N('plCb')>0?N('plCb'):2600;c.cw=V('plCw')==='0'?0:1;
   if(PL.bg){const o=N('plIo');PL.bg.op=Math.max(0,Math.min(1,(isFinite(o)?o:55)/100));}
   const vs=V('plVs');if(PL.vsLast===undefined)PL.vsLast=vs;else if(vs!==PL.vsLast){PL.vsLast=vs;if(+vs>0)plZoomTo(3.7795275/+vs);}
@@ -1632,12 +1755,38 @@ function plDraw(){
   }
   if(PL.hover){const q=PL.hover;ctx.strokeStyle=C.accent;ctx.lineWidth=1.6;ctx.strokeRect(V0.x0+q.p[0]*V0.s-4,V0.y0-q.p[1]*V0.s-4,8,8);}
   if(PL.cal&&PL.cal.pts.length){ctx.strokeStyle='#d32f2f';ctx.lineWidth=2;PL.cal.pts.forEach(q=>{const x=V0.x0+q[0]*V0.s,y=V0.y0-q[1]*V0.s;ctx.beginPath();ctx.moveTo(x-9,y);ctx.lineTo(x+9,y);ctx.moveTo(x,y-9);ctx.lineTo(x,y+9);ctx.stroke();});}
-  if(PL.cfg.cmp)plCompass(ctx,r.width-34,38,18,PL.cfg.no,C,1);
+  if(PL.draft&&PL.draft.cur){
+    const a=PL.draft.a,b=PL.draft.cur,m=PL.mode,bx=V0.x0+b[0]*V0.s,by=V0.y0-b[1]*V0.s;
+    const L=pdist(a,b),ang=Math.round(((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)+360)%360);
+    const t=(m==='r'||m==='wr'||m==='rj'||m==='cl')?dimTxt(Math.abs(b[0]-a[0]),PL.cfg.unit)+' × '+dimTxt(Math.abs(b[1]-a[1]),PL.cfg.unit):(m==='c'||m==='wc')?'Ø '+dimTxt(2*L,PL.cfg.unit):dimTxt(L,PL.cfg.unit)+' · '+ang+'°';
+    plPill(ctx,t,bx,by,r.width,r.height,C);
+    if(PLLINE.includes(m)||m==='r'||m==='wr'){const ax=V0.x0+a[0]*V0.s,ay=V0.y0-a[1]*V0.s;ctx.strokeStyle=C.accent;ctx.lineWidth=1;ctx.beginPath();ctx.arc(ax,ay,4,0,7);ctx.stroke();}
+  }
+  {const target=110/V0.s,e0=Math.pow(10,Math.floor(Math.log10(target)));let nice=e0;[1,2,5,10].forEach(f=>{if(e0*f<=target)nice=e0*f;});
+    const bw=nice*V0.s,x=10,y=r.height-18;ctx.strokeStyle=C.ink;ctx.fillStyle=C.ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x,y);ctx.lineTo(x+bw,y);ctx.lineTo(x+bw,y-5);ctx.stroke();
+    ctx.font='600 11px sans-serif';ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText(dimTxt(nice,PL.cfg.unit)+(PL.cfg.unit==='mm'?' mm':''),x,y-7);
+    if(PL.cur){ctx.fillStyle=C.muted;ctx.font='500 11px sans-serif';ctx.fillText('X '+dimTxt(PL.cur[0],PL.cfg.unit)+'   Y '+dimTxt(PL.cur[1],PL.cfg.unit),x,y-22);}}
+  if(PL.cfg.cmp){const q=plCmpGeom(r);plCompass(ctx,q.x,q.y,q.r,PL.cfg.no,C,1.15);}
   ctx.font='500 11px sans-serif';ctx.fillStyle=C.muted;ctx.textAlign='right';ctx.textBaseline='bottom';
   ctx.fillText('Cuadrícula '+dimTxt(g,PL.cfg.unit)+(PL.cfg.unit==='mm'?' mm':''),r.width-8,r.height-6);
 }
-function plFit(){
-  const cv=PL.cv,r=cv.getBoundingClientRect(),b=unionB(sceneBounds(PL.shapes),PL.bg?bgBounds(PL.bg):null)||[0,0,3000,2000],pad=44;
+function plCmpGeom(r){return {x:r.width-42,y:52,r:24};}
+function plPill(ctx,txt,x,y,W,H,C){
+  ctx.save();ctx.font='700 12px sans-serif';const tw=ctx.measureText(txt).width+14;let px=x+14,py=y-30;if(px+tw>W-4)px=x-tw-14;if(px<4)px=4;if(py<4)py=y+14;if(py+22>H-4)py=H-26;
+  ctx.fillStyle=C.accent;ctx.globalAlpha=.95;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(px,py,tw,22,6);else ctx.rect(px,py,tw,22);ctx.fill();ctx.globalAlpha=1;
+  ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(txt,px+7,py+11.5);ctx.restore();
+}
+function plCmpSet(px){
+  const g=PL.drag&&PL.drag.q;if(!g)return;const a=Math.atan2(-(px[1]-g.y),px[0]-g.x)*180/Math.PI;PL.cfg.no=Math.round((a+360)%360)%360;
+  const e=document.getElementById('plNo');if(e)e.value=PL.cfg.no;plDraw();
+}
+function plMainBounds(){
+  const W=PL.shapes.filter(x=>(x.t==='w'&&!x.k)||x.t==='r'||x.t==='cl');const b=W.length?sceneBounds(W):null;return b||sceneBounds(PL.shapes);
+}
+function plFit(main){
+  const cv=PL.cv,r=cv.getBoundingClientRect();let b=main===true?plMainBounds():null;
+  if(b){const w0=b[2]-b[0],h0=b[3]-b[1],ex=Math.max(w0,h0,500)*.3;b=[b[0]-ex,b[1]-ex,b[2]+ex,b[3]+ex];}
+  b=b||unionB(sceneBounds(PL.shapes),PL.bg?bgBounds(PL.bg):null)||[0,0,3000,2000];const pad=44;
   const w=Math.max(b[2]-b[0],100),h=Math.max(b[3]-b[1],100),s=Math.min((r.width-2*pad)/w,(r.height-2*pad)/h);
   PL.view={s,x0:r.width/2-(b[0]+w/2)*s,y0:r.height/2+(b[1]+h/2)*s};plSave();plDraw();
 }
@@ -1656,15 +1805,18 @@ function plPick(px){
   PL.shapes.forEach((s,i)=>{if(s.lk)return;const d=hitDist(s,wp);if(d<=bd){bd=d;best=i;}});return best;
 }
 function plDown(ev){
+  if(ev.pointerType==='mouse'&&ev.button>0)return;
   PL.cv.setPointerCapture&&PL.cv.setPointerCapture(ev.pointerId);
   PL.ptr.set(ev.pointerId,plPt(ev));
-  if(PL.ptr.size===2){PL.drag=null;if(PL.dn)PL.dn.multi=true;PL.gest=plGest();plDraw();return;}
+  if(PL.ptr.size===2){plLpCancel();PL.drag=null;if(PL.dn)PL.dn.multi=true;PL.gest=plGest();plDraw();return;}
   if(PL.ptr.size>2)return;
   const px=plPt(ev),m=PL.mode;
+  if(PL.cfg.cmp){const q=plCmpGeom(PL.cv.getBoundingClientRect());if(Math.hypot(px[0]-q.x,px[1]-q.y)<=q.r*1.6){PL.drag={cmp:true,q};plCmpSet(px);return;}}
+  plLpCancel();if(ev.pointerType!=='mouse'){PL.lp={px,t:setTimeout(()=>{const l=PL.lp;PL.lp=null;if(!l||PL.ptr.size!==1||PL.gest)return;PL.dn=null;PL.drag=null;PL.lpAt=Date.now();plMenuOpen(l.px,ev.clientX,ev.clientY);},560)};}
   if(m==='ver'){PL.drag={pan:true,px,v:Object.assign({},PL.view)};return;}
   if(m==='sel'){
     const i=plPick(px);PL.sel=i;plFill();
-    if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false};
+    if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null};
     else PL.drag={pan:true,px,v:Object.assign({},PL.view)};
     plDraw();return;
   }
@@ -1674,8 +1826,11 @@ function plDown(ev){
   }
   PL.dn={px,moved:false,multi:false,v:Object.assign({},PL.view)};
 }
+function plLpCancel(){if(PL.lp){clearTimeout(PL.lp.t);PL.lp=null;}}
 function plMove(ev){
   const px=plPt(ev);
+  if(PL.lp&&Math.hypot(px[0]-PL.lp.px[0],px[1]-PL.lp.px[1])>9)plLpCancel();
+  if(ev.pointerType==='mouse'&&!PL.ptr.size){PL.cur=plTW(px[0],px[1]);if(!PL.raf){PL.raf=1;requestAnimationFrame(()=>{PL.raf=0;plDraw();});}}
   if(PL.ptr.has(ev.pointerId))PL.ptr.set(ev.pointerId,px);
   if(PL.ptr.size>=2&&PL.gest){
     const g=PL.gest,n=plGest(),v=PL.view;
@@ -1687,6 +1842,7 @@ function plMove(ev){
     PL.gest=n;plDraw();return;
   }
   const dr=PL.drag;
+  if(dr&&dr.cmp){plCmpSet(px);return;}
   if(dr&&dr.pan){PL.view={s:dr.v.s,x0:dr.v.x0+px[0]-dr.px[0],y0:dr.v.y0+px[1]-dr.px[1]};plDraw();return;}
   if(dr&&dr.imgMove){const w=plTW(px[0],px[1]);PL.bg=Object.assign({},PL.bg,{x:dr.orig.x+w[0]-dr.start[0],y:dr.orig.y+w[1]-dr.start[1]});plDraw();return;}
   if(dr&&dr.move){
@@ -1697,6 +1853,7 @@ function plMove(ev){
       const ws=wallSnap(w,PL.shapes.filter((x,j)=>j!==dr.i),30/PL.view.s);
       if(ws){if(!dr.pushed){plPush();dr.pushed=true;}PL.shapes[dr.i]=Object.assign({},dr.orig,{p:ws.p,ang:ws.ang,th:ws.th});plDraw();return;}
     }
+    if(dr.base){const dd=wallConstrain(dr.base,dr.i,[dx,dy]);if(!dr.pushed&&(dd[0]||dd[1])){plPush();dr.pushed=true;}PL.shapes=wallMoveLinked(dr.base,dr.i,dd,dd);plDraw();return;}
     PL.shapes[dr.i]=moveShape(dr.orig,dx,dy);plDraw();return;
   }
   const dn=PL.dn;
@@ -1712,6 +1869,7 @@ function plMove(ev){
   if(PL.draft&&!PL.ptr.size){const q=plSnap(px,ev,PL.draft.a);PL.draft.cur=q.p;PL.hover=q.kind==='free'?null:q;plDraw();}
 }
 function plUp(ev){
+  plLpCancel();
   const had=PL.ptr.has(ev.pointerId);PL.ptr.delete(ev.pointerId);
   if(!had)return;
   if(PL.gest){if(PL.ptr.size<2){PL.gest=null;plSave();}return;}
@@ -1774,7 +1932,7 @@ function plFill(){
     else if(s.t==='c'){set('plL',+(2*s.r).toFixed(1));}
     else if(s.t==='it'){set('plL',s.w);set('plA',s.h);}
     else if(s.t==='door'||s.t==='win'){set('plL',s.wd);set('plA',s.hh>0?s.hh:(s.t==='win'?1200:2050));if(s.t==='win')set('plSs',s.sl!=null?s.sl:900);}
-    if(s.t==='w'&&!s.k){set('plT',s.th||150);set('plMt',s.m||'ot');set('plMx',s.x||'');set('plMr',s.r||'no');set('plMr2',s.r2||'no');}
+    if(s.t==='w'&&!s.k){plRevSync(s.x||'');set('plT',s.th||150);set('plMt',s.m||'ot');set('plMx',s.x||'');set('plMr',s.r||'no');set('plMr2',s.r2||'no');}
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
@@ -1784,7 +1942,9 @@ function plFill(){
   if(lb2)lb2.textContent=m==='r'?'Alto':'Ángulo (0° = derecha, 90° = arriba)';
   const un=document.querySelector('label[for=plA] em');if(un)un.textContent=m==='r'?'mm':'°';
   document.querySelectorAll('#plbar [data-m]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===PL.mode?'true':'false'));
-  const h=document.getElementById('plhint');if(h)h.textContent=PLHINT[PL.mode];
+  const h=document.getElementById('plhint');if(h)h.textContent=PLHINT[PL.mode]+' Clic derecho o mantener apretado: más opciones.'+(PL.cfg.cmp?' Podés girar la brújula arrastrando su aguja.':'');
+  {const sl=s&&s.t==='l'&&PL.mode==='sel',cur=sl?(s.ins||''):(PL.cfg.ins||'');document.querySelectorAll('#plIns [data-i]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.i===cur?'true':'false'));
+   if(sl){set('plDi',s.dia||'');set('plMa',s.mat||'');}}
   {const c=document.getElementById('plcur');if(c)c.textContent=plProjLabel();}
   [['plOrt','ortho'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
   {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc!==false?'true':'false');const d=document.getElementById('plOd');if(d)d.setAttribute('aria-pressed',PL.cfg.od!==false?'true':'false');}
@@ -1799,7 +1959,8 @@ function plNumAdd(){
 function plNumApply(){
   const s=PL.shapes[PL.sel];if(!s)return;const L=N('plL'),A=N('plA');
   plPush();
-  if(s.t==='l'||s.t==='w'||s.t==='dim'){if(pos(L))s.b=polarPt(s.a,L,isFinite(A)?A:0);}
+  if(s.t==='w'&&!s.k){if(pos(L)){const nb=polarPt(s.a,L,isFinite(A)?A:0);PL.shapes=wallMoveLinked(PL.shapes,PL.sel,[0,0],[nb[0]-s.b[0],nb[1]-s.b[1]]);}}
+  else if(s.t==='l'||s.t==='w'||s.t==='dim'){if(pos(L))s.b=polarPt(s.a,L,isFinite(A)?A:0);}
   else if(s.t==='r'){if(pos(L,A)){const sx=s.b[0]>=s.a[0]?1:-1,sy=s.b[1]>=s.a[1]?1:-1;s.b=[s.a[0]+sx*L,s.a[1]+sy*A];}}
   else if(s.t==='c'){if(pos(L))s.r=L/2;}
   else if(s.t==='it'){if(pos(L,A)){s.w=L;s.h=A;}}
@@ -1809,7 +1970,14 @@ function plNumApply(){
 function plAction(a){
   const s=PL.shapes[PL.sel];
   if(a==='del'&&s){plPush();PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
-  else if(a==='dup'&&s){plPush();const c=moveShape(s,Math.max(100,PL.cfg.grid||100),-Math.max(100,PL.cfg.grid||100));PL.shapes.push(c);PL.sel=PL.shapes.length-1;plChanged();}
+  else if(a==='dup'&&s){plPush();const c=moveShape(s,Math.max(100,PL.cfg.grid||100),-Math.max(100,PL.cfg.grid||100));if(c.ins)c.n=nextTramo(PL.shapes,c.ins);PL.shapes.push(c);PL.sel=PL.shapes.length-1;plChanged();}
+  else if(a==='meas'&&s)plEditMeasures();
+  else if(a==='rotg'&&s)plRot(90);
+  else if(a==='rotn'&&s){const t=window.prompt('Girar cuántos grados (positivo = antihorario, negativo = horario):','45');const g=parseFloat(String(t||'').replace(',','.'));if(isFinite(g)&&g)plRot(g);}
+  else if(a==='menu'){const r=PL.cv.getBoundingClientRect();plMenuOpen([r.width/2,r.height/2],r.left+r.width/2,r.top+r.height/2);}
+  else if(a==='dia'&&s&&s.t==='l'){const t=window.prompt('Diámetro o sección de este tramo (ej. 3/4, Ø110, 2,5 mm²):',s.dia||'');if(t!==null){plPush();if(t.trim())s.dia=t.trim().slice(0,14);else delete s.dia;plChanged();}}
+  else if(a==='qsave')plQuickSave();
+  else if(a==='tocut'){plQuickSave();location.hash='corte';}
   else if(a==='pnew')plProjNew();else if(a==='play')plProjLayer();else if(a==='pbase')plProjBase();
   else if(a==='pjs'){const e=document.getElementById('plproj');if(e){e.hidden=!e.hidden;if(!e.hidden)plProjPanel();}}
   else if(a==='block'||a==='unblock'){
@@ -1822,7 +1990,7 @@ function plAction(a){
     const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2);plPush();
     PL.shapes.forEach((w,j)=>{if(w.t==='w'&&!w.k&&(a==='wappall'||j===PL.sel)){w.th=PL.cfg.th;delete w.m;delete w.x;delete w.r;Object.assign(w,pr);}});
     plChanged();}
-  else if(a==='rot'&&s&&s.t==='it'){plPush();s.ang=((s.ang||0)+90)%360;plChanged();}
+  else if(a==='rot'&&s&&s.t==='it'){plRot(90);}
   else if(a==='od'){PL.cfg.od=!(PL.cfg.od!==false);plSave();plFill();plDraw();}
   else if(a==='ub'){PL.cfg.ub=!PL.cfg.ub;plSave();plFill();plDraw();}
   else if(a==='wc'||a==='wi'||a==='we'){if(a==='wc')PL.cfg.wc=!(PL.cfg.wc!==false);else PL.cfg[a]=!PL.cfg[a];plSave();plFill();plDraw();}
@@ -1856,11 +2024,135 @@ function plAction(a){
     PL.shapes.push(...nw);PL.sel=-1;plChanged();plFit();
   }
 }
+
+function plSetIns(k){
+  const sl=PL.mode==='sel'&&PL.sel>=0&&PL.shapes[PL.sel]&&PL.shapes[PL.sel].t==='l'&&!PL.shapes[PL.sel].ls;
+  if(sl){plPush();const q=PL.shapes[PL.sel];if(k){q.ins=k;q.n=nextTramo(PL.shapes.filter((x,j)=>j!==PL.sel),k);}else{delete q.ins;delete q.n;delete q.dia;delete q.mat;}plChanged();return;}
+  PL.cfg.ins=k;plSave();if(k&&!['l','sel'].includes(PL.mode))plSetMode('l');else plFill();
+  plMsg(k?'Las líneas nuevas se dibujan como «'+instOf(k)[1]+'», con su color y número de tramo. Anotá abajo el diámetro y el material.':'Líneas comunes (sin instalación).');
+}
+function plRot(deg){
+  const s=PL.shapes[PL.sel];if(!s)return;const n=plRotate(s,deg);
+  if(!n){plMsg('Esa figura solo gira de a 90°.');return;}
+  plPush();PL.shapes[PL.sel]=n;plChanged();
+}
+function plEditMeasures(){
+  const s=PL.shapes[PL.sel];if(!s)return;const nn=t=>String(t).split(/[;x×*]/).map(v=>parseFloat(v.replace(',','.')));
+  const ang=q=>Math.round(((Math.atan2(q.b[1]-q.a[1],q.b[0]-q.a[0])*180/Math.PI)+360)%360*100)/100;
+  if(s.t==='l'||s.t==='w'||s.t==='dim'){
+    const t=window.prompt('Largo en mm. Si querés cambiar también el ángulo escribí «largo ; ángulo». Ahora: '+Math.round(pdist(s.a,s.b))+' mm ; '+ang(s)+'°',String(Math.round(pdist(s.a,s.b))));
+    if(t===null)return;const v=nn(t);if(!pos(v[0]))return;plPush();const nb=polarPt(s.a,v[0],isFinite(v[1])?v[1]:ang(s));
+    if(s.t==='w'&&!s.k)PL.shapes=wallMoveLinked(PL.shapes,PL.sel,[0,0],[nb[0]-s.b[0],nb[1]-s.b[1]]);else s.b=nb;
+  }else if(s.t==='r'||s.t==='rj'||s.t==='cl'){
+    const w=Math.abs(s.b[0]-s.a[0]),h=Math.abs(s.b[1]-s.a[1]),t=window.prompt('Ancho × alto en mm. Ahora: '+Math.round(w)+' × '+Math.round(h),Math.round(w)+' x '+Math.round(h));
+    if(t===null)return;const v=nn(t);if(!pos(v[0],v[1]))return;plPush();s.b=[s.a[0]+(s.b[0]>=s.a[0]?1:-1)*v[0],s.a[1]+(s.b[1]>=s.a[1]?1:-1)*v[1]];
+  }else if(s.t==='c'){
+    const t=window.prompt('Diámetro en mm. Ahora: '+Math.round(2*s.r),String(Math.round(2*s.r)));if(t===null)return;const v=nn(t);if(!pos(v[0]))return;plPush();s.r=v[0]/2;
+  }else if(s.t==='it'){
+    const t=window.prompt('Ancho × alto en mm. Ahora: '+s.w+' × '+s.h,s.w+' x '+s.h);if(t===null)return;const v=nn(t);if(!pos(v[0],v[1]))return;plPush();s.w=v[0];s.h=v[1];
+  }else if(s.t==='door'||s.t==='win'){
+    const t=window.prompt('Ancho × altura en mm. Ahora: '+s.wd+' × '+(s.hh||''),s.wd+' x '+(s.hh||(s.t==='win'?1200:2050)));if(t===null)return;const v=nn(t);if(!pos(v[0]))return;plPush();s.wd=v[0];if(pos(v[1]))s.hh=v[1];
+  }else if(s.t==='tx'){plAction('edt');return;}
+  else return;
+  plChanged();
+}
+function plQuickSave(){
+  const c=plProjCur();
+  if(!c){if(!PL.shapes.length){plMsg('No hay nada para guardar.');return;}plProjNew();return;}
+  if(c.pj.mode==='base'){plProjBase();return;}
+  const l=c.pj.lid&&c.p.plans.find(x=>x.id===c.pj.lid);
+  if(l){const ln=document.getElementById('plLn');if(ln)ln.value=l.name;}
+  plProjLayer();
+}
+function plMenuClose(){const m=document.getElementById('plmenu');if(m)m.remove();}
+function plMenuOpen(px,cx,cy){
+  plMenuClose();
+  const hit=plPick(px);if(hit>=0){PL.sel=hit;PL.draft=null;plFill();plDraw();}
+  const i=PL.sel,s=i>=0?PL.shapes[i]:null,items=[];
+  const add=(t,f)=>items.push([t,f]),hd=t=>items.push([t,null]);
+  if(s){
+    hd('Elemento elegido');
+    add('Modificar medidas…',plEditMeasures);
+    if(s.t==='door'||s.t==='win')add('Girar sentido',()=>plAction('flip'));
+    else if(['l','w','dim','r','rj','cl','it'].includes(s.t)){add('Girar 90°',()=>plRot(90));add('Girar un ángulo…',()=>plAction('rotn'));}
+    if(s.t==='cl')add('Cambiar sentido de los montantes',()=>plAction('cflip'));
+    if(s.t==='l'&&s.ins)add('Cambiar diámetro del tramo…',()=>plAction('dia'));
+    if(s.t==='tx')add('Editar texto…',()=>plAction('edt'));
+    if(s.t==='l'||s.t==='r'||s.t==='c')add('Convertir en pared',()=>plAction('towall'));
+    add('Duplicar',()=>plAction('dup'));add('Borrar',()=>plAction('del'));
+    hd('General');
+  }else hd('Plano');
+  add('Guardar rápido',plQuickSave);
+  add('Cambiar de plano…',()=>plMenuOpen2(cx,cy));
+  add('Deshacer',plUndo);add('Encuadrar todo',()=>plFit());add('Encuadrar la estructura principal',()=>plFit(true));
+  if(s)add('Quitar la selección',()=>{PL.sel=-1;plFill();plDraw();});
+  plMenuShow(items,cx,cy);
+}
+function plMenuOpen2(cx,cy){
+  const items=[],c=plProjCur(),all=plProjs(),add=(t,f)=>items.push([t,f]);
+  const go=(str)=>()=>{if(PL.proj&&PL.proj.mode==='layer'&&PL.shapes.some(x=>!x.lk)&&PL.proj.lid)plQuickSave();plProjAct(str);};
+  if(c){
+    items.push(['Proyecto «'+c.p.name+'»',null]);
+    add('Planta base',go('ebase:'+c.p.id));
+    c.p.plans.forEach(l=>add(l.name+(c.pj.lid===l.id?' (actual)':''),go('edit:'+c.p.id+':'+l.id)));
+    add('Capa nueva',go('open:'+c.p.id));
+    if(all.length>1){items.push(['Otros proyectos',null]);all.filter(p=>p.id!==c.p.id).forEach(p=>add(p.name,go('open:'+p.id)));}
+  }else{
+    items.push(['Mis proyectos',null]);
+    if(!all.length)items.push(['Todavía no hay proyectos. Creá uno desde «Proyectos y capas».',null]);
+    all.forEach(p=>add(p.name,go('open:'+p.id)));
+  }
+  plMenuShow(items,cx,cy);
+}
+function plMenuShow(items,cx,cy){
+  plMenuClose();
+  const m=document.createElement('div');m.id='plmenu';m.className='plmenu';m.setAttribute('role','menu');
+  items.forEach(([t,f])=>{
+    if(!f){const d=document.createElement('div');d.className='mh';d.textContent=t;m.appendChild(d);return;}
+    const b=document.createElement('button');b.type='button';b.textContent=t;b.onclick=()=>{plMenuClose();f();};m.appendChild(b);
+  });
+  document.body.appendChild(m);
+  const w=m.offsetWidth,h=m.offsetHeight;m.style.left=Math.max(6,Math.min(cx,window.innerWidth-w-6))+'px';m.style.top=Math.max(6,Math.min(cy,window.innerHeight-h-6))+'px';
+  setTimeout(()=>{const closer=e=>{if(!m.contains(e.target)){plMenuClose();document.removeEventListener('pointerdown',closer,true);}};document.addEventListener('pointerdown',closer,true);},0);
+}
+
+function plSideW(sh){const m=PL.cfg.sd||'auto';return m==='no'?0:(m==='si'||tramoList(sh).length)?64:0;}
+/* Rótulo lateral: planilla de materiales, tramos con sus cotas y lista de cortes por diámetro */
+function plSidePanel(ctx,sh,x,y,w,h,mm){
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();ctx.fillStyle='#fff';ctx.fillRect(x,y,w,h);ctx.strokeStyle='#111';ctx.lineWidth=.4*mm;ctx.strokeRect(x,y,w,h);
+  const fs=2.8*mm,px=x+2.5*mm,mw=w-5*mm;let cy=y+4.5*mm;const room=()=>cy<y+h-3*mm;
+  const cut=(t,wd)=>{while(t.length>3&&ctx.measureText(t).width>wd)t=t.slice(0,-2);return t;};
+  const T=(t,o)=>{o=o||{};ctx.font=(o.b?'700 ':'500 ')+(o.f||fs)+'px sans-serif';ctx.fillStyle=o.c||'#111';ctx.textBaseline='middle';
+    if(o.r){ctx.textAlign='right';ctx.fillText(t,x+w-2.5*mm,cy);}else{ctx.textAlign='left';ctx.fillText(cut(t,mw-(o.rw||0)-(o.ox||0)),px+(o.ox||0),cy);}};
+  const nl=k=>{cy+=(k||1)*fs*1.5;},ln=()=>{ctx.beginPath();ctx.moveTo(x,cy);ctx.lineTo(x+w,cy);ctx.lineWidth=.25*mm;ctx.strokeStyle='#111';ctx.stroke();};
+  const m2=v=>fmt(v/1000,2)+' m';
+  const pl=planilla(sh),tl=tramoList(sh);
+  T('PLANILLA DE MATERIALES',{b:1,f:3.1*mm});nl(.9);ln();nl(.7);
+  if(pl.length){
+    pl.forEach(g=>{if(!room())return;const I=instOf(g.ins);ctx.fillStyle=I[2];ctx.fillRect(px,cy-1.2*mm,4*mm,2.4*mm);
+      T(g.name+(g.dia?' Ø'+g.dia:'')+(g.mat?' · '+g.mat:''),{b:1,ox:5.5*mm,rw:16*mm});T(m2(g.len),{r:1,b:1});nl();
+      T(g.n+(g.n===1?' tramo':' tramos'),{c:'#555',f:2.5*mm,ox:5.5*mm});nl(1.1);});
+    if(room()){nl(.2);T('TRAMOS Y COTAS',{b:1,f:3.1*mm});nl(.9);ln();nl(.7);
+      tl.forEach(t=>{if(!room())return;T(t.id+(t.dia?'  Ø'+t.dia:''),{rw:16*mm});T(m2(t.len),{r:1});nl();});}
+    if(room()){nl(.5);T('LISTA DE CORTES',{b:1,f:3.1*mm});nl(.9);ln();nl(.7);
+      pl.forEach(g=>{if(!room())return;const c={};tl.filter(t=>t.ins===g.ins&&t.dia===g.dia&&t.mat===g.mat).forEach(t=>{const k=Math.round(t.len);c[k]=(c[k]||0)+1;});
+        T(g.name+(g.dia?' Ø'+g.dia:''),{b:1});nl();const txt=Object.keys(c).map(Number).sort((a,b)=>b-a).map(k=>k+(c[k]>1?' ×'+c[k]:'')).join(' · ');
+        let rest=txt;ctx.font='500 '+(2.6*mm)+'px sans-serif';while(rest&&room()){let cutAt=rest.length;while(cutAt>1&&ctx.measureText(rest.slice(0,cutAt)).width>mw)cutAt--;
+          if(cutAt<rest.length){const sp=rest.lastIndexOf(' ',cutAt);if(sp>0)cutAt=sp;}T(rest.slice(0,cutAt).trim(),{f:2.6*mm,c:'#333'});nl(.95);rest=rest.slice(cutAt).trim();}
+        nl(.3);});}
+  }else{
+    let wl=0,nd=0,nv=0;const it={};sh.forEach(q=>{if(q.t==='w'&&!q.k)wl+=pdist(q.a,q.b);else if(q.t==='door')nd++;else if(q.t==='win')nv++;else if(q.t==='it'&&ITEMS[q.k]){const n=ITEMS[q.k][0];it[n]=(it[n]||0)+1;}});
+    const rows=[];if(wl)rows.push(['Paredes (largo de eje)',m2(wl)]);if(nd)rows.push(['Puertas',nd+' u.']);if(nv)rows.push(['Ventanas',nv+' u.']);Object.keys(it).forEach(k=>rows.push([k,it[k]+' u.']));
+    if(!rows.length)T('Sin instalaciones en este plano',{c:'#555'});
+    rows.forEach(r=>{if(!room())return;T(r[0],{rw:16*mm});T(r[1],{r:1});nl();});
+  }
+  ctx.restore();
+}
 function plSetMode(m){PL.cal=null;PL.mode=m;PL.draft=null;PL.dn=null;PL.hover=null;PL.hover=null;if(m!=='sel')PL.sel=-1;plFill();plDraw();}
 /* ---- exportar ---- */
 function plSheet(dpi,opt){
   opt=opt||{};const sh=opt.sh||PL.shapes,inc=!opt.sh&&V('plIn')==='1'&&PL.bg&&PL.img,b=opt.b||unionB(sceneBounds(sh),inc?bgBounds(PL.bg):null);if(!b)return null;
-  const w=b[2]-b[0],h=b[3]-b[1],forced=+N('plSc')||+V('plS')||0,ps=opt.ps||paperScale(w,h,forced,V('plHj')||'A4'),mm=dpi/25.4;
+  const w=b[2]-b[0],h=b[3]-b[1],forced=+N('plSc')||+V('plS')||0,sw=opt.side!=null?opt.side:plSideW(sh),ps=opt.ps||paperScale(w,h,forced,V('plHj')||'A4',sw),mm=dpi/25.4;
   const cv=document.createElement('canvas');cv.width=Math.round(ps.pw*mm);cv.height=Math.round(ps.ph*mm);
   const ctx=cv.getContext('2d'),C=plColors(true);
   ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
@@ -1870,7 +2162,8 @@ function plSheet(dpi,opt){
   ctx.save();ctx.beginPath();ctx.rect(areaX-6*mm,areaY-6*mm,aw+12*mm,ah+12*mm);ctx.clip();
   if(inc)plDrawBg(ctx,PL.bg,PL.img,T,PL.bg.op);
   sceneDraw(ctx,sh,T,{k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub});ctx.restore();
-  if(PL.cfg.cmp)plCompass(ctx,(ps.pw-10-14)*mm,(24)*mm,8*mm,PL.cfg.no,C,dpi/96*.9);
+  if(PL.cfg.cmp)plCompass(ctx,(ps.pw-10-sw-14)*mm,(24)*mm,8*mm,PL.cfg.no,C,dpi/96*.9);
+  if(sw>0)plSidePanel(ctx,sh,(ps.pw-10-sw+1)*mm,10*mm,(sw-1)*mm,(ps.ph-10-24-3-10)*mm,mm);
   // cuadro de datos
   const bw=112*mm,bh=24*mm,bx=(ps.pw-10)*mm-bw,by=(ps.ph-10)*mm-bh;
   ctx.fillStyle='#fff';ctx.fillRect(bx,by,bw,bh);ctx.strokeStyle='#111';ctx.lineWidth=.4*mm;ctx.strokeRect(bx,by,bw,bh);
@@ -1924,7 +2217,7 @@ function plProjLabel(){
   return 'Proyecto «'+plEsc(c.p.name)+'» · '+(c.pj.mode==='base'?'editando la base':l?'editando la capa «'+plEsc(l.name)+'»':'capa nueva sin guardar')+(c.pj.vis&&c.pj.vis.length?' · mostrando '+c.pj.vis.length+' capa(s) encima':'');
 }
 function plProjApply(c,edit,msg){
-  plPush();PL.shapes=projCompose(c.p,c.pj,edit);PL.sel=-1;PL.last=[0,0];plChanged();plFit();if(msg)plMsg(msg);
+  plPush();PL.shapes=projCompose(c.p,c.pj,edit);PL.sel=-1;PL.last=[0,0];plChanged();plFit(true);if(msg)plMsg(msg);
 }
 function plProjNew(){
   const ne=document.getElementById('plPn'),name=((ne&&ne.value)||PL.cfg.title||'Proyecto '+plToday()).trim().slice(0,50);
@@ -1957,7 +2250,7 @@ function plProjBase(){
   if(c.pj.mode!=='base'){plMsg('La base está bloqueada. Para cambiarla abrí «Editar base» en Mis proyectos.');return;}
   const all=plProjs().slice(),p=all.find(x=>x.id===c.p.id);p.base=stripLk(PL.shapes);
   if(!plProjSave(all)){plMsg('No hay lugar para guardar en este dispositivo.');return;}
-  plProjPanel();plMsg('Base de «'+p.name+'» actualizada. Las capas no cambian; revisá que sigan encajando.');
+  plFit(true);plProjPanel();plMsg('Base de «'+p.name+'» actualizada. Las capas no cambian; revisá que sigan encajando.');
 }
 function plProjPanel(){
   const el=document.getElementById('plproj');if(!el)return;
@@ -1992,8 +2285,8 @@ function plPrintProject(id){
   const p=plProjs().find(x=>x.id===id);if(!p)return;
   const pages=projPages(p);let b=null;pages.forEach(pg=>{if(pg.sh.length)b=unionB(b,sceneBounds(pg.sh));});
   if(!b){plMsg('El proyecto no tiene nada para imprimir.');return;}
-  const forced=+N('plSc')||+V('plS')||0,sheet=V('plHj')||'A4',ps=paperScale(b[2]-b[0],b[3]-b[1],forced,sheet),dpi=150;
-  const imgs=pages.map(pg=>plSheet(dpi,{sh:pg.sh,b,ps,title:p.name,sub:pg.sub})).filter(Boolean);
+  const forced=+N('plSc')||+V('plS')||0,sheet=V('plHj')||'A4',sd=pages.some(pg=>plSideW(pg.sh))?64:0,ps=paperScale(b[2]-b[0],b[3]-b[1],forced,sheet,sd),dpi=150;
+  const imgs=pages.map(pg=>plSheet(dpi,{sh:pg.sh,b,ps,title:p.name,sub:pg.sub,side:sd})).filter(Boolean);
   const out=imgs.map(r=>{const url=r.cv.toDataURL('image/jpeg',.9),bin=atob(url.split(',')[1]),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
     return {jpg:u,pw:r.cv.width,ph:r.cv.height,wPt:ps.pw/25.4*72,hPt:ps.ph/25.4*72};});
   const pdf=buildPdfMulti(out,p.name);
@@ -2009,8 +2302,11 @@ function plInit(){
   const box=document.getElementById('plbox');
   box.addEventListener('click',e=>{
     const b=e.target.closest('button');if(!b)return;
-    if(b.dataset.m)plSetMode(b.dataset.m);else if(b.dataset.a)plAction(b.dataset.a);else if(b.dataset.p)plProjAct(b.dataset.p);else if(b.dataset.x)plExport(b.dataset.x);
+    if(b.dataset.i!==undefined)plSetIns(b.dataset.i);else if(b.dataset.m)plSetMode(b.dataset.m);else if(b.dataset.a)plAction(b.dataset.a);else if(b.dataset.p)plProjAct(b.dataset.p);else if(b.dataset.x)plExport(b.dataset.x);
   });
+  cv.addEventListener('contextmenu',e=>{e.preventDefault();if(PL.lpAt&&Date.now()-PL.lpAt<900)return;plLpCancel();PL.drag=null;PL.dn=null;const px=plPt(e);plMenuOpen(px,e.clientX,e.clientY);});
+  cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'){PL.cur=null;plDraw();}});
+  box.addEventListener('change',e=>{const t=e.target;if(t&&(t.id==='plDi'||t.id==='plMa')&&PL.mode==='sel'&&PL.sel>=0&&PL.shapes[PL.sel].t==='l'){plPush();const q=PL.shapes[PL.sel],v=t.value.trim().slice(0,t.id==='plDi'?14:24),k=t.id==='plDi'?'dia':'mat';if(v)q[k]=v;else delete q[k];plChanged();}});
   box.addEventListener('change',e=>{if(e.target.classList&&e.target.classList.contains('pljfile')&&e.target.files[0]){const fr=new FileReader();fr.onload=()=>plImport(String(fr.result));fr.readAsText(e.target.files[0]);e.target.value='';return;}
     if(e.target.classList&&e.target.classList.contains('plfile')){plLoadPhoto(e.target.files[0]);e.target.value='';}});
   box.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'&&e.key==='Enter'&&/^pl[LAXY]$/.test(e.target.id)){e.preventDefault();plAction('add');}});
@@ -2019,7 +2315,7 @@ function plInit(){
   window.addEventListener('keydown',function kd(e){
     if(!document.getElementById('plcv')){window.removeEventListener('keydown',kd);return;}
     if(/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName))return;
-    if(e.key==='Delete'||e.key==='Backspace')plAction('del');else if(e.key==='Escape'){PL.draft=null;PL.hover=null;plFill();plDraw();}
+    if(e.key==='Delete'||e.key==='Backspace')plAction('del');else if(e.key==='Escape'){plMenuClose();PL.draft=null;PL.hover=null;plFill();plDraw();}
     else if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();plUndo();}
   });
   setTimeout(()=>{if(PL.shapes.length)plFit();else{const r=cv.getBoundingClientRect();PL.view={s:Math.min(.12,(r.width-40)/3000),x0:24,y0:r.height-24};}plFill();plDraw();},0);
@@ -2031,7 +2327,7 @@ function tvRows(){
   let o='';
   for(let k=1;k<=TVN;k++){
     const g='tvg'+k;
-    o+=sel(tvi('tv',k),'Vano '+k,[['0','Sin vano'],['1','Puerta'],['2','Ventana']],'0','tvs'+k)
+    o+=sel(tvi('tv',k),'Vano '+k,[['0','Sin vano'],['1','Puerta'],['2','Ventana'],['3','Abertura sin puerta (paso libre)']],'0','tvs'+k)
       +fld(tvi('tvx',k),'Vano '+k+': distancia desde la izquierda',String(1000+(k-1)*1500),'mm',g)+fld(tvi('tvw',k),'Vano '+k+': ancho',k%2?'900':'1200','mm',g)
       +fld(tvi('tvh',k),'Vano '+k+': altura libre',k%2?'2050':'1200','mm',g)+fld(tvi('tvs',k),'Vano '+k+': alféizar (altura desde el piso)',k%2?'0':'900','mm',g);
   }
@@ -2053,7 +2349,7 @@ function tabSvg(r,L,H,vs){
   return `<figure class="fig" style="margin-top:12px"><svg viewBox="0 0 ${W+20} ${h+30}" role="img" aria-label="Esquema del tabique">${o}</svg><figcaption>Azul: montantes del tramo. Amarillo: montantes dobles de jamba y piezas de cada vano.</figcaption></figure>`;
 }
 function tabiqueTool(){
-  const DEF={1:[900,2050,0],2:[1200,1200,900]};
+  const DEF={1:[900,2050,0],2:[1200,1200,900],3:[1000,2100,0]};
   const vanos=[];let open=true;
   for(let k=1;k<=TVN;k++){
     const el=document.getElementById(tvi('tv',k));
@@ -2278,7 +2574,8 @@ const TOOLS=[
   ${sel('jfs','Sección del marco',[['rect','Caño cuadrado o rectangular'],['flat','Planchuela'],['angle','Perfil L'],['none','Sin marco']],'rect','','full')}
   ${fld('jfa','Ancho visible','40','mm')}${fld('jfb','Alto','40','mm')}${fld('jfc','Pared','2','mm')}
   ${fld('jp','Precio por kg (opcional)','','$')}
-  <p class="hint">Los barrotes van entre el marco de arriba y el de abajo, con la misma separación libre contra los costados. El marco se calcula con uniones a tope, sin pérdidas por corte.</p></div><div id="out"></div>`,
+  <p class="hint">Los barrotes van entre el marco de arriba y el de abajo, con la misma separación libre contra los costados. El marco se calcula con uniones a tope, sin pérdidas por corte.</p>
+  <h3 class="sec">Traer de un plano</h3><label class="f full" for="rly"><span>Plano de un proyecto (agrupados por proyecto)</span><div class="in"><select id="rly">${linkOptions()}</select></div></label><div class="btns full"><button type="button" class="pb on" data-lk="reja-get">Traer la primera reja del plano</button></div><p class="hint" id="rMsg">Carga ancho, alto y cantidad de barrotes de una reja dibujada en Planos.</p></div><div id="out"></div>`,
  calc(){
   const tabm=V('jt')==='tab';
   document.getElementById('jtab').hidden=!tabm;document.getElementById('jrj').hidden=tabm;
@@ -2699,16 +2996,22 @@ P4 1.298</textarea></div></label>
   <label class="f full" for="cp"><span>Piezas: largo × cantidad, una por línea</span><div class="in"><textarea id="cp" spellcheck="false">1200 x 4
 850 x 6
 430 x 8
-2100 x 2</textarea></div></label></div><div id="out"></div>`,
+2100 x 2</textarea></div></label>
+   <h3 class="sec">Vincular con un plano</h3>
+   <label class="f full" for="cly"><span>Plano de un proyecto (agrupados por proyecto)</span><div class="in"><select id="cly">${linkOptions()}</select></div></label>
+   <div class="btns full"><button type="button" class="pb on" data-lk="cut-get">Traer tramos del plano</button><button type="button" class="pb" data-lk="cut-upd">Actualizar medidas desde el plano</button><button type="button" class="pb" data-lk="cut-send">Enviar cambios al plano</button></div>
+   <p class="hint" id="cpMsg">Las líneas con «# G1» (número de tramo) quedan vinculadas: al abrir esta herramienta se actualizan solas con las medidas del plano, y al terminar de editar un largo se envía al plano. Los tramos se dibujan en Planos con «Línea de instalación».</p></div><div id="out"></div>`,
  calc(){
   const cmEl=document.getElementById('cm'), pick=catPick(cmEl.value);
   if(!cmEl.dataset.s){cmEl.dataset.s=cmEl.value;}
   else if(cmEl.dataset.s!==cmEl.value){cmEl.dataset.s=cmEl.value;if(pick)document.getElementById('cs').value=pick.len;}
   $('#chint').textContent=pick?(pick.ver?'Largo comercial habitual de esta línea: ':'Medida habitual, confirmala con tu proveedor (*): ')+fmt(pick.len,0)+' mm. Podés cambiarlo si tu barra es otra.':'Medidas con * son habituales pero no las pude confirmar en todos los comercios.';
+  {const cp=document.getElementById('cp');if(cp&&!cp.dataset.syn){cp.dataset.syn='1';const v=V('cly');if(v){const sh=linkShapes(v);if(sh){const r=cutsRefresh(cp.value,sh);if(r.n){cp.value=r.text;linkMsg('Se actualizaron '+r.n+' medida(s) con lo que cambió en el plano.');}}}}
+  if(cp&&!cp.dataset.ch){cp.dataset.ch='1';cp.addEventListener('change',()=>linkAct('cut-send',true));}}
   const S=N('cs'),k=N('ck')||0, pieces=[], bad=[];
   V('cp').split('\n').forEach(line=>{
     if(!line.trim())return;
-    const m=line.trim().match(/^([\d.,]+)\s*(?:[x×*]\s*(\d+))?$/i);
+    const m=line.trim().match(/^([\d.,]+)\s*(?:[x×*]\s*(\d+))?\s*(?:#.*)?$/i);
     if(!m){bad.push(line.trim());return;}
     const len=parseFloat(m[1].replace(',','.')), q=Math.min(500,m[2]?+m[2]:1);
     if(!(len>0)){bad.push(line.trim());return;}
@@ -2733,6 +3036,7 @@ P4 1.298</textarea></div></label>
  fig:()=>FIG.obra(),
  html:()=>`<div class="form">
   ${sel('ot','Trabajo',[['simple','Durlock: pared simple'],['doble','Durlock: pared doble'],['cielo','Durlock: cielorraso junta tomada'],['superboard','Superboard (placa cementicia)'],['desplegado','Metal desplegado'],['chapa','Chapa lisa / lagrimada (herrería)'],['malla','Malla electrosoldada'],['ladrillo','Mampostería de ladrillos'],['pintura','Pintura'],['revest','Pisos y revestimientos']],'simple','','full')}
+  <label class="f full" for="oly"><span>Traer paredes y aberturas de un plano (agrupados por proyecto)</span><div class="in"><select id="oly">${linkOptions()}</select></div></label><div class="btns full"><button type="button" class="pb on" data-lk="obra-get">Traer paredes y aberturas del plano</button></div><p class="hint" id="oMsg">Copia el largo de cada pared (con la altura del plano) y resta puertas y ventanas. Reemplaza las superficies de abajo.</p>
   <label class="f full" for="os"><span>Superficies: largo × alto (× cantidad), una por línea. Con − adelante se resta (puertas, ventanas). También vale "12 m2"</span><div class="in"><textarea id="os" spellcheck="false">4 x 2.6
 3 x 2.6 x 2
 - 0.9 x 2.1</textarea></div></label>
@@ -2778,14 +3082,16 @@ P4 1.298</textarea></div></label>
   <div class="plbar" id="plbar">${PLMODES.map(m=>`<button type="button" class="pb" data-m="${m[0]}" aria-pressed="false">${m[1]}</button>`).join('')}</div>
   <p class="hint" id="plhint" style="margin:6px 0 8px"></p>
   <div id="plwrap" class="plwrap"><canvas id="plcv" aria-label="Zona de dibujo"></canvas></div>
+  <div class="plbar sm" id="plIns"><span style="font-size:13px;color:var(--muted)">Línea de instalación:</span>${INSTS.map(x=>`<button type="button" class="pb" data-i="${x[0]}" aria-pressed="false"${x[0]?` style="border-left:7px solid ${x[2]}"`:''}>${x[1]}</button>`).join('')}</div>
+  <div class="form" style="margin:6px 0 0"><label class="f" for="plDi"><span>Diámetro o sección de las líneas nuevas</span><div class="in"><input id="plDi" type="text" autocomplete="off" placeholder="Ej.: 3/4 · Ø110 · 2,5 mm²"></div></label><label class="f" for="plMa"><span>Material de las líneas nuevas</span><div class="in"><input id="plMa" type="text" autocomplete="off" placeholder="Ej.: epoxi · termofusión · PVC · cobre"></div></label></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
    <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
-   <button type="button" class="pb" data-a="del">Borrar</button><button type="button" class="pb" data-a="dup">Duplicar</button>
-   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plRt" data-a="rot" hidden>Girar 90°</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button></div>
+   <button type="button" class="pb" data-a="meas">Modificar medidas</button><button type="button" class="pb" data-a="rotg">Girar 90°</button><button type="button" class="pb" data-a="rotn">Girar…</button><button type="button" class="pb" data-a="del">Borrar</button><button type="button" class="pb" data-a="dup">Duplicar</button>
+   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button></div>
   <div class="form" style="margin-top:14px">
    <h3 class="sec">Medida exacta</h3>
    ${fld('plL','Largo','1000','mm')}${fld('plA','Ángulo (0° = derecha, 90° = arriba)','0','°')}
@@ -2793,7 +3099,7 @@ P4 1.298</textarea></div></label>
    <div class="btns full"><button type="button" class="pb on" data-a="add">Agregar con esta medida</button><button type="button" class="pb" data-a="apply">Cambiar lo elegido</button></div>
    <p class="hint">Elegí Línea, Pared, Rectángulo o Círculo arriba. Se agrega desde el punto X, Y, que es el final de lo último que dibujaste.</p>
    <h3 class="sec">Aberturas: puertas, ventanas y portones</h3>
-   ${sel('plDk','Puerta',Object.entries(OPEN_D),'p1')}${sel('plWk','Ventana',Object.entries(OPEN_V),'v1')}
+   ${sel('plDk','Puerta o abertura sin puerta',Object.entries(OPEN_D),'p1')}${sel('plWk','Ventana',Object.entries(OPEN_V),'v1')}
    ${sel('plGk','Portón',Object.entries(OPEN_G),'g2')}${fld('plGw','Ancho del portón','3000','mm')}
    ${fld('plDh','Alto de las puertas','2050','mm')}${fld('plWh','Alto de las ventanas','1200','mm')}${fld('plWs','Alféizar de las ventanas','900','mm')}${fld('plGh','Alto del portón','2000','mm')}
    <p class="hint">Elegí Puerta, Ventana o Portón arriba y tocá una pared. Para moverla usá Elegir y arrastrala: se desliza sobre las paredes. «Girar sentido» cambia el lado de la bisagra y hacia dónde abre o corre. El ancho de la puerta y de la ventana está en Ajustes. Con una abertura elegida, Medida exacta cambia su ancho, alto y alféizar. «Cotas de ubicación» muestra cuánto hay desde cada puerta o ventana hasta las paredes de al lado, y desde cada ítem hasta la pared más cercana. «Medida de aberturas» pone ancho × alto sobre cada una.</p>
@@ -2827,6 +3133,7 @@ P4 1.298</textarea></div></label>
    ${fld('plO','Ancho de puerta','900','mm')}${fld('plV','Ancho de ventana','1200','mm')}
    ${fld('plVe','Ancho de vereda','3000','mm')}${fld('plCa','Ancho de calle (calzada)','8000','mm')}
    ${fld('plNo','Norte hacia (0° = derecha, 90° = arriba)','90','°')}
+   ${sel('plSd','Rótulo y planilla de materiales al costado de la hoja impresa',[['auto','Automático (si hay instalaciones)'],['si','Siempre'],['no','Nunca']],'auto','','full')}
    <h3 class="sec">Foto de un plano</h3>
    <label class="f full"><span>Sacá una foto o elegí la imagen de un plano</span><div class="in"><input type="file" accept="image/*" class="plfile"></div></label>
    <div class="btns full"><button type="button" class="pb on" data-m="cal">Calibrar escala</button><button type="button" class="pb" data-m="img">Mover foto</button><button type="button" class="pb" data-a="ir-">Girar −1°</button><button type="button" class="pb" data-a="ir+">Girar +1°</button><button type="button" class="pb" data-a="ir90">Girar 90°</button><button type="button" class="pb" data-a="rmimg">Quitar foto</button></div>
@@ -2846,7 +3153,7 @@ P4 1.298</textarea></div></label>
    <label class="f full" for="plLn"><span>Nombre de la capa (vacío = el tipo)</span><div class="in"><input id="plLn" type="text" autocomplete="off" placeholder="Ej.: Gas planta baja"></div></label>
    <div class="btns full"><button type="button" class="pb on" data-a="pnew">Crear proyecto con lo dibujado como base</button><button type="button" class="pb on" data-a="play">Guardar este plano como capa</button><button type="button" class="pb" data-a="pbase">Guardar cambios de la base</button></div>
    <p class="hint" id="plcur"></p>
-   <div class="btns full"><button type="button" class="pb" data-a="block">Bloquear lo dibujado</button><button type="button" class="pb" data-a="unblock">Desbloquear</button><button type="button" class="pb" data-a="pjs">Mis proyectos</button></div>
+   <div class="btns full"><button type="button" class="pb" data-a="block">Bloquear lo dibujado</button><button type="button" class="pb" data-a="unblock">Desbloquear</button><button type="button" class="pb" data-a="pjs">Mis proyectos</button><button type="button" class="pb" data-a="qsave">Guardar rápido</button><button type="button" class="pb" data-a="tocut">Guardar y ver tramos en Lista de corte</button></div>
    <p class="hint">Cada proyecto tiene una planta base y varias capas, una por instalación (gas, agua, cloaca, electricidad, cielorraso…). Dibujá la planta, tocá «Crear proyecto…» y la base queda tenue y fija. Dibujá la instalación encima y guardala como capa; repetí con las otras. En «Mis proyectos» abrís, editás, mirás varias capas juntas, borrás o imprimís. Todo se guarda en este dispositivo y navegador; para llevarlo a otro usá «Copiar este plano como código».</p>
    <div id="plproj" class="res" hidden style="margin-top:4px"></div>
    <h3 class="sec">Importar y guardar el plano</h3>
@@ -2883,6 +3190,8 @@ P4 1.298</textarea></div></label>
 
 /* ---------- navegación ---------- */
 const main=$('#main'), back=$('#back'), brand=$('#brand');
+main.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-lk]');if(b){e.preventDefault();linkAct(b.dataset.lk);}});
+
 const MEM={};
 function store(id){if(MEM[id])return MEM[id];try{return JSON.parse(localStorage.getItem('ta:'+id)||'{}');}catch(e){return {};}}
 function save(id){const o=Object.assign({},store(id));$$('#main input,#main select,#main textarea').forEach(e=>{if(e.id)o[e.id]=e.value;});persist(id,o);}
@@ -2892,6 +3201,54 @@ function home(){
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
   window.scrollTo(0,0);
+}
+
+/* ---- Vínculo entre herramientas y planos, agrupado por proyecto ---- */
+function linkOptions(){
+  let o='<option value="">— elegir plano —</option><option value="cur">Plano abierto ahora (sin proyecto)</option>';
+  plProjs().forEach(p=>{o+='<optgroup label="'+plEsc(p.name)+'"><option value="'+p.id+':base">Planta base</option>'+p.plans.map(x=>'<option value="'+p.id+':'+x.id+'">'+plEsc(x.name)+'</option>').join('')+'</optgroup>';});
+  return o;
+}
+function linkShapes(v){
+  const d=store('plano-d');
+  if(v==='cur')return Array.isArray(d.shapes)?d.shapes:[];
+  const [pid,lid]=String(v).split(':');
+  if(d&&d.proj&&d.proj.id===pid&&d.proj.lid===lid&&Array.isArray(d.shapes))return d.shapes;
+  const p=plProjs().find(x=>x.id===pid);if(!p)return null;
+  if(lid==='base')return p.base;const l=p.plans.find(x=>x.id===lid);return l?l.shapes:null;
+}
+function linkWrite(v,text){
+  const d=store('plano-d');let changed=[];
+  const live=v==='cur'||(d.proj&&v===d.proj.id+':'+d.proj.lid);
+  if(live&&Array.isArray(d.shapes)){const r=cutsToShapes(text,d.shapes);if(r.changed.length){changed=r.changed;persist('plano-d',Object.assign({},d,{shapes:r.shapes}));}}
+  if(v!=='cur'){const [pid,lid]=v.split(':'),all=plProjs().slice(),p=all.find(x=>x.id===pid),l=p&&p.plans.find(x=>x.id===lid);
+    if(l){const r=cutsToShapes(text,l.shapes);if(r.changed.length){l.shapes=r.shapes;plProjSave(all);changed=r.changed;}}}
+  return changed;
+}
+function linkMsg(t,id){const e=document.getElementById(id||'cpMsg');if(e)e.textContent=t;}
+function linkAct(k,quiet){
+  const g=id=>document.getElementById(id);
+  if(k.startsWith('cut')){
+    const v=V('cly'),cp=g('cp');if(!v||!cp){if(!quiet)linkMsg('Elegí primero un plano.');return;}
+    const sh=linkShapes(v);if(!sh){linkMsg('Ese plano ya no existe.');return;}
+    if(k==='cut-get'){
+      const t=cutsFromTramos(sh);if(!t){linkMsg('Ese plano no tiene tramos de instalación. En Planos elegí una «Línea de instalación» y dibujá.');return;}
+      cp.value=cp.value.split('\n').filter(l=>l.trim()&&!/#\s*[A-Za-z]{1,2}\d+/.test(l)).concat(t.split('\n')).join('\n');
+      cp.dispatchEvent(new Event('input',{bubbles:true}));linkMsg('Se trajeron '+t.split('\n').length+' tramos. Si cambiás un largo, se actualiza en el plano.');
+    }else if(k==='cut-upd'){const r=cutsRefresh(cp.value,sh);cp.value=r.text;cp.dispatchEvent(new Event('input',{bubbles:true}));linkMsg(r.n?'Se actualizaron '+r.n+' medida(s) desde el plano.':'Ya coincide con el plano.');}
+    else{const ch=linkWrite(v,cp.value);if(ch.length)linkMsg('Plano actualizado: '+ch.join(', ')+'. Abrí Planos para verlo.');else if(!quiet)linkMsg('No hay cambios para enviar.');}
+  }else if(k==='obra-get'){
+    const v=V('oly'),os=g('os');if(!v||!os){linkMsg('Elegí primero un plano.','oMsg');return;}
+    const sh=linkShapes(v)||[],d=store('plano-d'),t=surfFromShapes(sh,(d.cfg&&d.cfg.mh)||2600);
+    if(!t){linkMsg('Ese plano no tiene paredes ni aberturas.','oMsg');return;}
+    os.value=t;os.dispatchEvent(new Event('input',{bubbles:true}));linkMsg('Se trajeron '+t.split('\n').length+' líneas del plano.','oMsg');
+  }else if(k==='reja-get'){
+    const v=V('rly');if(!v){linkMsg('Elegí primero un plano.','rMsg');return;}
+    const rj=(linkShapes(v)||[]).find(x=>x.t==='rj');if(!rj){linkMsg('Ese plano no tiene rejas. En Planos usá la herramienta Reja.','rMsg');return;}
+    const r=normRect(rj.a,rj.b,0),fw=Math.min(rj.fr||40,r.W/3,r.H/3),L=rejaLayout(rj.a,rj.b,fw,rj.bw||12,rj.sp||110,rj.dir,rj.n||0);
+    const set=(id,x)=>{const e=g(id);if(e)e.value=x;};set('jw',Math.round(r.W));set('jh',Math.round(r.H));set('jn',L.n);set('jm','n');
+    g('jw').dispatchEvent(new Event('input',{bubbles:true}));linkMsg('Reja traída: '+Math.round(r.W)+' × '+Math.round(r.H)+' mm con '+L.n+' barrotes.','rMsg');
+  }
 }
 function openTool(t){
   document.title=t.name+' · Taller Acero';
