@@ -622,37 +622,39 @@ function tplLote(x,y,frente,fondo,vereda,calle,retiro,ext,solo){
        vano: null | {x (desde la izquierda), w (ancho), h (altura libre desde el piso), sill (alféizar, 0 en puerta)}} */
 function splitBar(len,bar){const full=Math.floor(len/bar+1e-9),rest=len-full*bar;return {full,rest:rest>1e-6?rest:0};}
 function tabiqueCalc(o){
-  const L=o.L,H=o.H,sep=o.sep,bar=o.bar,eps=1;
+  const L=o.L,H=o.H,sep=o.sep,bar=o.bar,eps=1,notes=[];
   let pos=[];
   if(o.reparto==='parejo'){const n=Math.max(2,Math.ceil(L/sep-1e-9)+1);for(let i=0;i<n;i++)pos.push(L*i/(n-1));}
   else{for(let x=0;x<L-1e-9;x+=sep)pos.push(x);pos.push(L);}
-  let v=o.vano&&o.vano.w>0?Object.assign({},o.vano):null,x0=0,x1=0,notes=[];
-  if(v){x0=Math.max(0,Math.min(L,v.x));x1=Math.max(x0,Math.min(L,v.x+v.w));v.sill=Math.max(0,v.sill||0);v.h=Math.min(H,Math.max(v.sill,v.h));if(v.x+v.w>L+eps)notes.push('El vano se sale del tabique y se recortó.');}
-  const inside=v?pos.filter(p=>p>x0+eps&&p<x1-eps):[];
-  let regular=v?pos.filter(p=>!(p>x0+eps&&p<x1-eps)):pos.slice();
-  if(v){[x0,x1].forEach(x=>{if(!regular.some(p=>Math.abs(p-x)<=eps))regular.push(x);});regular.sort((a,b)=>a-b);}
-  // jambas: un montante extra a cada lado del vano (montante doble)
-  const jamb=v?2:0;
-  const pieces=[];
+  let vs=(Array.isArray(o.vanos)?o.vanos:(o.vano?[o.vano]:[])).filter(v=>v&&v.w>0).map(v=>{
+    const c=Object.assign({},v);c.sill=Math.max(0,c.sill||0);c.x0=Math.max(0,Math.min(L,c.x));c.x1=Math.max(c.x0,Math.min(L,c.x+c.w));
+    c.h=Math.min(H,Math.max(c.sill,c.h));if(c.x+c.w>L+eps)notes.push('Un vano se sale del tabique y se recortó.');return c;
+  }).filter(v=>v.x1-v.x0>eps).sort((a,b)=>a.x0-b.x0);
+  {const ok=[];vs.forEach(v=>{const pv=ok[ok.length-1];if(pv&&v.x0<pv.x1-eps){notes.push('Dos vanos se superponen: se ignoró el que está más a la derecha.');return;}ok.push(v);});vs=ok;}
+  const inV=p=>vs.some(v=>p>v.x0+eps&&p<v.x1-eps);
+  let regular=pos.filter(p=>!inV(p));
+  vs.forEach(v=>[v.x0,v.x1].forEach(x=>{if(!regular.some(p=>Math.abs(p-x)<=eps))regular.push(x);}));
+  regular.sort((a,b)=>a-b);
+  // jambas: un montante extra a cada lado de cada vano (montante doble)
+  const jamb=2*vs.length,pieces=[];
   regular.forEach(()=>pieces.push(H));
   for(let i=0;i<jamb;i++)pieces.push(H);
   let cripAbove=0,cripBelow=0;
-  if(v){
-    inside.forEach(()=>{if(H-v.h>1){pieces.push(H-v.h);cripAbove++;}if(v.sill>1){pieces.push(v.sill);cripBelow++;}});
-  }
+  vs.forEach(v=>{pos.filter(p=>p>v.x0+eps&&p<v.x1-eps).forEach(()=>{
+    if(H-v.h>1){pieces.push(H-v.h);cripAbove++;}if(v.sill>1){pieces.push(v.sill);cripBelow++;}});});
   let mont=0,long=false;
   const full=pieces.filter(p=>p>bar),short=pieces.filter(p=>p<=bar);
   full.forEach(p=>{mont+=Math.ceil(p/bar-1e-9);long=true;});
   if(short.length)mont+=packCuts(bar,0,short).length;
   // soleras: se pueden empalmar, así que se cuentan barras enteras + recortes juntados
-  const runs=[L];                                  // solera superior
-  runs.push(v&&v.sill<=0?Math.max(0,L-(x1-x0)):L); // solera inferior (se interrumpe en una puerta)
-  if(v){runs.push(x1-x0);if(v.sill>0)runs.push(x1-x0);} // dintel y, en ventana, alféizar
+  const doorsW=vs.filter(v=>v.sill<=0).reduce((a,v)=>a+(v.x1-v.x0),0);
+  const runs=[L,Math.max(0,L-doorsW)];                       // solera superior e inferior (se interrumpe en puertas)
+  vs.forEach(v=>{runs.push(v.x1-v.x0);if(v.sill>0)runs.push(v.x1-v.x0);}); // dintel y, en ventanas, alféizar
   let sol=0;const rests=[];
   runs.forEach(r=>{if(r<=0)return;const sp=splitBar(r,bar);sol+=sp.full;if(sp.rest)rests.push(sp.rest);});
   if(rests.length)sol+=packCuts(bar,0,rests).length;
   const gaps=[];for(let i=1;i<pos.length;i++)gaps.push(pos[i]-pos[i-1]);
-  return {pos,gaps,regular,jamb,cripAbove,cripBelow,mont,sol,long,notes,total:regular.length+jamb+cripAbove+cripBelow,
+  return {pos,gaps,regular,jamb,cripAbove,cripBelow,mont,sol,long,notes,vanos:vs,total:regular.length+jamb+cripAbove+cripBelow,
           perfilM:(mont+sol)*bar/1000};
 }
 /* ---- Detección de líneas en una foto (solo horizontales y verticales) ---- */
@@ -734,14 +736,14 @@ function parsePlanoJson(txt){
         if(s.t==='l'){o.w=[1,2,3].includes(+s.w)?+s.w:2;if(['lm','le','cor'].includes(s.ls))o.ls=s.ls;}
         if((s.t==='l'||s.t==='w')&&s.nd)o.nd=1;
         if(s.t==='r')o.w=[1,2,3].includes(+s.w)?+s.w:2;
-        if(s.t==='w'){o.th=+s.th>0?+s.th:150;if(s.k==='v'||s.k==='c')o.k=s.k;else Object.assign(o,wallProps(s.m,s.x,s.r));}
+        if(s.t==='w'){o.th=+s.th>0?+s.th:150;if(s.k==='v'||s.k==='c')o.k=s.k;else Object.assign(o,wallProps(s.m,s.x,s.r,s.r2));}
         if(s.t==='dim')o.off=isFinite(s.off)?+s.off:100;}
     }else if(s.t==='rj'||s.t==='cl'){const a=P(s.a),b=P(s.b);if(a&&b){o={t:s.t,a,b};
       if(s.t==='rj'){o.fr=+s.fr>0?+s.fr:40;o.bw=+s.bw>0?+s.bw:12;o.sp=+s.sp>0?+s.sp:110;o.dir=s.dir==='h'?'h':'v';o.n=+s.n>0?Math.round(+s.n):0;}
       else{o.ins=+s.ins>=0?+s.ins:0;o.dir=s.dir==='y'?'y':'x';o.sp=+s.sp>0?+s.sp:400;o.bar=+s.bar>0?+s.bar:2600;}}
     }else if(s.t==='c'){const c=P(s.c);if(c&&+s.r>0)o={t:'c',c,r:+s.r,w:[1,2,3].includes(+s.w)?+s.w:2};}
     else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,120),h:+s.h>0?+s.h:150};}
-    else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;}}
+    else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;if(+s.hh>0)o.hh=+s.hh;if(s.t==='win'&&s.sl!=null&&+s.sl>=0)o.sl=+s.sl;}}
     else if(s.t==='it'){const p=P(s.p);if(p&&ITEMS[s.k]&&+s.w>0&&+s.h>0)o={t:'it',k:s.k,p,w:+s.w,h:+s.h,ang:isFinite(s.ang)?+s.ang:0};}
     if(o&&s.lk)o.lk=1;
     if(o)out.push(o);else dropped++;
@@ -764,17 +766,64 @@ function calibImage(bg,A,B,real,align){
 }
 function shrinkSize(w,h,max){const k=Math.min(1,max/Math.max(w,h));return [Math.max(1,Math.round(w*k)),Math.max(1,Math.round(h*k))];}
 /* Escala normalizada y hoja A4 que mejor entra (w,h en mm reales) */
-function paperScale(w,h,forced){
+function paperScale(w,h,forced,sheet){
   w=Math.max(w,1);h=Math.max(h,1);
-  const M=10,TB=30,out=[];
+  const M=10,TB=30,out=[],P=PAPER[sheet]||PAPER.A4;
   [true,false].forEach(land=>{
-    const pw=land?297:210,ph=land?210:297,aw=pw-2*M-12,ah=ph-2*M-TB-12;
+    const pw=land?P[0]:P[1],ph=land?P[1]:P[0],aw=pw-2*M-12,ah=ph-2*M-TB-12;
     const fit=d=>w/d<=aw&&h/d<=ah;
     const den=forced||PSCALES.find(fit)||PSCALES[PSCALES.length-1];
     out.push({land,den,fits:fit(den),pw,ph,aw,ah});
   });
   out.sort((a,b)=>(b.fits-a.fits)||(a.den-b.den)||(b.land-a.land));
   return out[0];
+}
+/* PDF de varias páginas, una imagen JPEG por página: pages=[{jpg,pw,ph,wPt,hPt}] */
+function buildPdfMulti(pages,title){
+  const enc=s=>{const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i)&255;return a;};
+  const parts=[],offs=[];let len=0;
+  const push=u=>{parts.push(u);len+=u.length;};
+  const obj=(n,head,stream)=>{offs[n]=len;push(enc(n+' 0 obj\n'+head));if(stream){push(stream);push(enc('\nendstream'));}push(enc('\nendobj\n'));};
+  const n=pages.length,info=3+n*3;
+  push(enc('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n'));
+  const safe=String(title||'Plano').replace(/[^\x20-\x7E]/g,'?').replace(/[()\\]/g,'');
+  obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2,'<< /Type /Pages /Kids ['+pages.map((_,i)=>(3+i*3)+' 0 R').join(' ')+'] /Count '+n+' >>');
+  pages.forEach((p,i)=>{
+    const pg=3+i*3,im=pg+1,ct=pg+2,cs='q '+p.wPt.toFixed(2)+' 0 0 '+p.hPt.toFixed(2)+' 0 0 cm /Im0 Do Q';
+    obj(pg,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+p.wPt.toFixed(2)+' '+p.hPt.toFixed(2)+'] /Resources << /XObject << /Im0 '+im+' 0 R >> >> /Contents '+ct+' 0 R >>');
+    obj(im,'<< /Type /XObject /Subtype /Image /Width '+p.pw+' /Height '+p.ph+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+p.jpg.length+' >>\nstream\n',p.jpg);
+    obj(ct,'<< /Length '+cs.length+' >>\nstream\n',enc(cs));
+  });
+  obj(info,'<< /Title ('+safe+') /Producer (Taller Acero) >>');
+  const xr=len;let x='xref\n0 '+(info+1)+'\n0000000000 65535 f \n';
+  for(let i=1;i<=info;i++)x+=String(offs[i]).padStart(10,'0')+' 00000 n \n';
+  push(enc(x+'trailer\n<< /Size '+(info+1)+' /Root 1 0 R /Info '+info+' 0 R >>\nstartxref\n'+xr+'\n%%EOF\n'));
+  const out=new Uint8Array(len);let o=0;parts.forEach(u=>{out.set(u,o);o+=u.length;});
+  return out;
+}
+/* ---- Proyectos: una planta base y varias capas (gas, agua, cloaca, electricidad…) ---- */
+const PLKINDS=[['gas','Gas'],['agua','Agua fría y caliente'],['cloaca','Cloaca y pluvial'],['elec','Electricidad'],['ciel','Cielorraso'],['est','Estructura'],['her','Herrería y rejas'],['otro','Otro']];
+const cloneS=a=>JSON.parse(JSON.stringify(a));
+const stripLk=a=>cloneS(a).map(x=>{delete x.lk;return x;});
+/* Lo que se ve en pantalla: la base bloqueada (lk 1), las capas que se muestran encima (lk 2) y lo que se edita */
+function projCompose(p,pj,edit){
+  if(pj.mode==='base')return stripLk(edit);
+  const base=cloneS(p.base).map(x=>Object.assign(x,{lk:1})),ov=[];
+  (pj.vis||[]).forEach(id=>{if(id===pj.lid)return;const l=p.plans.find(q=>q.id===id);if(l)cloneS(l.shapes).forEach(x=>{x.lk=2;ov.push(x);});});
+  return base.concat(ov,stripLk(edit));
+}
+function projSaveLayer(p,name,shapes){
+  const sh=cloneS(shapes.filter(s=>!s.lk)),ex=p.plans.find(q=>q.name===name);
+  if(ex){ex.shapes=sh;return ex.id;}
+  const id='l'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36);p.plans.push({id,name,shapes:sh});return id;
+}
+/* Hojas a imprimir de un proyecto: la planta base y cada capa sobre la base */
+function projPages(p){
+  const pg=[];
+  if(p.base.length)pg.push({sh:cloneS(p.base),sub:'Planta base'});
+  p.plans.forEach(l=>pg.push({sh:cloneS(p.base).map(x=>Object.assign(x,{lk:1})).concat(cloneS(l.shapes)),sub:l.name}));
+  return pg;
 }
 /* PDF de una página con una imagen JPEG (wPt,hPt en puntos) */
 function buildPdf(jpg,pw,ph,wPt,hPt,title){
@@ -863,12 +912,12 @@ function cieloSum(list,bar){
 
 /* ---- Paredes con material, aberturas e ítems ---- */
 const WMAT={ot:'Sin definir',lh:'Ladrillo hueco',lc:'Ladrillo común',bl:'Bloque de hormigón',ho:'Hormigón armado',dr:'Durlock / steel frame',mo:'Madera'};
-const WREV={no:'Sin revestimiento',rv:'Revoque y pintura',lv:'Ladrillo visto',ce:'Cerámico / porcelanato',pc:'Placa cementicia',tx:'Texturado / símil piedra'};
+const WREV={no:'Sin revestimiento',rv:'Revoque y pintura',lv:'Ladrillo visto',ce:'Cerámico / porcelanato',pc:'Placa cementicia',tx:'Texturado / símil piedra',do:'Durlock sobre perfiles omega',dm:'Durlock sobre montantes y soleras'};
 const OPEN_D={p1:'Puerta 1 hoja batiente',p2:'Puerta 2 hojas batientes',pc:'Puerta corrediza'};
 const OPEN_V={v1:'Ventana fija o simple',vc:'Ventana corrediza',v2:'Ventana 2 hojas de abrir'};
 const OPEN_G={g2:'Portón 2 hojas batientes',gc:'Portón corredizo'};
 const ITEMS={esc:['Escalera recta',900,2800],eca:['Escalera caracol',1500,1500],inod:['Inodoro',400,700],bide:['Bidet',400,600],lava:['Lavatorio',500,400],bana:['Bañera',700,1700],duch:['Ducha',800,800],coci:['Cocina',600,600],mesd:['Mesada con pileta',600,1800],hela:['Heladera',700,700],cama:['Cama 2 plazas',1600,2000],mesa:['Mesa con sillas',900,1500],plac:['Placard',600,1800],sofa:['Sillón',800,2000],col:['Columna',300,300]};
-function wallProps(mt,mx,mr){const o={};if(mt&&mt!=='ot'&&WMAT[mt])o.m=mt;if(mx==='e'||mx==='i')o.x=mx;if(mr&&mr!=='no'&&WREV[mr])o.r=mr;return o;}
+function wallProps(mt,mx,mr,mr2){const o={};if(mt&&mt!=='ot'&&WMAT[mt])o.m=mt;if(mx==='e'||mx==='i')o.x=mx;if(mr&&mr!=='no'&&WREV[mr])o.r=mr;if(mr2&&mr2!=='no'&&WREV[mr2])o.r2=mr2;return o;}
 /* Mitad del espesor de la pared que se une en cada extremo (para pasar de medida de eje a interior y exterior) */
 function wallEnds(sh,i){
   const s=sh[i],r=[0,0];
@@ -894,16 +943,80 @@ function shapeToWalls(s,th,pr){
   if(s.t==='c'&&s.r>0)return circleWalls(s.c,s.r,th,pr);
   return null;
 }
-/* Resumen de paredes por ubicación y material. h = altura (mm). Sin descontar aberturas. */
+/* Pared sobre la que está una abertura (la más cercana) y posición a lo largo de ella */
+function openingWall(sh,i){
+  const s=sh[i];let best=null,bd=Infinity;
+  sh.forEach((w,j)=>{
+    if(w.t!=='w'||w.k)return;
+    const dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1],l2=dx*dx+dy*dy;if(!l2)return;
+    let t=((s.p[0]-w.a[0])*dx+(s.p[1]-w.a[1])*dy)/l2;t=Math.max(0,Math.min(1,t));
+    const q=[w.a[0]+t*dx,w.a[1]+t*dy],d=pdist(s.p,q);
+    if(d<bd&&d<=(w.th||150)/2+5){bd=d;best={j,t:t*Math.sqrt(l2),L:Math.sqrt(l2)};}
+  });
+  return best;
+}
+/* Distancia de una abertura a la cara de las paredes que se unen en cada extremo de su pared */
+function openingGaps(sh,i){
+  const s=sh[i],ow=openingWall(sh,i);if(!ow)return null;
+  const ln=wallLens(sh,ow.j);
+  return {j:ow.j,t:ow.t,L:ow.L,g0:ow.t-s.wd/2-ln.e0,g1:ow.L-ow.t-s.wd/2-ln.e1};
+}
+/* Distancia de un ítem a la pared más cercana en las 4 direcciones (arriba, abajo, izquierda, derecha) */
+function itemGaps(sh,i){
+  const s=sh[i],r=(s.ang||0)*Math.PI/180,hx=Math.abs(Math.cos(r))*s.w/2+Math.abs(Math.sin(r))*s.h/2,hy=Math.abs(Math.sin(r))*s.w/2+Math.abs(Math.cos(r))*s.h/2,out=[];
+  [[1,0,hx],[-1,0,hx],[0,1,hy],[0,-1,hy]].forEach(([dx,dy,hh])=>{
+    const O=[s.p[0]+dx*hh,s.p[1]+dy*hh];let best=Infinity;
+    sh.forEach(w=>{
+      if(w.t!=='w'||w.k)return;
+      const ex=w.b[0]-w.a[0],ey=w.b[1]-w.a[1],den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)return;
+      const t=((w.a[0]-O[0])*ey-(w.a[1]-O[1])*ex)/den,u=((w.a[0]-O[0])*dy-(w.a[1]-O[1])*dx)/den;
+      if(t<-1||u<-1e-9||u>1+1e-9)return;
+      const L=Math.hypot(ex,ey),nrm=[-ey/L,ex/L],cs=Math.abs(dx*nrm[0]+dy*nrm[1]);if(cs<1e-6)return;
+      const d=t-((w.th||150)/2)/cs;if(d>=-1&&d<best)best=d;
+    });
+    if(isFinite(best)&&best>1)out.push({o:O,e:[O[0]+dx*best,O[1]+dy*best],d:best});
+  });
+  return out;
+}
+/* Resumen de paredes por ubicación y material, descontando puertas y ventanas.
+   cara 1 = la que mira hacia afuera, cara 2 = la otra. h = altura (mm). */
 function wallStats(sh,h){
-  const rows={},rev={};let len=0;
+  const rows={},rev={},dl={do:[],dm:[]},dlA={do:0,dm:0},openA={};
+  sh.forEach((s,k)=>{
+    if(s.t!=='door'&&s.t!=='win')return;
+    const ow=openingWall(sh,k);if(!ow)return;
+    const oh=s.hh>0?s.hh:(s.t==='win'?1200:2050);openA[ow.j]=(openA[ow.j]||0)+s.wd*Math.min(oh,h);
+  });
+  let len=0,open=0;
   sh.forEach((s,i)=>{
     if(s.t!=='w'||s.k)return;
-    const ln=wallLens(sh,i),th=s.th||150,key=(s.x||'-')+'|'+(s.m||'ot'),r=rows[key]||(rows[key]={x:s.x||'',m:s.m||'ot',len:0,area:0,vol:0});
-    r.len+=ln.c;r.area+=ln.c*h;r.vol+=ln.c*th*h;len+=ln.c;
-    if(s.r)rev[s.r]=(rev[s.r]||0)+(s.x==='e'?ln.e*h:2*ln.c*h);
+    const ln=wallLens(sh,i),th=s.th||150,oa=Math.min(openA[i]||0,ln.c*h),net=ln.c*h-oa,key=(s.x||'-')+'|'+(s.m||'ot'),r=rows[key]||(rows[key]={x:s.x||'',m:s.m||'ot',len:0,area:0,vol:0});
+    r.len+=ln.c;r.area+=net;r.vol+=net*th;len+=ln.c;open+=oa;
+    const l1=s.x==='e'?ln.e:ln.c,l2=s.x==='e'?ln.i:ln.c;
+    [[s.r,l1],[s.r2,l2]].forEach(([rv,fl])=>{
+      if(!rv)return;const a=Math.max(0,fl*h-oa);rev[rv]=(rev[rv]||0)+a;
+      if(rv==='do'||rv==='dm'){dl[rv].push({L:fl,H:h,q:1});dlA[rv]+=a;}
+    });
   });
-  return {rows:Object.values(rows),rev,len};
+  return {rows:Object.values(rows),rev,len,dl,dlA,open};
+}
+/* Durlock sobre pared: dm = montantes y soleras, do = perfiles omega. items [{L,H,q}] y A en mm². */
+function durlockCalc(items,kind,o){
+  const out=[],A=o.A;if(!(A>0)||!items.length)return out;
+  const c=Math.ceil,m2=A/1e6,w=1+(o.waste||0)/100,sep=o.sep,bar=o.bar;
+  const scr2=sep<=400?30:sep<=480?26:22,scr1=sep<=400?10:8;
+  out.push({label:'Placas de yeso',q:c(m2*w/o.plate-1e-9),u:'u.',key:1});
+  const r=perfilesPared(items,sep,bar);
+  if(kind==='dm'){
+    out.push({label:'Montantes de '+bar+' mm',q:r.mont,u:'u.',key:1},{label:'Soleras de '+bar+' mm',q:r.sol,u:'u.',key:1});
+    out.push({label:'Tornillos T1 (perfil)',q:c(m2*scr1),u:'u.'});
+  }else{
+    let n=0,tot=0;items.forEach(it=>{const nm=(c(it.L/sep-1e-9)+1)*it.q;n+=nm;tot+=nm*it.H;});
+    out.push({label:'Perfiles omega de '+bar+' mm',q:r.mont,u:'u.',key:1},{label:'Omegas colocados',q:n,u:'u.'});
+    out.push({label:'Tarugos y tornillos de fijación (c/50 cm)',q:c(tot/500),u:'u.'});
+  }
+  out.push({label:'Tornillos T2 (placa)',q:c(m2*scr2),u:'u.'},{label:'Cinta para juntas',q:m2*3.3,u:'m'},{label:'Masilla',q:m2*1.8,u:'kg'});
+  return out;
 }
 /*CALC-END*/
 
@@ -1105,7 +1218,7 @@ function matRows(d){
   const o=Object.assign({},store('mats'));o.mrows=String(matN);persist('mats',o);
   openTool(TOOLS.find(x=>x.id==='mats'));
 }
-const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el norte en otra dirección, cambiá el ángulo en Ajustes (90° = arriba, 0° = derecha, 180° = izquierda, 270° = abajo). Sale también en el PDF y el PNG.'],['Línea municipal (L.M.)','Límite entre tu lote y la vereda, o sea el espacio público. Se dibuja con trazo y punto.'],['Línea de edificación (L.E.)','Línea hasta donde se puede construir. A veces coincide con la línea municipal y a veces hay un retiro de frente.'],['Vereda y calle','La vereda va entre la línea municipal y el cordón, y la calle (calzada) está del otro lado del cordón. Los anchos que vienen cargados son de ejemplo: usá los de tu municipio.'],['Escuadra','Obliga a que las líneas queden horizontales o verticales. Apagala para dibujar en diagonal.'],['Imán','Los puntos se ajustan a la cuadrícula elegida y a las esquinas de lo ya dibujado, así las medidas salen redondas.'],['Cotas auto','Muestra la medida de cada línea, pared o rectángulo. La herramienta Cota agrega una medida entre dos puntos que vos elegís.'],['Pared','Línea gruesa con el espesor indicado. Su medida es de eje a eje (por el centro de la pared).'],['Puerta y ventana','Se apoyan sobre la pared que tocás y se alinean con ella. Elegida una puerta, Invertir cambia el lado de la bisagra y hacia dónde abre.'],['Aberturas','Puerta, ventana y portón tienen varios tipos: de una hoja o dos, batientes o corredizos. Elegida una, Girar sentido cambia el lado de la bisagra o de corrida. Arrastrándola con Elegir se desliza sobre las paredes.'],['Pared exterior e interior','Cada pared puede tener ubicación, material (ladrillo, bloque, hormigón, Durlock, madera) y revestimiento. Se ve con un rayado distinto por material, un borde más grueso en las exteriores y una franja de color para el revestimiento.'],['Medidas de eje, interior y exterior','Eje es por el centro de la pared. Interior y exterior descuentan o suman el espesor donde se une otra pared. El lado «exterior» se decide con el centro de todas las paredes del plano, así que en construcciones raras revisalo. Cada medida se prende y apaga con su botón.'],['Ítems','Escaleras, sanitarios y muebles vistos desde arriba, para ubicar cada cosa a escala. Sirven de referencia: no reemplazan el cálculo de la escalera.'],['Plano base','Es la planta (paredes, aberturas, medidas) que repetís en varios planos. Al abrirla bloqueada queda tenue y fija, para dibujar encima cada instalación sin mover nada de la base. Lo guardado no cambia al editar: solo si lo guardás de nuevo.'],['Escala','1:50 quiere decir que 50 mm reales se dibujan como 1 mm en el papel. Imprimí al 100 % para que las medidas sean exactas.'],['Elegir','Tocá una figura para moverla, borrarla o cambiarle la medida desde los campos de Medida exacta.']];
+const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el norte en otra dirección, cambiá el ángulo en Ajustes (90° = arriba, 0° = derecha, 180° = izquierda, 270° = abajo). Sale también en el PDF y el PNG.'],['Línea municipal (L.M.)','Límite entre tu lote y la vereda, o sea el espacio público. Se dibuja con trazo y punto.'],['Línea de edificación (L.E.)','Línea hasta donde se puede construir. A veces coincide con la línea municipal y a veces hay un retiro de frente.'],['Vereda y calle','La vereda va entre la línea municipal y el cordón, y la calle (calzada) está del otro lado del cordón. Los anchos que vienen cargados son de ejemplo: usá los de tu municipio.'],['Escuadra','Obliga a que las líneas queden horizontales o verticales. Apagala para dibujar en diagonal.'],['Imán','Los puntos se ajustan a la cuadrícula elegida y a las esquinas de lo ya dibujado, así las medidas salen redondas.'],['Cotas auto','Muestra la medida de cada línea, pared o rectángulo. La herramienta Cota agrega una medida entre dos puntos que vos elegís.'],['Pared','Línea gruesa con el espesor indicado. Su medida es de eje a eje (por el centro de la pared).'],['Puerta y ventana','Se apoyan sobre la pared que tocás y se alinean con ella. Elegida una puerta, Invertir cambia el lado de la bisagra y hacia dónde abre.'],['Aberturas','Puerta, ventana y portón tienen varios tipos: de una hoja o dos, batientes o corredizos. Elegida una, Girar sentido cambia el lado de la bisagra o de corrida. Arrastrándola con Elegir se desliza sobre las paredes.'],['Pared exterior e interior','Cada pared puede tener ubicación, material (ladrillo, bloque, hormigón, Durlock, madera) y revestimiento. Se ve con un rayado distinto por material, un borde más grueso en las exteriores y una franja de color para el revestimiento.'],['Medidas de eje, interior y exterior','Eje es por el centro de la pared. Interior y exterior descuentan o suman el espesor donde se une otra pared. El lado «exterior» se decide con el centro de todas las paredes del plano, así que en construcciones raras revisalo. Cada medida se prende y apaga con su botón.'],['Ítems','Escaleras, sanitarios y muebles vistos desde arriba, para ubicar cada cosa a escala. Sirven de referencia: no reemplazan el cálculo de la escalera.'],['Proyectos y capas','Un proyecto reúne la planta base y un plano por instalación. Las capas se dibujan sobre la base bloqueada y se pueden mirar juntas con «Ver encima». «Imprimir todo a escala» arma un PDF con una hoja por capa, todas con la misma escala y hoja que elijas en Exportar.'],['Plano base','Es la planta (paredes, aberturas, medidas) que repetís en varios planos. Al abrirla bloqueada queda tenue y fija, para dibujar encima cada instalación sin mover nada de la base. Lo guardado no cambia al editar: solo si lo guardás de nuevo.'],['Escala','1:50 quiere decir que 50 mm reales se dibujan como 1 mm en el papel. Imprimí al 100 % para que las medidas sean exactas.'],['Elegir','Tocá una figura para moverla, borrarla o cambiarle la medida desde los campos de Medida exacta.']];
 
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
@@ -1191,7 +1304,7 @@ function sceneDraw(ctx,sh,T,o){
   drawScene(ctx,fr,T,Object.assign({},o,{sel:(o.sel||[]).map(i=>map.indexOf(i)).filter(i=>i>=0)}));
 }
 const MATCOL={lh:'rgba(214,120,70,.42)',lc:'rgba(176,64,44,.45)',bl:'rgba(120,130,142,.5)',ho:'rgba(90,92,104,.55)',dr:'rgba(110,170,215,.42)',mo:'rgba(190,140,70,.5)'};
-const REVCOL={rv:'#d9b894',lv:'#b3452d',ce:'#3d8fa8',pc:'#8c9097',tx:'#c9ad5f'};
+const REVCOL={rv:'#d9b894',lv:'#b3452d',ce:'#3d8fa8',pc:'#8c9097',tx:'#c9ad5f',do:'#7fb2e0',dm:'#4f86c6'};
 function drawScene(ctx,sh,T,o){
   const k=o.k||1,C=o.col,sel=o.sel||[],S=T.s,X=x=>T.x0+x*S,Y=y=>T.y0-y*S,u=o.unit||'mm';
   ctx.lineCap='round';ctx.lineJoin='round';
@@ -1235,10 +1348,10 @@ function drawScene(ctx,sh,T,o){
     ctx.restore();
   });
   walls.forEach(([s])=>{
-    if(!REVCOL[s.r])return;
+    if(!REVCOL[s.r]&&!REVCOL[s.r2])return;
     const th=s.th||150,dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L,off=th/2+2.2*k/S,osd=outerSide(s,cen);
-    const sides=s.x==='e'?[osd]:[1,-1];ctx.lineCap='butt';
-    sides.forEach(g=>seg([s.a[0]+nx*off*g,s.a[1]+ny*off*g],[s.b[0]+nx*off*g,s.b[1]+ny*off*g],REVCOL[s.r],3.2*k));
+    ctx.lineCap='butt';
+    [[s.r,osd],[s.r2,-osd]].forEach(([rv,g])=>{if(!REVCOL[rv])return;seg([s.a[0]+nx*off*g,s.a[1]+ny*off*g],[s.b[0]+nx*off*g,s.b[1]+ny*off*g],REVCOL[rv],3.2*k);});
   });
   ctx.lineCap='round';
   // aberturas
@@ -1308,6 +1421,17 @@ function drawScene(ctx,sh,T,o){
   });
   // cotas
   const dm=(a,b,off,txt,ext)=>plDim(ctx,[X(a[0]),Y(a[1])],[X(b[0]),Y(b[1])],off,txt,k,C,ext);
+  if(o.ub)sh.forEach((s,i)=>{
+    if(s.t==='door'||s.t==='win'){
+      const g=openingGaps(sh,i);if(!g)return;
+      const w=sh[g.j],dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1],L0=Math.hypot(dx,dy)||1,ux=dx/L0,uy=dy/L0,ln=wallLens(sh,g.j),osd=outerSide(w,cen);
+      const offp=(osd!==1?-1:1)*((w.th||150)*S/2+26*k),P=t=>[w.a[0]+ux*t,w.a[1]+uy*t];
+      if(g.g0>1)dm(P(ln.e0),P(g.t-s.wd/2),offp,dimTxt(g.g0,u),false);
+      if(g.g1>1)dm(P(g.t+s.wd/2),P(g.L-ln.e1),offp,dimTxt(g.g1,u),false);
+    }else if(s.t==='it'){
+      itemGaps(sh,i).forEach(q=>dm(q.o,q.e,0,dimTxt(q.d,u),false));
+    }
+  });
   sh.forEach((s,i)=>{
     if(s.t==='dim'){dm(s.a,s.b,-s.off*S*(1),dimTxt(pdist(s.a,s.b),u),true);}
     else if(o.dims){
@@ -1327,13 +1451,13 @@ function drawScene(ctx,sh,T,o){
       else if(s.t==='r'||s.t==='rj'){const x0=Math.min(s.a[0],s.b[0]),x1=Math.max(s.a[0],s.b[0]),y0=Math.min(s.a[1],s.b[1]),y1=Math.max(s.a[1],s.b[1]);
         dm([x0,y0],[x1,y0],16*k,dimTxt(x1-x0,u),false);dm([x1,y0],[x1,y1],16*k,dimTxt(y1-y0,u),false);}
       else if(s.t==='c'){ctx.save();ctx.fillStyle=C.ink;ctx.font='600 '+(11*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Ø '+dimTxt(2*s.r,u),X(s.c[0]),Y(s.c[1]));ctx.restore();}
-      else if(s.t==='door'||s.t==='win'){ctx.save();ctx.fillStyle=C.muted;ctx.font='600 '+(10*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(dimTxt(s.wd,u),X(s.p[0]),Y(s.p[1])+(s.t==='win'?-14*k:14*k));ctx.restore();}
+      else if((s.t==='door'||s.t==='win')&&o.od!==false){ctx.save();ctx.fillStyle=C.muted;ctx.font='600 '+(10*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(dimTxt(s.wd,u)+(s.hh>0?' × '+dimTxt(s.hh,u):'')+(s.t==='win'&&s.sl!=null?' · alf '+dimTxt(s.sl,u):''),X(s.p[0]),Y(s.p[1])+(s.t==='win'?-14*k:14*k));ctx.restore();}
     }
   });
 }
 function plShapeFrom(mode,a,b){
   if(mode==='l')return {t:'l',a,b,w:PL.cfg.lw};
-  if(mode==='w')return Object.assign({t:'w',a,b,th:PL.cfg.th},wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr));
+  if(mode==='w')return Object.assign({t:'w',a,b,th:PL.cfg.th},wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2));
   if(mode==='r')return {t:'r',a,b,w:PL.cfg.lw};
   if(mode==='c')return {t:'c',c:a,r:pdist(a,b),w:PL.cfg.lw};
   if(mode==='dim')return {t:'dim',a,b,off:16/PL.view.s};
@@ -1349,10 +1473,10 @@ function plShapeFrom(mode,a,b){
   return null;
 }
 /* ---- estado, historial, guardado ---- */
-function plSave(){persist('plano-d',{shapes:PL.shapes,view:PL.view,cfg:PL.cfg,last:PL.last,bg:PL.bg});}
+function plSave(){persist('plano-d',{shapes:PL.shapes,view:PL.view,cfg:PL.cfg,last:PL.last,bg:PL.bg,proj:PL.proj||null});}
 function plLoad(){
   const d=store('plano-d');
-  if(d&&Array.isArray(d.shapes)){PL.shapes=d.shapes;if(d.view&&d.view.s>0)PL.view=d.view;PL.last=d.last||[0,0];Object.assign(PL.cfg,d.cfg||{});PL.bg=d.bg||null;}
+  if(d&&Array.isArray(d.shapes)){PL.shapes=d.shapes;if(d.view&&d.view.s>0)PL.view=d.view;PL.last=d.last||[0,0];Object.assign(PL.cfg,d.cfg||{});PL.bg=d.bg||null;PL.proj=d.proj||null;}
   PL.img=null;
   if(PL.bg){const sv=store('plano-img');if(sv&&sv.src){const im=new Image();im.onload=()=>{PL.img=im;plDraw();};im.src=sv.src;}else PL.bg=null;}
 }
@@ -1430,9 +1554,11 @@ function plReport(){
     if(st.len>0){
       st.rows.forEach((r,i)=>{rows+=row((r.x==='e'?'Exterior':r.x==='i'?'Interior':'Sin ubicación')+' · '+WMAT[r.m],fmt(r.len/1000,2),'m'+' · '+fmt(r.area/1e6,2)+' m² · '+fmt(r.vol/1e9,2)+' m³',i?'':'key');});
       Object.keys(st.rev).forEach(k=>{rows+=row('Revestimiento: '+WREV[k],fmt(st.rev[k]/1e6,2),'m²');});
+      if(st.open>0)rows+=row('Aberturas descontadas',fmt(st.open/1e6,2),'m²');
+      ['dm','do'].forEach(kd=>{const dq=durlockCalc(st.dl[kd],kd,{sep:PL.cfg.ds||400,bar:PL.cfg.db||2600,plate:PL.cfg.dp||2.88,waste:isFinite(PL.cfg.dw)?PL.cfg.dw:5,A:st.dlA[kd]});if(dq.length)rows+='<h3 class="sec" style="margin:10px 0 0">'+WREV[kd]+'</h3>'+dq.map(r=>row(r.label,fmt(r.q,r.u==='u.'?0:2),r.u,r.key?'key':'')).join('');});
     }
     Object.keys(op).forEach(k=>{rows+=row(k,op[k],'u.');});Object.keys(it).forEach(k=>{rows+=row(k,it[k],'u.');});
-    if(rows)h0='<h3 class="sec">Paredes, aberturas e ítems</h3>'+res(rows)+(st.len>0?'<p class="hint">Superficies con altura de '+fmt(PL.cfg.mh||2600,0)+' mm, sin descontar puertas ni ventanas. La superficie de revestimiento cuenta la cara exterior de las paredes exteriores y las dos caras de las demás.</p>':'');
+    if(rows)h0='<h3 class="sec">Paredes, aberturas e ítems</h3>'+res(rows)+(st.len>0?'<p class="hint">Superficies con altura de '+fmt(PL.cfg.mh||2600,0)+' mm, descontando las puertas y ventanas que están sobre las paredes. Cada revestimiento se cuenta por cara; las medidas de perfiles usan el largo y la altura de cada pared completa.</p>':'');
   }
   const rj=PL.shapes.filter(s=>s.t==='rj'),cl=PL.shapes.filter(s=>s.t==='cl');let h='';
   const m=v=>fmt(v/1000,3);
@@ -1469,6 +1595,8 @@ function plSync(){
   const c=PL.cfg;c.grid=+V('plG')||0;c.unit=V('plU')||'mm';c.th=N('plT')||150;c.lw=+V('plW')||2;c.title=V('plN');c.dw=N('plO')||900;c.vw=N('plV')||1200;c.ve=N('plVe')||3000;c.ca=N('plCa')||8000;{const n=N('plNo');c.no=isFinite(n)?n:90;}
   c.rs=N('plRs')>0?N('plRs'):110;c.rb=N('plRb')>0?N('plRb'):12;c.rm=N('plRm')>0?N('plRm'):40;c.ro=V('plRo')==='h'?'h':'v';c.rn=N('plRn')>0?Math.round(N('plRn')):0;
   c.dk=OPEN_D[V('plDk')]?V('plDk'):'p1';c.wk=OPEN_V[V('plWk')]?V('plWk'):'v1';c.gk=OPEN_G[V('plGk')]?V('plGk'):'g2';c.gw=N('plGw')>0?N('plGw'):3000;
+  c.dh=N('plDh')>0?N('plDh'):2050;c.vh=N('plWh')>0?N('plWh'):1200;c.vs=N('plWs')>=0?N('plWs'):900;c.gh=N('plGh')>0?N('plGh'):2000;
+  c.mr2=WREV[V('plMr2')]?V('plMr2'):'no';c.ds=+V('plDs')||400;c.db=N('plDb')>0?N('plDb'):2600;c.dp=+V('plDp')||2.88;c.dw=N('plDw')>=0?N('plDw'):5;
   c.mt=WMAT[V('plMt')]?V('plMt'):'ot';c.mx=['e','i'].includes(V('plMx'))?V('plMx'):'';c.mr=WREV[V('plMr')]?V('plMr'):'no';c.mh=N('plMh')>0?N('plMh'):2600;
   c.ik=ITEMS[V('plIk')]?V('plIk'):'esc';c.iw=N('plIw')>0?N('plIw'):900;c.ih=N('plIh')>0?N('plIh'):2800;
   if(PL.ikLast===undefined)PL.ikLast=c.ik;else if(c.ik!==PL.ikLast){PL.ikLast=c.ik;c.iw=ITEMS[c.ik][1];c.ih=ITEMS[c.ik][2];const a1=document.getElementById('plIw'),a2=document.getElementById('plIh');if(a1)a1.value=c.iw;if(a2)a2.value=c.ih;}
@@ -1497,7 +1625,7 @@ function plDraw(){
   ctx.strokeStyle=C.muted;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(V0.x0-8,V0.y0);ctx.lineTo(V0.x0+8,V0.y0);ctx.moveTo(V0.x0,V0.y0-8);ctx.lineTo(V0.x0,V0.y0+8);ctx.stroke();
   const list=PL.shapes.slice(),selA=PL.sel>=0?[PL.sel]:[];
   if(PL.draft&&PL.draft.cur){const ds=plShapeFrom(PL.mode,PL.draft.a,PL.draft.cur);if(ds){ds.w=1;list.push(ds);selA.push(list.length-1);}}
-  sceneDraw(ctx,list,V0,{k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we}});
+  sceneDraw(ctx,list,V0,{k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub});
   if(PL.draft&&PL.draft.cur&&PL.mode!=='dim'){
     const a=PL.draft.a,b=PL.draft.cur,txt=(PL.mode==='r'||PL.mode==='wr')?dimTxt(Math.abs(b[0]-a[0]),PL.cfg.unit)+' × '+dimTxt(Math.abs(b[1]-a[1]),PL.cfg.unit):(PL.mode==='c'||PL.mode==='wc')?'Ø '+dimTxt(2*pdist(a,b),PL.cfg.unit):dimTxt(pdist(a,b),PL.cfg.unit)+'  '+Math.round(((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)+360)%360)+'°';
     ctx.font='600 13px sans-serif';ctx.fillStyle=C.accent;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(txt,8,8);
@@ -1611,7 +1739,7 @@ function plUp(ev){
   if(m==='door'||m==='win'||m==='gate'){
     const wp=plTW(px[0],px[1]),ws=wallSnap(wp,PL.shapes,16/PL.view.s),wd=m==='door'?PL.cfg.dw:m==='win'?PL.cfg.vw:PL.cfg.gw;
     const q=ws?{p:ws.p,ang:ws.ang,th:ws.th}:{p:snapTo(wp,[],0,PL.cfg.grid).p,ang:0,th:PL.cfg.th};
-    plAdd({t:m==='win'?'win':'door',p:q.p,ang:q.ang,wd,th:q.th,o:0,k:m==='door'?PL.cfg.dk:m==='win'?PL.cfg.wk:PL.cfg.gk});return;
+    const op={t:m==='win'?'win':'door',p:q.p,ang:q.ang,wd,th:q.th,o:0,k:m==='door'?PL.cfg.dk:m==='win'?PL.cfg.wk:PL.cfg.gk,hh:m==='door'?PL.cfg.dh:m==='win'?PL.cfg.vh:PL.cfg.gh};if(m==='win')op.sl=PL.cfg.vs;plAdd(op);return;
   }
   if(m==='it'){
     const q=plSnap(px,ev,null);plAdd({t:'it',k:PL.cfg.ik,p:q.p,w:PL.cfg.iw,h:PL.cfg.ih,ang:0},q.p);return;
@@ -1623,7 +1751,7 @@ function plUp(ev){
 function plFinish(){
   const d=PL.draft;PL.draft=null;PL.hover=null;plFill();
   if(d&&(PL.mode==='wr'||PL.mode==='wc')&&pdist(d.a,d.cur)>0.5){
-    const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr),l=PL.mode==='wr'?rectWalls(d.a,d.cur,PL.cfg.th,pr):circleWalls(d.a,pdist(d.a,d.cur),PL.cfg.th,pr);
+    const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2),l=PL.mode==='wr'?rectWalls(d.a,d.cur,PL.cfg.th,pr):circleWalls(d.a,pdist(d.a,d.cur),PL.cfg.th,pr);
     if(l.length&&(PL.mode==='wc'||(Math.abs(d.cur[0]-d.a[0])>0&&Math.abs(d.cur[1]-d.a[1])>0))){plPush();PL.shapes.push(...l);PL.last=d.cur;PL.sel=-1;plChanged();return;}
   }
   if(d&&pdist(d.a,d.cur)>0.5){const s=plShapeFrom(PL.mode,d.a,d.cur);if(s){plAdd(s,PL.mode==='c'?d.a:d.cur);return;}}
@@ -1645,20 +1773,21 @@ function plFill(){
     else if(s.t==='r'){set('plL',Math.abs(s.b[0]-s.a[0]));set('plA',Math.abs(s.b[1]-s.a[1]));}
     else if(s.t==='c'){set('plL',+(2*s.r).toFixed(1));}
     else if(s.t==='it'){set('plL',s.w);set('plA',s.h);}
-    else if(s.t==='door'||s.t==='win'){set('plL',s.wd);}
-    if(s.t==='w'&&!s.k){set('plT',s.th||150);set('plMt',s.m||'ot');set('plMx',s.x||'');set('plMr',s.r||'no');}
+    else if(s.t==='door'||s.t==='win'){set('plL',s.wd);set('plA',s.hh>0?s.hh:(s.t==='win'?1200:2050));if(s.t==='win')set('plSs',s.sl!=null?s.sl:900);}
+    if(s.t==='w'&&!s.k){set('plT',s.th||150);set('plMt',s.m||'ot');set('plMx',s.x||'');set('plMr',s.r||'no');set('plMr2',s.r2||'no');}
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
-  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&s.t==='tx');
-  const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?((s.t==='r'||s.t==='it')?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
+  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&s.t==='tx');
+  const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?((s.t==='r'||s.t==='it'||s.t==='door'||s.t==='win')?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
   if(lab)lab.textContent=m==='r'?'Ancho':m==='c'?'Diámetro':'Largo';
   if(lb2)lb2.textContent=m==='r'?'Alto':'Ángulo (0° = derecha, 90° = arriba)';
   const un=document.querySelector('label[for=plA] em');if(un)un.textContent=m==='r'?'mm':'°';
   document.querySelectorAll('#plbar [data-m]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===PL.mode?'true':'false'));
   const h=document.getElementById('plhint');if(h)h.textContent=PLHINT[PL.mode];
-  [['plOrt','ortho'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
-  {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc!==false?'true':'false');}
+  {const c=document.getElementById('plcur');if(c)c.textContent=plProjLabel();}
+  [['plOrt','ortho'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
+  {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc!==false?'true':'false');const d=document.getElementById('plOd');if(d)d.setAttribute('aria-pressed',PL.cfg.od!==false?'true':'false');}
 }
 function plNumAdd(){
   const L=N('plL'),A=N('plA'),p=[N('plX')||0,N('plY')||0],m=PL.mode;
@@ -1674,25 +1803,28 @@ function plNumApply(){
   else if(s.t==='r'){if(pos(L,A)){const sx=s.b[0]>=s.a[0]?1:-1,sy=s.b[1]>=s.a[1]?1:-1;s.b=[s.a[0]+sx*L,s.a[1]+sy*A];}}
   else if(s.t==='c'){if(pos(L))s.r=L/2;}
   else if(s.t==='it'){if(pos(L,A)){s.w=L;s.h=A;}}
-  else if(s.t==='door'||s.t==='win'){if(pos(L))s.wd=L;}
+  else if(s.t==='door'||s.t==='win'){if(pos(L))s.wd=L;if(pos(A))s.hh=A;if(s.t==='win'){const ss=N('plSs');if(isFinite(ss)&&ss>=0)s.sl=ss;}}
   plChanged();
 }
 function plAction(a){
   const s=PL.shapes[PL.sel];
   if(a==='del'&&s){plPush();PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
   else if(a==='dup'&&s){plPush();const c=moveShape(s,Math.max(100,PL.cfg.grid||100),-Math.max(100,PL.cfg.grid||100));PL.shapes.push(c);PL.sel=PL.shapes.length-1;plChanged();}
-  else if(a==='bsave')plBaseSave();else if(a==='bopen')plBaseOpen(false);else if(a==='bopenlk')plBaseOpen(true);else if(a==='bdel')plBaseDel();
+  else if(a==='pnew')plProjNew();else if(a==='play')plProjLayer();else if(a==='pbase')plProjBase();
+  else if(a==='pjs'){const e=document.getElementById('plproj');if(e){e.hidden=!e.hidden;if(!e.hidden)plProjPanel();}}
   else if(a==='block'||a==='unblock'){
     if(!PL.shapes.length)return;plPush();let n=0;
     PL.shapes.forEach(x=>{if(a==='block'){if(!x.lk){x.lk=1;n++;}}else if(x.lk){delete x.lk;n++;}});
     PL.sel=-1;plChanged();const mg=document.getElementById('plmsg');if(mg)mg.textContent=a==='block'?'Lo dibujado quedó como base bloqueada: se ve más tenue y no se mueve ni se elige. Lo que dibujes ahora va encima.':'Base desbloqueada ('+n+' figuras).';
   }
-  else if(a==='towall'&&s){const w=shapeToWalls(s,PL.cfg.th,wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr));if(w&&w.length){plPush();PL.shapes.splice(PL.sel,1,...w);PL.sel=-1;plChanged();}}
+  else if(a==='towall'&&s){const w=shapeToWalls(s,PL.cfg.th,wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2));if(w&&w.length){plPush();PL.shapes.splice(PL.sel,1,...w);PL.sel=-1;plChanged();}}
   else if((a==='wapp'||a==='wappall')&&(a==='wappall'||(s&&s.t==='w'&&!s.k))){
-    const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr);plPush();
+    const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2);plPush();
     PL.shapes.forEach((w,j)=>{if(w.t==='w'&&!w.k&&(a==='wappall'||j===PL.sel)){w.th=PL.cfg.th;delete w.m;delete w.x;delete w.r;Object.assign(w,pr);}});
     plChanged();}
   else if(a==='rot'&&s&&s.t==='it'){plPush();s.ang=((s.ang||0)+90)%360;plChanged();}
+  else if(a==='od'){PL.cfg.od=!(PL.cfg.od!==false);plSave();plFill();plDraw();}
+  else if(a==='ub'){PL.cfg.ub=!PL.cfg.ub;plSave();plFill();plDraw();}
   else if(a==='wc'||a==='wi'||a==='we'){if(a==='wc')PL.cfg.wc=!(PL.cfg.wc!==false);else PL.cfg[a]=!PL.cfg[a];plSave();plFill();plDraw();}
   else if(a==='cflip'&&s&&s.t==='cl'){plPush();s.dir=s.dir==='x'?'y':'x';plChanged();}
   else if(a==='flip'&&s&&(s.t==='door'||s.t==='win')){plPush();s.o=((s.o||0)+1)%4;plChanged();}
@@ -1711,7 +1843,7 @@ function plAction(a){
   else if(a==='cmp'){PL.cfg.cmp=!PL.cfg.cmp;plSave();plFill();plDraw();}
   else if(a==='dms'){PL.cfg.dims=!PL.cfg.dims;plSave();plFill();plDraw();}
   else if(a==='big'){PL.cfg.big=!PL.cfg.big;document.getElementById('plwrap').classList.toggle('big',PL.cfg.big);plSave();setTimeout(plDraw,30);}
-  else if(a==='new'){if(!PL.shapes.length||window.confirm('¿Borrar todo el dibujo y empezar uno nuevo?')){plPush();PL.shapes=[];PL.bg=null;PL.img=null;persist('plano-img',{});PL.sel=-1;PL.last=[0,0];plChanged();}}
+  else if(a==='new'){if(!PL.shapes.length||window.confirm('¿Borrar todo el dibujo y empezar uno nuevo?')){plPush();PL.shapes=[];PL.bg=null;PL.img=null;PL.proj=null;persist('plano-img',{});PL.sel=-1;PL.last=[0,0];plChanged();}}
   else if(a==='add')plNumAdd();else if(a==='apply')plNumApply();
   else if(a==='lote'){
     const w=N('plTw'),h=N('plTh');if(!pos(w,h))return;const o=PL.last;plPush();
@@ -1720,15 +1852,15 @@ function plAction(a){
   else if(a==='reja'||a==='room'){
     const w=N('plTw'),h=N('plTh'),n=Math.max(0,Math.round(N('plTn')||0));if(!pos(w,h))return;
     const o=[PL.last[0],PL.last[1]];plPush();
-    const nw=a==='reja'?tplReja(o[0],o[1],w,h,n,N('plTf')||40):tplRoom(o[0],o[1],w,h,PL.cfg.th).map(q=>Object.assign(q,wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr)));
+    const nw=a==='reja'?tplReja(o[0],o[1],w,h,n,N('plTf')||40):tplRoom(o[0],o[1],w,h,PL.cfg.th).map(q=>Object.assign(q,wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2)));
     PL.shapes.push(...nw);PL.sel=-1;plChanged();plFit();
   }
 }
 function plSetMode(m){PL.cal=null;PL.mode=m;PL.draft=null;PL.dn=null;PL.hover=null;PL.hover=null;if(m!=='sel')PL.sel=-1;plFill();plDraw();}
 /* ---- exportar ---- */
-function plSheet(dpi){
-  const sh=PL.shapes,inc=V('plIn')==='1'&&PL.bg&&PL.img,b=unionB(sceneBounds(sh),inc?bgBounds(PL.bg):null);if(!b)return null;
-  const w=b[2]-b[0],h=b[3]-b[1],forced=+N('plSc')||+V('plS')||0,ps=paperScale(w,h,forced),mm=dpi/25.4;
+function plSheet(dpi,opt){
+  opt=opt||{};const sh=opt.sh||PL.shapes,inc=!opt.sh&&V('plIn')==='1'&&PL.bg&&PL.img,b=opt.b||unionB(sceneBounds(sh),inc?bgBounds(PL.bg):null);if(!b)return null;
+  const w=b[2]-b[0],h=b[3]-b[1],forced=+N('plSc')||+V('plS')||0,ps=opt.ps||paperScale(w,h,forced,V('plHj')||'A4'),mm=dpi/25.4;
   const cv=document.createElement('canvas');cv.width=Math.round(ps.pw*mm);cv.height=Math.round(ps.ph*mm);
   const ctx=cv.getContext('2d'),C=plColors(true);
   ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
@@ -1737,14 +1869,14 @@ function plSheet(dpi){
   const T={s,x0:areaX+(aw-w*s)/2-b[0]*s,y0:areaY+(ah+h*s)/2+b[1]*s};
   ctx.save();ctx.beginPath();ctx.rect(areaX-6*mm,areaY-6*mm,aw+12*mm,ah+12*mm);ctx.clip();
   if(inc)plDrawBg(ctx,PL.bg,PL.img,T,PL.bg.op);
-  sceneDraw(ctx,sh,T,{k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we}});ctx.restore();
+  sceneDraw(ctx,sh,T,{k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub});ctx.restore();
   if(PL.cfg.cmp)plCompass(ctx,(ps.pw-10-14)*mm,(24)*mm,8*mm,PL.cfg.no,C,dpi/96*.9);
   // cuadro de datos
   const bw=112*mm,bh=24*mm,bx=(ps.pw-10)*mm-bw,by=(ps.ph-10)*mm-bh;
   ctx.fillStyle='#fff';ctx.fillRect(bx,by,bw,bh);ctx.strokeStyle='#111';ctx.lineWidth=.4*mm;ctx.strokeRect(bx,by,bw,bh);
   ctx.beginPath();ctx.moveTo(bx,by+11*mm);ctx.lineTo(bx+bw,by+11*mm);ctx.moveTo(bx+bw*.5,by+11*mm);ctx.lineTo(bx+bw*.5,by+bh);ctx.stroke();
   ctx.fillStyle='#111';ctx.textBaseline='middle';ctx.textAlign='left';
-  ctx.font='700 '+(5.2*mm)+'px sans-serif';ctx.fillText((PL.cfg.title||'Plano').slice(0,34),bx+3*mm,by+5.6*mm);
+  {const tt=((opt.title||PL.cfg.title||'Plano')+(opt.sub?' · '+opt.sub:'')).slice(0,60);let fs=5.2;ctx.font='700 '+(fs*mm)+'px sans-serif';while(ctx.measureText(tt).width>bw-6*mm&&fs>2.4){fs-=.3;ctx.font='700 '+(fs*mm)+'px sans-serif';}ctx.fillText(tt,bx+3*mm,by+5.6*mm);}
   ctx.font='500 '+(3.4*mm)+'px sans-serif';
   ctx.fillText('Escala 1:'+ps.den+(ps.fits?'':' (no entra)'),bx+3*mm,by+17.5*mm);
   const d=new Date(),ds=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
@@ -1759,7 +1891,7 @@ function plDownload(blob,name){
 function plExport(kind){
   const msg=document.getElementById('plmsg');
   if(!PL.shapes.length&&!(V('plIn')==='1'&&PL.bg)){msg.textContent='Primero dibujá algo.';return;}
-  const dpi=200,r=plSheet(dpi);if(!r)return;msg.textContent='Escala 1:'+r.ps.den+(r.ps.fits?'':'. No entra en la hoja con esa escala: elegí una más chica.')+' Hoja A4 '+(r.ps.land?'horizontal':'vertical')+'. Imprimila al 100 % (sin ajustar a la página) para que las medidas sean reales.';
+  const dpi=200,r=plSheet(dpi);if(!r)return;msg.textContent='Escala 1:'+r.ps.den+(r.ps.fits?'':'. No entra en la hoja con esa escala: elegí una más chica.')+' Hoja '+(V('plHj')||'A4')+' '+(r.ps.land?'horizontal':'vertical')+'. Imprimila al 100 % (sin ajustar a la página) para que las medidas sean reales.';
   if(kind==='png'){
     r.cv.toBlob(b=>plDownload(b,plSlug()+'.png'),'image/png');
   }else if(kind==='share'){
@@ -1773,41 +1905,100 @@ function plExport(kind){
     plDownload(new Blob([pdf],{type:'application/pdf'}),plSlug()+'.pdf');
   }
 }
-/* ---- guardado rápido de planos y bases ---- */
-function plBases(){const o=store('plano-bases');return Array.isArray(o.list)?o.list:[];}
-function plBaseFill(){
-  const e=document.getElementById('plBs');if(!e)return;
-  const l=plBases(),sig=l.map(b=>b.id).join(',');
-  if(e.dataset.sig!==sig){const cur=e.value;e.innerHTML=l.length?l.map(b=>'<option value="'+b.id+'">'+b.name.replace(/[<&>"]/g,'')+' · '+b.n+' figuras · '+b.date+'</option>').join(''):'<option value="">(todavía no hay guardados)</option>';e.dataset.sig=sig;if(l.some(b=>b.id===cur))e.value=cur;}
+/* ---- proyectos y capas ---- */
+const plEsc=t=>String(t).replace(/[<>&"]/g,'');
+const plToday=()=>{const d=new Date();return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();};
+function plProjSave(l){try{localStorage.setItem('ta:plano-proy',JSON.stringify({list:l}));}catch(e){return false;}MEM['plano-proy']={list:l};return true;}
+function plProjs(){
+  const o=store('plano-proy');
+  if(Array.isArray(o.list))return o.list;
+  const old=store('plano-bases'),l=(Array.isArray(old.list)?old.list:[]).map(b=>({id:'p'+b.id,name:b.name,date:b.date,base:stripLk(b.shapes),plans:[]}));
+  if(l.length)plProjSave(l);
+  return l;
 }
-function plBaseSave(){
-  const mg=document.getElementById('plmsg'),ne=document.getElementById('plBn');
-  if(!PL.shapes.length){mg.textContent='No hay nada dibujado para guardar.';return;}
-  const d=new Date(),ds=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
-  const name=((ne&&ne.value)||PL.cfg.title||'Plano '+ds).trim().slice(0,50),l=plBases().slice(),ex=l.findIndex(b=>b.name===name);
-  const it={id:ex>=0?l[ex].id:'b'+Date.now().toString(36),name,date:ds,n:PL.shapes.length,shapes:JSON.parse(JSON.stringify(PL.shapes)),no:PL.cfg.no,title:PL.cfg.title||'',th:PL.cfg.th};
-  if(ex>=0)l[ex]=it;else l.unshift(it);
-  if(l.length>40)l.length=40;
-  try{localStorage.setItem('ta:plano-bases',JSON.stringify({list:l}));}catch(e){mg.textContent='No hay lugar para guardar en este dispositivo. Borrá alguno guardado o copiá el plano como código.';return;}
-  MEM['plano-bases']={list:l};plBaseFill();const sel=document.getElementById('plBs');if(sel)sel.value=it.id;
-  mg.textContent=(ex>=0?'Se actualizó «':'Guardado «')+name+'». Quedó en este dispositivo.';
+function plProjCur(){if(!PL.proj)return null;const p=plProjs().find(x=>x.id===PL.proj.id);return p?{p,pj:PL.proj}:null;}
+function plMsg(t){const m=document.getElementById('plmsg');if(m)m.textContent=t;}
+function plProjLabel(){
+  const c=plProjCur();if(!c)return 'Ningún proyecto abierto: lo que dibujes es un plano suelto.';
+  const l=c.p.plans.find(x=>x.id===c.pj.lid);
+  return 'Proyecto «'+plEsc(c.p.name)+'» · '+(c.pj.mode==='base'?'editando la base':l?'editando la capa «'+plEsc(l.name)+'»':'capa nueva sin guardar')+(c.pj.vis&&c.pj.vis.length?' · mostrando '+c.pj.vis.length+' capa(s) encima':'');
 }
-function plBaseOpen(lock){
-  const mg=document.getElementById('plmsg'),e=document.getElementById('plBs'),b=plBases().find(x=>x.id===(e&&e.value));
-  if(!b){mg.textContent='Elegí un plano guardado de la lista.';return;}
-  plPush();PL.shapes=JSON.parse(JSON.stringify(b.shapes));
-  if(lock)PL.shapes.forEach(x=>{x.lk=1;});else PL.shapes.forEach(x=>{delete x.lk;});
-  if(b.no!=null){const n=document.getElementById('plNo');if(n)n.value=b.no;PL.cfg.no=b.no;}
-  const t=document.getElementById('plN');if(t&&!lock){t.value=b.title||'';PL.cfg.title=b.title||'';}
-  PL.sel=-1;PL.last=[0,0];plChanged();plFit();
-  mg.textContent=(lock?'Abierto «'+b.name+'» como base bloqueada: dibujá la instalación encima. ':'Abierto «'+b.name+'». ')+'Lo guardado no cambia hasta que vuelvas a guardar. Con Deshacer volvés al dibujo anterior.';
+function plProjApply(c,edit,msg){
+  plPush();PL.shapes=projCompose(c.p,c.pj,edit);PL.sel=-1;PL.last=[0,0];plChanged();plFit();if(msg)plMsg(msg);
 }
-function plBaseDel(){
-  const mg=document.getElementById('plmsg'),e=document.getElementById('plBs'),l=plBases(),b=l.find(x=>x.id===(e&&e.value));
-  if(!b){mg.textContent='Elegí qué guardado borrar.';return;}
-  if(!window.confirm('¿Borrar «'+b.name+'» de los guardados?'))return;
-  const n=l.filter(x=>x!==b);try{localStorage.setItem('ta:plano-bases',JSON.stringify({list:n}));}catch(er){}
-  MEM['plano-bases']={list:n};plBaseFill();mg.textContent='Se borró «'+b.name+'».';
+function plProjNew(){
+  const ne=document.getElementById('plPn'),name=((ne&&ne.value)||PL.cfg.title||'Proyecto '+plToday()).trim().slice(0,50);
+  if(!PL.shapes.length){plMsg('Primero dibujá la planta, que va a ser la base del proyecto.');return;}
+  const l=plProjs().slice(),ex=l.findIndex(x=>x.name===name);
+  if(ex>=0&&!window.confirm('Ya hay un proyecto «'+name+'». ¿Cambiar su base por este dibujo? Sus capas se conservan.'))return;
+  const base=stripLk(PL.shapes.filter(x=>x.lk!==2));
+  const pr=ex>=0?Object.assign(l[ex],{base,date:plToday()}):{id:'p'+Date.now().toString(36),name,date:plToday(),base,plans:[]};
+  if(ex<0)l.unshift(pr);
+  if(l.length>30)l.length=30;
+  if(!plProjSave(l)){plMsg('No hay lugar para guardar en este dispositivo. Borrá algún proyecto o copiá el plano como código.');return;}
+  PL.proj={id:pr.id,lid:null,mode:'layer',vis:[]};
+  plProjApply({p:pr,pj:PL.proj},[],'Proyecto «'+name+'» guardado. La planta quedó como base bloqueada: dibujá una instalación encima y guardala con «Guardar este plano como capa».');
+}
+function plProjLayer(){
+  const c=plProjCur();
+  if(!c){plMsg('Primero creá un proyecto con la planta como base, o abrí uno en Mis proyectos.');return;}
+  if(c.pj.mode==='base'){plMsg('Estás editando la base: guardala con «Guardar cambios de la base».');return;}
+  if(!PL.shapes.some(x=>!x.lk)){plMsg('La capa está vacía: dibujá algo encima de la base.');return;}
+  const kind=V('plPk'),kl=(PLKINDS.find(k=>k[0]===kind)||[0,'Otro'])[1],ln=document.getElementById('plLn');
+  const name=((ln&&ln.value)||'').trim().slice(0,40)||kl,all=plProjs().slice(),p=all.find(x=>x.id===c.p.id);
+  const lid=projSaveLayer(p,name,PL.shapes);
+  if(!plProjSave(all)){plMsg('No hay lugar para guardar en este dispositivo.');return;}
+  PL.proj.lid=lid;plSave();plFill();plProjPanel();
+  plMsg('Capa «'+name+'» guardada en «'+p.name+'». Podés seguir dibujando y volver a guardarla, o abrir otra capa en Mis proyectos.');
+}
+function plProjBase(){
+  const c=plProjCur();
+  if(!c){plMsg('No hay un proyecto abierto.');return;}
+  if(c.pj.mode!=='base'){plMsg('La base está bloqueada. Para cambiarla abrí «Editar base» en Mis proyectos.');return;}
+  const all=plProjs().slice(),p=all.find(x=>x.id===c.p.id);p.base=stripLk(PL.shapes);
+  if(!plProjSave(all)){plMsg('No hay lugar para guardar en este dispositivo.');return;}
+  plProjPanel();plMsg('Base de «'+p.name+'» actualizada. Las capas no cambian; revisá que sigan encajando.');
+}
+function plProjPanel(){
+  const el=document.getElementById('plproj');if(!el)return;
+  const l=plProjs(),cur=PL.proj&&PL.proj.id;
+  if(!l.length){el.innerHTML='<p class="hint" style="margin:6px 0">Todavía no hay proyectos. Dibujá una planta y tocá «Crear proyecto con lo dibujado como base».</p>';return;}
+  el.innerHTML=l.map(p=>{
+    const lay=p.plans.map(x=>`<div class="btns" style="margin:4px 0;align-items:center"><span style="font-size:14px;min-width:0;flex:1 1 120px">${plEsc(x.name)} <small style="color:var(--muted)">${x.shapes.length} figuras</small></span>`+
+      `<button type="button" class="pb" data-p="edit:${p.id}:${x.id}">Editar</button>`+
+      (cur===p.id?`<button type="button" class="pb" data-p="vis:${p.id}:${x.id}" aria-pressed="${PL.proj.vis&&PL.proj.vis.includes(x.id)?'true':'false'}">Ver encima</button>`:'')+
+      `<button type="button" class="pb" data-p="ldel:${p.id}:${x.id}">Borrar</button></div>`).join('');
+    return `<div class="r" style="display:block;padding:12px 0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="font-size:16px">${plEsc(p.name)}${cur===p.id?' · abierto':''}</b><small style="color:var(--muted)">${p.date} · base de ${p.base.length} figuras · ${p.plans.length} capas</small></div>`+
+      `<div class="btns" style="margin:6px 0"><button type="button" class="pb on" data-p="open:${p.id}">Abrir (capa nueva)</button><button type="button" class="pb" data-p="ebase:${p.id}">Editar base</button><button type="button" class="pb" data-p="pprint:${p.id}">Imprimir todo a escala</button><button type="button" class="pb" data-p="pdel:${p.id}">Borrar proyecto</button></div>${lay||'<p class="hint" style="margin:2px 0">Sin capas todavía.</p>'}</div>`;
+  }).join('');
+}
+function plProjAct(str){
+  const [a,id,lid]=str.split(':'),all=plProjs(),p=all.find(x=>x.id===id);if(!p){plProjPanel();return;}
+  if(a==='open'){PL.proj={id,lid:null,mode:'layer',vis:[]};plProjApply({p,pj:PL.proj},[],'Abierto «'+p.name+'»: base bloqueada y capa nueva. Dibujá y guardá con «Guardar este plano como capa».');}
+  else if(a==='edit'){const l=p.plans.find(x=>x.id===lid);if(!l)return;PL.proj={id,lid,mode:'layer',vis:[]};const ln=document.getElementById('plLn');if(ln)ln.value=l.name;plProjApply({p,pj:PL.proj},l.shapes,'Editando la capa «'+l.name+'». Guardala de nuevo cuando termines.');}
+  else if(a==='ebase'){PL.proj={id,lid:null,mode:'base',vis:[]};plProjApply({p,pj:PL.proj},p.base,'Editando la base de «'+p.name+'». Al terminar tocá «Guardar cambios de la base».');}
+  else if(a==='vis'){
+    if(!PL.proj||PL.proj.id!==id){plMsg('Abrí el proyecto primero.');return;}
+    const v=PL.proj.vis||(PL.proj.vis=[]),k=v.indexOf(lid);if(k>=0)v.splice(k,1);else v.push(lid);
+    const edit=PL.shapes.filter(x=>!x.lk);PL.shapes=projCompose(p,PL.proj,edit);plChanged();plMsg(k>=0?'Capa oculta.':'Capa mostrada tenue encima de la base, solo para mirar. No se modifica.');
+  }
+  else if(a==='ldel'){const l=p.plans.find(x=>x.id===lid);if(!l||!window.confirm('¿Borrar la capa «'+l.name+'»?'))return;p.plans=p.plans.filter(x=>x!==l);plProjSave(all);if(PL.proj&&PL.proj.lid===lid)PL.proj.lid=null;plMsg('Capa borrada.');plSave();plFill();}
+  else if(a==='pdel'){if(!window.confirm('¿Borrar el proyecto «'+p.name+'» con todas sus capas?'))return;plProjSave(all.filter(x=>x!==p));if(PL.proj&&PL.proj.id===id)PL.proj=null;plMsg('Proyecto borrado.');plSave();plFill();}
+  else if(a==='pprint'){plPrintProject(id);}
+  plProjPanel();
+}
+/* Imprime todas las hojas de un proyecto con una misma escala */
+function plPrintProject(id){
+  const p=plProjs().find(x=>x.id===id);if(!p)return;
+  const pages=projPages(p);let b=null;pages.forEach(pg=>{if(pg.sh.length)b=unionB(b,sceneBounds(pg.sh));});
+  if(!b){plMsg('El proyecto no tiene nada para imprimir.');return;}
+  const forced=+N('plSc')||+V('plS')||0,sheet=V('plHj')||'A4',ps=paperScale(b[2]-b[0],b[3]-b[1],forced,sheet),dpi=150;
+  const imgs=pages.map(pg=>plSheet(dpi,{sh:pg.sh,b,ps,title:p.name,sub:pg.sub})).filter(Boolean);
+  const out=imgs.map(r=>{const url=r.cv.toDataURL('image/jpeg',.9),bin=atob(url.split(',')[1]),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+    return {jpg:u,pw:r.cv.width,ph:r.cv.height,wPt:ps.pw/25.4*72,hPt:ps.ph/25.4*72};});
+  const pdf=buildPdfMulti(out,p.name);
+  plDownload(new Blob([pdf],{type:'application/pdf'}),(plEsc(p.name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'proyecto')+'.pdf');
+  plMsg('PDF de '+out.length+' hojas '+sheet+' '+(ps.land?'horizontales':'verticales')+' a escala 1:'+ps.den+', todas con la misma escala y medidas en '+PL.cfg.unit+'.'+(ps.fits?'':' Ojo: con esa escala el dibujo no entra en la hoja; elegí una escala más chica u otra hoja.')+' Imprimilo al 100 %, sin ajustar a la página.');
 }
 function plInit(){
   const cv=document.getElementById('plcv');if(!cv||cv.dataset.on)return;cv.dataset.on='1';
@@ -1818,7 +2009,7 @@ function plInit(){
   const box=document.getElementById('plbox');
   box.addEventListener('click',e=>{
     const b=e.target.closest('button');if(!b)return;
-    if(b.dataset.m)plSetMode(b.dataset.m);else if(b.dataset.a)plAction(b.dataset.a);else if(b.dataset.x)plExport(b.dataset.x);
+    if(b.dataset.m)plSetMode(b.dataset.m);else if(b.dataset.a)plAction(b.dataset.a);else if(b.dataset.p)plProjAct(b.dataset.p);else if(b.dataset.x)plExport(b.dataset.x);
   });
   box.addEventListener('change',e=>{if(e.target.classList&&e.target.classList.contains('pljfile')&&e.target.files[0]){const fr=new FileReader();fr.onload=()=>plImport(String(fr.result));fr.readAsText(e.target.files[0]);e.target.value='';return;}
     if(e.target.classList&&e.target.classList.contains('plfile')){plLoadPhoto(e.target.files[0]);e.target.value='';}});
@@ -1831,40 +2022,58 @@ function plInit(){
     if(e.key==='Delete'||e.key==='Backspace')plAction('del');else if(e.key==='Escape'){PL.draft=null;PL.hover=null;plFill();plDraw();}
     else if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();plUndo();}
   });
-  plBaseFill();
   setTimeout(()=>{if(PL.shapes.length)plFit();else{const r=cv.getBoundingClientRect();PL.view={s:Math.min(.12,(r.width-40)/3000),x0:24,y0:r.height-24};}plFill();plDraw();},0);
 }
 
 
-function tabSvg(r,L,H,v){
+const TVN=6,tvi=(b,k)=>b+(k>1?k:'');
+function tvRows(){
+  let o='';
+  for(let k=1;k<=TVN;k++){
+    const g='tvg'+k;
+    o+=sel(tvi('tv',k),'Vano '+k,[['0','Sin vano'],['1','Puerta'],['2','Ventana']],'0','tvs'+k)
+      +fld(tvi('tvx',k),'Vano '+k+': distancia desde la izquierda',String(1000+(k-1)*1500),'mm',g)+fld(tvi('tvw',k),'Vano '+k+': ancho',k%2?'900':'1200','mm',g)
+      +fld(tvi('tvh',k),'Vano '+k+': altura libre',k%2?'2050':'1200','mm',g)+fld(tvi('tvs',k),'Vano '+k+': alféizar (altura desde el piso)',k%2?'0':'900','mm',g);
+  }
+  return o;
+}
+function tabSvg(r,L,H,vs){
   const W=300,sc=Math.min(W/L,130/H),w=L*sc,h=H*sc,x0=10,y0=12,th=5;
   let o=`<rect x="${x0}" y="${y0}" width="${w}" height="${th}" class="sh"/><rect x="${x0}" y="${y0+h-th}" width="${w}" height="${th}" class="sh"/>`;
   r.regular.forEach(p=>{o+=`<rect x="${x0+p*sc-2}" y="${y0+th}" width="4" height="${h-2*th}" class="sh"/>`;});
-  if(v){
-    const a=x0+Math.min(L,v.x)*sc,b=x0+Math.min(L,v.x+v.w)*sc,top=y0+h-v.h*sc,bot=y0+h-v.sill*sc;
+  (vs||[]).forEach(v=>{
+    const a=x0+v.x0*sc,b=x0+v.x1*sc,top=y0+h-v.h*sc,bot=y0+h-v.sill*sc;
     o+=`<rect x="${a-6}" y="${y0+th}" width="4" height="${h-2*th}" class="fl"/><rect x="${b+2}" y="${y0+th}" width="4" height="${h-2*th}" class="fl"/>`;
     o+=`<rect x="${a}" y="${top}" width="${b-a}" height="${th}" class="fl"/>`;
     if(v.sill>0)o+=`<rect x="${a}" y="${bot-th}" width="${b-a}" height="${th}" class="fl"/>`;
-    o+=`<rect x="${a}" y="${top+th}" width="${b-a}" height="${bot-top-th*(v.sill>0?2:1)}" style="fill:none;stroke:var(--muted);stroke-dasharray:3 3"/>`;
-    r.pos.filter(p=>p>v.x+1&&p<v.x+v.w-1).forEach(p=>{const x=x0+p*sc-2;if(H-v.h>1)o+=`<rect x="${x}" y="${y0+th}" width="4" height="${Math.max(2,top-y0-th)}" class="sh"/>`;if(v.sill>0)o+=`<rect x="${x}" y="${bot}" width="4" height="${Math.max(2,y0+h-th-bot)}" class="sh"/>`;});
-  }
+    o+=`<rect x="${a}" y="${top+th}" width="${b-a}" height="${Math.max(1,bot-top-th*(v.sill>0?2:1))}" style="fill:none;stroke:var(--muted);stroke-dasharray:3 3"/>`;
+    r.pos.filter(p=>p>v.x0+1&&p<v.x1-1).forEach(p=>{const x=x0+p*sc-2;if(H-v.h>1)o+=`<rect x="${x}" y="${y0+th}" width="4" height="${Math.max(2,top-y0-th)}" class="sh"/>`;if(v.sill>0)o+=`<rect x="${x}" y="${bot}" width="4" height="${Math.max(2,y0+h-th-bot)}" class="sh"/>`;});
+  });
   o+=`<text x="${x0}" y="${y0+h+14}" style="font:600 11px var(--font-body);fill:var(--muted)">${fmt(L,0)} × ${fmt(H,0)} mm</text>`;
-  return `<figure class="fig" style="margin-top:12px"><svg viewBox="0 0 ${W+20} ${h+30}" role="img" aria-label="Esquema del tabique">${o}</svg><figcaption>Azul: montantes del tramo. Amarillo: montantes dobles de jamba y piezas del vano.</figcaption></figure>`;
+  return `<figure class="fig" style="margin-top:12px"><svg viewBox="0 0 ${W+20} ${h+30}" role="img" aria-label="Esquema del tabique">${o}</svg><figcaption>Azul: montantes del tramo. Amarillo: montantes dobles de jamba y piezas de cada vano.</figcaption></figure>`;
 }
 function tabiqueTool(){
-  const sync=()=>{const el=document.getElementById('tv');if(!el.dataset.s){el.dataset.s=el.value;return;}if(el.dataset.s===el.value)return;el.dataset.s=el.value;
-    const d={1:[900,2050,0],2:[1200,2100,900]}[el.value];if(d){document.getElementById('tvw').value=d[0];document.getElementById('tvh').value=d[1];document.getElementById('tvs').value=d[2];}};
-  sync();
-  const tv=V('tv');$$('[data-g=tvg]').forEach(e=>e.hidden=tv==='0');
-  document.getElementById('tvs').closest('.f').hidden=tv!=='2';
+  const DEF={1:[900,2050,0],2:[1200,1200,900]};
+  const vanos=[];let open=true;
+  for(let k=1;k<=TVN;k++){
+    const el=document.getElementById(tvi('tv',k));
+    const lab=el.closest('.f');lab.hidden=!open;
+    if(!el.dataset.s){el.dataset.s=el.value;}
+    else if(el.dataset.s!==el.value){el.dataset.s=el.value;const d=DEF[el.value];if(d){document.getElementById(tvi('tvw',k)).value=d[0];document.getElementById(tvi('tvh',k)).value=d[1];document.getElementById(tvi('tvs',k)).value=d[2];}}
+    const tv=open?el.value:'0';
+    $$('[data-g=tvg'+k+']').forEach(e=>e.hidden=tv==='0');
+    if(tv!=='0'){document.getElementById(tvi('tvs',k)).closest('.f').hidden=tv!=='2';
+      vanos.push({k,tipo:tv,x:N(tvi('tvx',k))||0,w:N(tvi('tvw',k)),h:N(tvi('tvh',k)),sill:tv==='2'?N(tvi('tvs',k))||0:0});}
+    open=open&&tv!=='0';
+  }
   const L=N('tl'),H=N('th'),sep=N('tso')>0?N('tso'):+V('ts'),bar=N('tb');
-  const v=tv==='0'?null:{x:N('tvx')||0,w:N('tvw'),h:N('tvh'),sill:tv==='2'?N('tvs')||0:0};
-  if(!pos(L,H,sep,bar)||(v&&!pos(v.w,v.h))) return $('#out').innerHTML=need;
+  if(!pos(L,H,sep,bar)||vanos.some(v=>!pos(v.w,v.h))) return $('#out').innerHTML=need;
   if(sep>L) return $('#out').innerHTML='<p class="msg">La separación es mayor que el largo del tabique.</p>';
-  const r=tabiqueCalc({L,H,sep,bar,reparto:V('tr'),vano:v});
+  const r=tabiqueCalc({L,H,sep,bar,reparto:V('tr'),vanos});
   const gs={};r.gaps.forEach(g=>{const k=Math.round(g*10)/10;gs[k]=(gs[k]||0)+1;});
   const summ=Object.keys(gs).sort((a,b)=>gs[b]-gs[a]).map(k=>gs[k]+' de '+fmt(+k,1)+' mm').join(' + ');
-  const lista=r.regular.map(p=>fmt(p,0)+(v&&(Math.abs(p-v.x)<1.5||Math.abs(p-(v.x+v.w))<1.5)?' (doble)':'')).join(' · ');
+  const lista=r.regular.map(p=>fmt(p,0)+(r.vanos.some(v=>Math.abs(p-v.x0)<1.5||Math.abs(p-v.x1)<1.5)?' (doble)':'')).join(' · ');
+  const vlist=r.vanos.map((v,i)=>'Vano '+(i+1)+': '+(v.sill>0?'ventana':'puerta')+' de '+fmt(v.x1-v.x0,0)+' × '+fmt(v.h-v.sill,0)+(v.sill>0?' (alféizar '+fmt(v.sill,0)+')':'')+' desde '+fmt(v.x0,0)+' mm').join('<br>');
   $('#out').innerHTML=res(
     row('Montantes (barras de '+fmt(bar/1000,2)+' m)',r.mont,'u.','key')+
     row('Soleras (barras de '+fmt(bar/1000,2)+' m)',r.sol,'u.','key')+
@@ -1872,10 +2081,10 @@ function tabiqueTool(){
     row('Espacios entre montantes',summ,'')+
     (V('tr')==='fijo'&&r.gaps.length>1&&r.gaps[r.gaps.length-1]<sep-1?row('Último espacio',fmt(r.gaps[r.gaps.length-1],1),'mm','warn'):'')+
     (r.jamb?row('Montantes extra de jamba',r.jamb,'u.'):'')+
-    ((r.cripAbove+r.cripBelow)?row('Montantes cortos en el vano',r.cripAbove+r.cripBelow,'u.'):'')+
+    ((r.cripAbove+r.cripBelow)?row('Montantes cortos en los vanos',r.cripAbove+r.cripBelow,'u.'):'')+
     row('Perfil total comprado',fmt(r.perfilM,1),'m')
-  )+tabSvg(r,L,H,v?Object.assign({},v):null)+
-  `<details class="gloss" open><summary>Posición de cada montante</summary><p class="note" style="margin:10px 0 0">Distancia al borde izquierdo, en mm, medida al eje de cada montante de altura completa${v?' (los de jamba van dobles)':''}:<br><b>${lista}</b></p></details>`+
+  )+tabSvg(r,L,H,r.vanos)+
+  `<details class="gloss" open><summary>Posición de cada montante</summary><p class="note" style="margin:10px 0 0">Distancia al borde izquierdo, en mm, medida al eje de cada montante de altura completa${r.vanos.length?' (los de jamba van dobles)':''}:<br><b>${lista}</b></p>${vlist?'<p class="note">'+vlist+'</p>':''}</details>`+
   (r.long?'<p class="note">El alto supera el largo de la barra: cada montante necesita empalme o una barra más larga.</p>':'')+r.notes.map(n=>'<p class="note">'+n+'</p>').join('')+
   '<p class="note">Cuenta de perfiles para el pedido. Las placas, tornillos y masilla de este mismo tabique los calculás en Cantidades de obra. Verificá largos de barra y separaciones con el sistema que uses.</p>';
 }
@@ -2053,10 +2262,8 @@ const TOOLS=[
    ${sel('ts','Separación entre montantes',[['400','40 cm (más rígido)'],['480','48 cm (habitual)'],['600','60 cm']],'480')}${fld('tso','Otra separación (opcional)','','mm')}
    ${sel('tr','Reparto',[['fijo','Medida fija (el último espacio queda menor)'],['parejo','Repartido parejo (todos iguales)']],'fijo','','full')}
    ${fld('tb','Largo de la barra de perfil','2600','mm')}
-   ${sel('tv','Vano',[['0','Sin vano'],['1','Puerta'],['2','Ventana']],'0')}
-   ${fld('tvx','Vano: distancia desde la izquierda','1000','mm','tvg')}${fld('tvw','Vano: ancho','900','mm','tvg')}
-   ${fld('tvh','Vano: altura libre','2050','mm','tvg')}${fld('tvs','Alféizar (altura desde el piso)','0','mm','tvg')}
-   <p class="hint">Cada montante se corta a la altura del tabique y el recorte no se reutiliza. Las soleras se pueden empalmar. En el vano se cuentan montantes dobles a cada lado, el dintel y los montantes cortos que quedan sobre la puerta o ventana.</p>
+   ${tvRows()}
+   <p class="hint">Cada montante se corta a la altura del tabique y el recorte no se reutiliza. Las soleras se pueden empalmar. Podés cargar hasta 6 vanos, cada uno con su tipo y medida: en cada uno se cuentan montantes dobles a los lados, el dintel y los montantes cortos que quedan sobre la puerta o ventana. Al elegir un tipo en un vano aparece el siguiente.</p>
   </div>
   <div class="form" id="jrj">
   ${sel('jm','Calcular por',[['g','Separación libre máxima'],['n','Cantidad de barrotes']],'g','','full')}
@@ -2573,7 +2780,7 @@ P4 1.298</textarea></div></label>
   <div id="plwrap" class="plwrap"><canvas id="plcv" aria-label="Zona de dibujo"></canvas></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
@@ -2582,17 +2789,20 @@ P4 1.298</textarea></div></label>
   <div class="form" style="margin-top:14px">
    <h3 class="sec">Medida exacta</h3>
    ${fld('plL','Largo','1000','mm')}${fld('plA','Ángulo (0° = derecha, 90° = arriba)','0','°')}
-   ${fld('plX','Desde X','0','mm')}${fld('plY','Desde Y','0','mm')}
+   ${fld('plX','Desde X','0','mm')}${fld('plY','Desde Y','0','mm')}${fld('plSs','Alféizar de la ventana elegida','900','mm')}
    <div class="btns full"><button type="button" class="pb on" data-a="add">Agregar con esta medida</button><button type="button" class="pb" data-a="apply">Cambiar lo elegido</button></div>
    <p class="hint">Elegí Línea, Pared, Rectángulo o Círculo arriba. Se agrega desde el punto X, Y, que es el final de lo último que dibujaste.</p>
    <h3 class="sec">Aberturas: puertas, ventanas y portones</h3>
    ${sel('plDk','Puerta',Object.entries(OPEN_D),'p1')}${sel('plWk','Ventana',Object.entries(OPEN_V),'v1')}
    ${sel('plGk','Portón',Object.entries(OPEN_G),'g2')}${fld('plGw','Ancho del portón','3000','mm')}
-   <p class="hint">Elegí Puerta, Ventana o Portón arriba y tocá una pared. Para moverla usá Elegir y arrastrala: se desliza sobre las paredes. «Girar sentido» cambia el lado de la bisagra y hacia dónde abre o corre. El ancho de la puerta y de la ventana está en Ajustes.</p>
+   ${fld('plDh','Alto de las puertas','2050','mm')}${fld('plWh','Alto de las ventanas','1200','mm')}${fld('plWs','Alféizar de las ventanas','900','mm')}${fld('plGh','Alto del portón','2000','mm')}
+   <p class="hint">Elegí Puerta, Ventana o Portón arriba y tocá una pared. Para moverla usá Elegir y arrastrala: se desliza sobre las paredes. «Girar sentido» cambia el lado de la bisagra y hacia dónde abre o corre. El ancho de la puerta y de la ventana está en Ajustes. Con una abertura elegida, Medida exacta cambia su ancho, alto y alféizar. «Cotas de ubicación» muestra cuánto hay desde cada puerta o ventana hasta las paredes de al lado, y desde cada ítem hasta la pared más cercana. «Medida de aberturas» pone ancho × alto sobre cada una.</p>
    <h3 class="sec">Paredes: espesor, material y revestimiento</h3>
    ${sel('plMx','Ubicación',[['','Sin definir'],['e','Pared exterior'],['i','Pared interior']],'')}${sel('plMt','Material',Object.entries(WMAT),'ot')}
-   ${sel('plMr','Revestimiento',Object.entries(WREV),'no','','full')}${fld('plMh','Altura de paredes (para superficies)','2600','mm')}
-   <p class="hint">Estos datos valen para las paredes nuevas (también Pared rect. y Pared círculo). Para cambiar una que ya dibujaste, elegila, ajustá espesor y material y tocá «Aplicar». Las líneas, rectángulos y círculos se convierten con «Convertir en pared». Las medidas interior y exterior se prenden en los botones de arriba.</p>
+   ${sel('plMr','Revestimiento de la cara exterior (o lado 1)',Object.entries(WREV),'no','','full')}${sel('plMr2','Revestimiento de la cara interior (o lado 2)',Object.entries(WREV),'no','','full')}${fld('plMh','Altura de paredes (para superficies)','2600','mm')}
+   ${sel('plDs','Durlock: separación de perfiles',[['400','40 cm'],['480','48 cm'],['600','60 cm']],'400')}${fld('plDb','Durlock: largo de barra','2600','mm')}
+   ${sel('plDp','Durlock: placa',[['2.88','1,20 × 2,40 m'],['3.12','1,20 × 2,60 m'],['3.6','1,20 × 3,00 m']],'2.88')}${fld('plDw','Durlock: desperdicio','5','%')}
+   <p class="hint">Estos datos valen para las paredes nuevas (también Pared rect. y Pared círculo). Cada pared tiene dos caras: la exterior (o lado 1) y la interior (o lado 2), cada una con su revestimiento. Con Durlock sobre omega o sobre montantes sale la cuenta de placas y perfiles. Para cambiar una pared que ya dibujaste, elegila, ajustá espesor, material y revestimientos y tocá «Aplicar». Las líneas, rectángulos y círculos se convierten con «Convertir en pared». Las medidas interior y exterior se prenden en los botones de arriba.</p>
    <h3 class="sec">Ítems y escaleras</h3>
    ${sel('plIk','Ítem',Object.keys(ITEMS).map(k=>[k,ITEMS[k][0]]),'esc','','full')}${fld('plIw','Ancho','900','mm')}${fld('plIh','Largo','2800','mm')}
    <p class="hint">Elegí Ítem / escalera arriba y tocá donde va. Se mueve con Elegir y se gira con «Girar 90°». Al elegir uno, Medida exacta cambia su ancho y largo.</p>
@@ -2630,12 +2840,15 @@ P4 1.298</textarea></div></label>
    ${sel('plHj','Tamaño de la hoja del plano',[['A4','A4'],['A3','A3'],['A2','A2'],['A1','A1'],['A0','A0']],'A3')}${fld('plHs','Escala impresa 1:','50','')}
    <div class="btns full"><button type="button" class="pb" data-a="calsheet">Calibrar con hoja y escala</button></div>
    <p class="hint">Solo sirve si la foto muestra la hoja entera, de borde a borde. Es aproximado: para más precisión calibrá con dos puntos.</p>
-   <h3 class="sec">Guardado rápido y plano base</h3>
-   <label class="f full" for="plBn"><span>Nombre para guardar</span><div class="in"><input id="plBn" type="text" autocomplete="off" placeholder="Ej.: Casa Pérez - planta base"></div></label>
-   <div class="btns full"><button type="button" class="pb on" data-a="bsave">Guardar este plano</button><button type="button" class="pb" data-a="block">Bloquear lo dibujado como base</button><button type="button" class="pb" data-a="unblock">Desbloquear</button></div>
-   ${sel('plBs','Planos guardados',[['','(todavía no hay guardados)']],'','','full')}
-   <div class="btns full"><button type="button" class="pb on" data-a="bopenlk">Abrir como base bloqueada</button><button type="button" class="pb" data-a="bopen">Abrir para editar</button><button type="button" class="pb" data-a="bdel">Borrar guardado</button></div>
-   <p class="hint">Para hacer distintos planos de instalaciones sobre la misma base: dibujá la planta, guardala, y después elegí «Abrir como base bloqueada». La base se ve más tenue y no se mueve, y dibujás la instalación encima (eléctrica, sanitaria, gas, cielorraso…). Guardala con otro nombre y repetí con la misma base. Se guarda en este dispositivo y en este navegador: para llevarlo a otro, usá «Copiar este plano como código».</p>
+   <h3 class="sec">Proyectos y capas</h3>
+   <label class="f full" for="plPn"><span>Nombre del proyecto</span><div class="in"><input id="plPn" type="text" autocomplete="off" placeholder="Ej.: Casa Pérez"></div></label>
+   ${sel('plPk','Tipo de plano (capa)',PLKINDS.map(k=>[k[0],k[1]]),'gas','','full')}
+   <label class="f full" for="plLn"><span>Nombre de la capa (vacío = el tipo)</span><div class="in"><input id="plLn" type="text" autocomplete="off" placeholder="Ej.: Gas planta baja"></div></label>
+   <div class="btns full"><button type="button" class="pb on" data-a="pnew">Crear proyecto con lo dibujado como base</button><button type="button" class="pb on" data-a="play">Guardar este plano como capa</button><button type="button" class="pb" data-a="pbase">Guardar cambios de la base</button></div>
+   <p class="hint" id="plcur"></p>
+   <div class="btns full"><button type="button" class="pb" data-a="block">Bloquear lo dibujado</button><button type="button" class="pb" data-a="unblock">Desbloquear</button><button type="button" class="pb" data-a="pjs">Mis proyectos</button></div>
+   <p class="hint">Cada proyecto tiene una planta base y varias capas, una por instalación (gas, agua, cloaca, electricidad, cielorraso…). Dibujá la planta, tocá «Crear proyecto…» y la base queda tenue y fija. Dibujá la instalación encima y guardala como capa; repetí con las otras. En «Mis proyectos» abrís, editás, mirás varias capas juntas, borrás o imprimís. Todo se guarda en este dispositivo y navegador; para llevarlo a otro usá «Copiar este plano como código».</p>
+   <div id="plproj" class="res" hidden style="margin-top:4px"></div>
    <h3 class="sec">Importar y guardar el plano</h3>
    <label class="f full"><span>Código del plano</span><div class="in"><textarea class="pljs" spellcheck="false" placeholder="Pegá acá el plano en formato JSON"></textarea></div></label>
    <div class="btns full"><button type="button" class="pb on" data-a="jsin">Importar lo pegado</button><button type="button" class="pb" data-a="jsout">Copiar este plano como código</button></div>
@@ -2645,11 +2858,12 @@ P4 1.298</textarea></div></label>
    <p class="hint">En pantalla la escala es una referencia, porque cada celular muestra a distinto tamaño. En el PDF impreso al 100 % las medidas sí son exactas.</p>
    <h3 class="sec">Exportar</h3>
    <label class="f full" for="plN"><span>Título del plano</span><div class="in"><input id="plN" type="text" autocomplete="off" placeholder="Ej.: Reja ventana cocina" value=""></div></label>
+   ${sel('plHj','Tamaño de hoja',[['A4','A4'],['A3','A3'],['A2','A2']],'A4')}
    ${sel('plS','Escala en la hoja (como el escalímetro)',[['0','Automática (la más grande que entra)']].concat(PSCALES.map(d=>[String(d),'1:'+d])),'0','','full')}
    ${fld('plSc','Otra escala 1:','','')}${sel('plIn','Foto de fondo en el PNG/PDF',[['0','No'],['1','Sí']],'0')}
    <div class="btns full"><button type="button" class="pb on" data-x="png">Guardar PNG</button><button type="button" class="pb on" data-x="pdf">Guardar PDF (A4)</button><button type="button" class="pb" data-x="share">Compartir imagen</button></div>
    <p class="hint" id="plmsg"></p>
-   <div class="btns full"><button type="button" class="pb" data-a="new">Nuevo plano (borra todo)</button></div>
+   <div class="btns full"><button type="button" class="pb" data-a="new">Nuevo plano (borra todo)</button><button type="button" class="pb on" data-a="pjs">Ver mis proyectos</button></div>
   </div></div><div id="out"></div>${glossHtml(GLPLANO)}`,
  calc(){plInit();plSync();plDraw();plReport();}},
 
