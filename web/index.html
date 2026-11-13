@@ -430,11 +430,11 @@ const CAT=[
  {s:'Hierro',g:'Hierro de construcción ADN 420 (barra 12 m)',len:12000,kind:'hierro',it:[['Ø 6 mm',6,1],['Ø 8 mm',8,1],['Ø 10 mm',10,1],['Ø 12 mm',12,1],['Ø 16 mm',16,0],['Ø 20 mm',20,0],['Ø 25 mm',25,0]]},
  {s:'Aqua System',g:'Aqua System PP-R (tubo 4 m)',len:4000,it:[['Ø 20 mm',20,1],['Ø 25 mm',25,1],['Ø 32 mm',32,1],['Ø 40 mm',40,0],['Ø 50 mm',50,0],['Ø 63 mm',63,0],['Ø 75 mm',75,0],['Ø 90 mm',90,0],['Ø 110 mm',110,0]]},
  {s:'Sigas',g:'Sigas gas (tubo 4 m)',len:4000,it:[['Ø 20 mm',20,1],['Ø 25 mm',25,1],['Ø 32 mm',32,1],['Ø 40 mm',40,1]]},
- {s:'PVC cloacal',g:'PVC cloacal (tubo 4 m)',len:4000,it:[['Ø 40 mm',40,0],['Ø 50 mm',50,0],['Ø 63 mm',63,1],['Ø 110 mm',110,1],['Ø 160 mm',160,0]]},
+ {s:'PVC cloacal',g:'PVC cloacal (tubo 4 m)',len:4000,it:[['Ø 40 mm',40,1],['Ø 50 mm',50,1],['Ø 63 mm',63,1],['Ø 110 mm',110,1],['Ø 160 mm',160,0]]},
  {s:'Durlock',g:'Perfiles Durlock (2,60 m)',len:2600,it:[['Montante 34',34,1],['Montante 69',69,1],['Solera 35',35,1],['Solera 70',70,1]]},
  {s:'Perfil C',g:'Perfil C Barbieri (6 m)',len:6000,it:[['Perfil C (según medida)',0,1]]},
- {s:'Caño',g:'Caño estructural (6 m)',len:6000,it:[['Cuadrado 20×20',0,0],['Cuadrado 30×30',0,0],['Cuadrado 40×40',0,0],['Rectangular 40×20',0,0],['Rectangular 60×40',0,0],['Redondo 1"',0,0]]},
- {s:'Epoxi gas',g:'Caño epoxi para gas (tubo 6,40 m)',len:6400,it:[['1/2"',0,0],['3/4"',0,0],['1"',0,0],['1 1/4"',0,0],['1 1/2"',0,0],['2"',0,0]]},
+ {s:'Caño',g:'Caño estructural (6 m)',len:6000,it:[['Cuadrado 20×20',0,1],['Cuadrado 30×30',0,1],['Cuadrado 40×40',0,1],['Rectangular 40×20',0,1],['Rectangular 60×40',0,1],['Redondo 1"',0,1]]},
+ {s:'Epoxi gas',g:'Caño epoxi para gas (tubo 3,20 m)',len:3200,it:[['1/2"',0,1],['3/4"',0,1],['1"',0,1],['1 1/4"',0,0],['1 1/2"',0,0],['2"',0,0]]},
  {s:'Polietileno agua (rollo)',g:'Caño de polietileno PE para agua, enterrado desde la red (rollo 100 m)',len:100000,it:[['Ø 16 mm',16,0],['Ø 20 mm',20,0],['Ø 25 mm',25,0],['Ø 32 mm',32,0],['Ø 40 mm',40,0],['Ø 50 mm',50,0],['Ø 63 mm',63,0]]},
  {s:'Manguera polietileno',g:'Manguera de polietileno (rollo 50 m)',len:50000,it:[['1/2"',0,0],['3/4"',0,0],['1"',0,0],['1 1/4"',0,0],['1 1/2"',0,0],['2"',0,0]]},
  {s:'Polietileno PE 100 (barra)',g:'Polietileno PE 100 en barras (tubo 6 m)',len:6000,it:[['Ø 63 mm',63,0],['Ø 75 mm',75,0],['Ø 90 mm',90,0],['Ø 110 mm',110,0],['Ø 125 mm',125,0],['Ø 160 mm',160,0]]},
@@ -1167,7 +1167,7 @@ function wallConstrain(sh,i,d,force){
    caída máxima 1 mbar hasta el artefacto más desfavorable, velocidad máxima 7 m/s.
    d: [nominal mm, interior mm, nombre]. ver=0: medidas habituales a confirmar con el fabricante. */
 const GAS_MAT=[
- {k:'ac',n:'Acero con revestimiento epoxi, roscado (NAG-250)',len:6400,ver:1,d:[[9.5,12.5,'3/8"'],[13,16.6,'1/2"'],[19,22.2,'3/4"'],[25,27.9,'1"'],[32,36.6,'1 1/4"'],[38,42.5,'1 1/2"'],[51,53.8,'2"'],[63,69.6,'2 1/2"'],[76,81.6,'3"'],[102,106.2,'4"']]},
+ {k:'ac',n:'Acero con revestimiento epoxi, roscado (NAG-250)',len:3200,ver:1,d:[[9.5,12.5,'3/8"'],[13,16.6,'1/2"'],[19,22.2,'3/4"'],[25,27.9,'1"'],[32,36.6,'1 1/4"'],[38,42.5,'1 1/2"'],[51,53.8,'2"'],[63,69.6,'2 1/2"'],[76,81.6,'3"'],[102,106.2,'4"']]},
  {k:'sg',n:'Sigas, acero-polietileno por termofusión (NAG-E 210)',len:4000,ver:1,d:[[20,13.24,'20 mm'],[25,18.19,'25 mm'],[32,24.94,'32 mm'],[40,33.0,'40 mm'],[50,42.8,'50 mm'],[63,54.84,'63 mm'],[75,63.0,'75 mm'],[90,74.0,'90 mm'],[110,94.0,'110 mm']]},
  {k:'cu',n:'Cobre rígido, tipo L (NAG-E 209)',len:6000,ver:0,d:[[9.5,10.92,'3/8"'],[13,13.84,'1/2"'],[19,19.94,'3/4"'],[25,26.04,'1"'],[32,32.12,'1 1/4"']]}
 ];
@@ -2583,7 +2583,7 @@ function plSideW(sh){const m=PL.cfg.sd||'auto';return m==='no'?0:(m==='si'||tram
 function plSidePanel(ctx,sh,x,y,w,h,mm){
   ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();ctx.fillStyle='#fff';ctx.fillRect(x,y,w,h);ctx.strokeStyle='#111';ctx.lineWidth=.4*mm;ctx.strokeRect(x,y,w,h);
   const fs=2.8*mm,px=x+2.5*mm,mw=w-5*mm;let cy=y+4.5*mm;const room=()=>cy<y+h-3*mm;
-  const cut=(t,wd)=>{while(t.length>3&&ctx.measureText(t).width>wd)t=t.slice(0,-2);return t;};
+  const cut=(t,wd)=>{if(ctx.measureText(t).width<=wd)return t;while(t.length>3&&ctx.measureText(t+'…').width>wd)t=t.slice(0,-1);return t.trimEnd()+'…';};
   const T=(t,o)=>{o=o||{};ctx.font=(o.b?'700 ':'500 ')+(o.f||fs)+'px sans-serif';ctx.fillStyle=o.c||'#111';ctx.textBaseline='middle';
     if(o.r){ctx.textAlign='right';ctx.fillText(t,x+w-2.5*mm,cy);}else{ctx.textAlign='left';ctx.fillText(cut(t,mw-(o.rw||0)-(o.ox||0)),px+(o.ox||0),cy);}};
   const nl=k=>{cy+=(k||1)*fs*1.5;},ln=()=>{ctx.beginPath();ctx.moveTo(x,cy);ctx.lineTo(x+w,cy);ctx.lineWidth=.25*mm;ctx.strokeStyle='#111';ctx.stroke();};
