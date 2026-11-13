@@ -1122,6 +1122,41 @@ function wallConstrain(sh,i,d){
   const dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1],L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L,k=d[0]*nx+d[1]*ny;
   return [nx*k,ny*k];
 }
+/* ---- Gas natural, baja presión: dimensionado de cañerías (NAG-200 ENARGAS, 2.5.3 y 4.6: Renouard lineal) ----
+   ΔP[mbar]=23200·δ·Le·Q^1,82·d^-4,82 (Le en m, Q en m³/h, d interior en mm), δ=0,65, PCS 9300 kcal/m³,
+   caída máxima 1 mbar hasta el artefacto más desfavorable, velocidad máxima 7 m/s.
+   d: [nominal mm, interior mm, nombre]. ver=0: medidas habituales a confirmar con el fabricante. */
+const GAS_MAT=[
+ {k:'ac',n:'Acero con revestimiento epoxi, roscado (NAG-250)',len:6400,ver:1,d:[[9.5,12.5,'3/8"'],[13,16.6,'1/2"'],[19,22.2,'3/4"'],[25,27.9,'1"'],[32,36.6,'1 1/4"'],[38,42.5,'1 1/2"'],[51,53.8,'2"'],[63,69.6,'2 1/2"'],[76,81.6,'3"'],[102,106.2,'4"']]},
+ {k:'sg',n:'Sigas, acero-polietileno por termofusión (NAG-E 210)',len:4000,ver:1,d:[[20,13.24,'20 mm'],[25,18.19,'25 mm'],[32,24.94,'32 mm'],[40,33.0,'40 mm'],[50,42.8,'50 mm'],[63,54.84,'63 mm'],[75,63.0,'75 mm'],[90,74.0,'90 mm'],[110,94.0,'110 mm']]},
+ {k:'cu',n:'Cobre rígido, tipo L (NAG-E 209)',len:6000,ver:0,d:[[9.5,10.92,'3/8"'],[13,13.84,'1/2"'],[19,19.94,'3/4"'],[25,26.04,'1"'],[32,32.12,'1 1/4"']]}
+];
+const gasDP=(Q,Le,d,dens)=>23200*(dens||0.65)*Le*Math.pow(Q,1.82)*Math.pow(d,-4.82);
+const gasVel=(Q,d,P)=>358.36*Q/(d*d*(P||1.033));
+/* Simultaneidad de una vivienda (NAG-200 2.5.1): los dos artefactos mayores más la mitad del resto */
+function gasQsi(list){
+  const a=list.filter(v=>v>0).sort((x,y)=>y-x);
+  return a.length<=2?a.reduce((s,v)=>s+v,0):a[0]+a[1]+a.slice(2).reduce((s,v)=>s+v,0)/2;
+}
+/* tramos del recorrido más largo, en serie: [{name,L (m),Q (m³/h)}]. La caída admisible se reparte según Le de cada tramo. */
+function gasSize(tramos,mat,o){
+  o=o||{};
+  const M=GAS_MAT.find(m=>m.k===mat)||GAS_MAT[0],f=1+(o.extra==null?20:o.extra)/100,dens=o.dens||0.65,dpMax=o.dp>0?o.dp:1,vmax=o.vmax||7;
+  const Le=tramos.map(t=>t.L*f),tot=Le.reduce((a,b)=>a+b,0)||1,rows=[];
+  tramos.forEach((t,i)=>{
+    const lim=dpMax*Le[i]/tot;let pick=null;
+    for(const d of M.d){if(gasDP(t.Q,Le[i],d[1],dens)<=lim+1e-9&&gasVel(t.Q,d[1],o.P)<=vmax){pick=d;break;}}
+    const d=pick||M.d[M.d.length-1];
+    rows.push({name:t.name,L:t.L,Le:Le[i],Q:t.Q,lim,dn:d[0],di:d[1],lab:d[2],dp:gasDP(t.Q,Le[i],d[1],dens),v:gasVel(t.Q,d[1],o.P),ok:!!pick});
+  });
+  const dpT=rows.reduce((a,r)=>a+r.dp,0);
+  return {rows,dpT,dpMax,ok:rows.every(r=>r.ok)&&dpT<=dpMax+1e-9,mat:M};
+}
+function diaApply(shapes,map){
+  const tl=tramoList(shapes),out=shapes.slice(),ch=[];
+  tl.forEach(t=>{const v=map[t.id.toUpperCase()];if(v&&out[t.i].dia!==v){out[t.i]=Object.assign({},out[t.i],{dia:v});ch.push(t.id);}});
+  return {shapes:out,changed:ch};
+}
 /*CALC-END*/
 
 /* ---------- utilidades de interfaz ---------- */
@@ -1151,6 +1186,7 @@ const ICON={
   angulo:'<path d="M4 20h16M4 20L17 5"/><path d="M11 20a7 7 0 0 0-2-5"/>',
   tanque:'<path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6"/><ellipse cx="12" cy="6" rx="7" ry="3"/>',
   corte:'<path d="M3 7h18v4H3zM3 14h11v4H3z"/>',
+  gas:'<path d="M12 3c3 4 5 6 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 .5 2 1.500 2.500 2 2.500C11.500 9 12 6 12 3z"/><path d="M4 21h16"/>',
   mats:'<path d="M4 7h16M4 12h16M4 17h9"/><path d="M16 17l2 2 3-4"/>',
   escalera:'<path d="M4 20h4v-4h4v-4h4V8h4"/>',
   reja:'<path d="M4 5h16v14H4z"/><path d="M8 5v14M12 5v14M16 5v14"/>',
@@ -1174,6 +1210,9 @@ const lbl=(x,y,tx,an)=>`<text x="${x}" y="${y}"${an?` text-anchor="${an}"`:''}>$
 const lead=(x1,y1,x2,y2)=>`<path class="g" d="M${x1} ${y1}L${x2} ${y2}"/>`;
 const hl='style="stroke:var(--accent);stroke-width:5;fill:none"';
 const FIG={
+ gas(){
+  return svg(`<rect class="sh" x="14" y="52" width="40" height="36"/>${lbl(34,74,'Medidor','middle')}<path class="d" d="M54 70H150"/>${lbl(102,62,'Tramo 1','middle')}${lbl(102,92,'L1 · Q1','middle')}<path class="d" d="M150 70V28H236M150 70V112H236"/>${lbl(193,22,'Tramo 2','middle')}${lbl(193,126,'Tramo 3','middle')}<rect class="sh" x="236" y="14" width="70" height="28"/>${lbl(271,32,'Cocina','middle')}<rect class="sh" x="236" y="98" width="70" height="28"/>${lbl(271,116,'Calefón','middle')}`,'Se dimensiona el recorrido más largo, del medidor al artefacto más lejano. Cada tramo lleva el caudal de lo que alimenta (tramo 1: todo, tramos 2 y 3: solo su artefacto).');
+ },
  escalera(t){
   const steps=(x0,y0,x1,y1,n,vert)=>Array.from({length:n-1},(_,i)=>{const f=(i+1)/n;return vert?`<path class="o" style="stroke-width:1" d="M${x0+(x1-x0)*f} ${y0}V${y1}"/>`:`<path class="o" style="stroke-width:1" d="M${x0} ${y0+(y1-y0)*f}H${x1}"/>`;}).join('');
   if(t==='l'||t==='u'){
@@ -3032,6 +3071,55 @@ P4 1.298</textarea></div></label>
   (bad.length?`<p class="note">No se entendió: ${bad.join(' | ')}</p>`:'');
  }},
 
+{id:'gas',name:'Cañería de gas',desc:'Diámetros según NAG-200 (ENARGAS)',
+ fig:()=>FIG.gas(),
+ html:()=>`<div class="form">
+  <label class="f full" for="gm"><span>Material de la cañería</span><div class="in"><select id="gm">${GAS_MAT.map(m=>`<option value="${m.k}">${m.n}${m.ver?'':' *'}</option>`).join('')}</select></div></label>
+  <p class="hint" id="gmh"></p>
+  ${sel('gu','Unidad de los consumos',[['k','kcal/h'],['w','kW'],['m','m³/h']],'k')}
+  ${fld('gl','Caída de presión admisible','1','mbar')}
+  ${fld('gx','Aumento por accesorios (longitud equivalente)','20','%')}
+  ${sel('gr','Aplicar mínimo de vivienda (18 600 kcal/h) a cada tramo',[['0','No'],['1','Sí']],'0','','full')}
+  <label class="f full" for="ga"><span>Artefactos (opcional): nombre y consumo, uno por línea</span><div class="in"><textarea id="ga" spellcheck="false">Cocina 8000
+Calefón 18000
+Estufa 3000</textarea></div></label>
+  <label class="f full" for="gt"><span>Tramos del recorrido más largo, del medidor al artefacto más lejano: nombre ; largo en m ; consumo</span><div class="in"><textarea id="gt" spellcheck="false">Medidor a derivación ; 6 ;
+Derivación a calefón ; 4 ; 18000</textarea></div></label>
+  <p class="hint">Si en un tramo dejás vacío el consumo, usa el total simultáneo de los artefactos de arriba. Si ese tramo alimenta un solo artefacto, escribí el consumo de ese artefacto.</p>
+  <h3 class="sec">Vincular con un plano</h3>
+  <label class="f full" for="gly"><span>Plano de un proyecto (agrupados por proyecto)</span><div class="in"><select id="gly">${linkOptions()}</select></div></label>
+  <div class="btns full"><button type="button" class="pb on" data-lk="gas-get">Traer tramos de gas del plano</button><button type="button" class="pb" data-lk="gas-send">Enviar diámetros al plano</button></div>
+  <p class="hint" id="gMsg">Los tramos de gas se dibujan en Planos con la línea de instalación «Gas». Acá el nombre de cada tramo es su número (G1, G2…), y los diámetros calculados vuelven al plano con ese número.</p></div><div id="out"></div>${glossHtml([['Longitud equivalente','Largo real del tramo más un aumento por codos, tes y llaves. La norma usa un 20 % más.'],['Caída de presión','Presión que se pierde por el roce del gas en el caño. Hasta el artefacto más lejano no puede pasar de 1 mbar (10 mm de columna de agua).'],['Velocidad','Con baja presión no debe pasar de 7 m/s, para que no haya ruido ni problemas.'],['Simultaneidad','Es muy raro que todos los artefactos funcionen a la vez. Se cuentan los dos mayores completos y la mitad del resto.']])}`,
+ calc(){
+  const M=GAS_MAT.find(m=>m.k===V('gm'))||GAS_MAT[0];
+  $('#gmh').textContent=(M.ver?'Medidas interiores de la norma o del fabricante. ':'Medidas habituales: confirmalas con el fabricante (*). ')+'Largo de tubo habitual: '+fmt(M.len/1000,1)+' m.';
+  const u=V('gu'),toQ=v=>u==='k'?v/9300:u==='w'?v*860/9300:v;
+  const arts=[];V('ga').split('\n').forEach(l=>{const m=l.trim().match(/^(.*?)[\s;:]*([\d.,]+)\s*$/);if(m){const v=parseFloat(m[2].replace(',','.'));if(v>0)arts.push({n:m[1].trim()||'Artefacto',v});}});
+  const qsi=arts.length?toQ(gasQsi(arts.map(a=>a.v))):0,minQ=18600/9300;
+  const tr=[],bad=[];
+  V('gt').split('\n').forEach(l=>{
+    if(!l.trim())return;const p=l.split(';').map(x=>x.trim()),L=parseFloat((p[1]||'').replace(',','.')),
+      qv=parseFloat((p[2]||'').replace(',','.'));
+    if(p.length<2||!(L>0)){bad.push(l.trim());return;}
+    let Q=qv>0?toQ(qv):qsi;if(V('gr')==='1')Q=Math.max(Q,minQ);
+    tr.push({name:p[0]||('T'+(tr.length+1)),L,Q});
+  });
+  if(!tr.length)return $('#out').innerHTML=need;
+  if(tr.some(t=>!(t.Q>0)))return $('#out').innerHTML='<p class="msg">Falta el consumo: cargá artefactos arriba o poné el consumo en cada tramo.</p>';
+  const r=gasSize(tr,M.k,{dp:N('gl')||1,extra:isFinite(N('gx'))?N('gx'):20});
+  window.GASLAST={};r.rows.forEach(x=>{GASLAST[x.name.toUpperCase()]=x.lab.replace(/"/g,'”');});
+  const g={};r.rows.forEach(x=>{(g[x.lab]=g[x.lab]||{lab:x.lab,di:x.di,len:0,pieces:[]});g[x.lab].len+=x.L;g[x.lab].pieces.push(x.L*1000);});
+  const mat=Object.values(g).map(q=>row('Diámetro '+q.lab+(M.k==='ac'?' ('+q.di+' mm interior)':''),fmt(q.len,2)+' m',packCuts(M.len,3,q.pieces).length+' tubo(s) de '+fmt(M.len/1000,1)+' m')).join('');
+  $('#out').innerHTML=res(
+    row('Caída total en el recorrido',fmt(r.dpT,2),'mbar de '+fmt(r.dpMax,1)+' permitidos',r.ok?'key good':'key bad')+
+    (arts.length?row('Consumo simultáneo de la vivienda',fmt(qsi*9300,0),'kcal/h ('+fmt(qsi,2)+' m³/h)'):'')+
+    r.rows.map(x=>row(x.name+' → '+x.lab,fmt(x.Q,2)+' m³/h',x.ok?'':'no alcanza')).join(''))+
+   `<div class="tblw"><table><thead><tr><th>Tramo</th><th>Largo m</th><th>Le m</th><th>Caudal m³/h</th><th>Caída permitida</th><th>Diámetro</th><th>Caída real</th><th>Velocidad m/s</th></tr></thead><tbody>${r.rows.map(x=>`<tr><td>${x.name}</td><td>${fmt(x.L,2)}</td><td>${fmt(x.Le,2)}</td><td>${fmt(x.Q,2)}</td><td>${fmt(x.lim,3)}</td><td>${x.lab}${x.ok?'':' ⚠'}</td><td>${fmt(x.dp,3)}</td><td>${fmt(x.v,2)}</td></tr>`).join('')}</tbody></table></div>`+
+   '<h3 class="sec" style="margin-top:14px">Material</h3>'+res(mat)+
+   (r.ok?'':'<p class="note">Con este material no alcanza: elegí un diámetro mayor, otro material o revisá los caudales.</p>')+
+   (bad.length?`<p class="note">No se entendió: ${bad.join(' | ')}</p>`:'')+
+   '<p class="note">Método de la NAG-200 (ENARGAS): Renouard lineal con gas natural (densidad relativa 0,65, 9300 kcal/m³), caída máxima de 1 mbar hasta el artefacto más lejano y velocidad máxima de 7 m/s. Es una ayuda de cálculo: el proyecto definitivo lo firma un gasista matriculado y lo aprueba la prestadora (Camuzzi), que puede pedir otros datos.</p>';
+ }},
 {id:'obra',name:'Cantidades de obra',desc:'Durlock, chapas, desplegado, ladrillos, pintura',
  fig:()=>FIG.obra(),
  html:()=>`<div class="form">
@@ -3225,6 +3313,14 @@ function linkWrite(v,text){
     if(l){const r=cutsToShapes(text,l.shapes);if(r.changed.length){l.shapes=r.shapes;plProjSave(all);changed=r.changed;}}}
   return changed;
 }
+function linkSetDia(v,map){
+  const d=store('plano-d');let changed=[];
+  const live=v==='cur'||(d.proj&&v===d.proj.id+':'+d.proj.lid);
+  if(live&&Array.isArray(d.shapes)){const r=diaApply(d.shapes,map);if(r.changed.length){changed=r.changed;persist('plano-d',Object.assign({},d,{shapes:r.shapes}));}}
+  if(v!=='cur'){const [pid,lid]=v.split(':'),all=plProjs().slice(),p=all.find(x=>x.id===pid),l=p&&p.plans.find(x=>x.id===lid);
+    if(l){const r=diaApply(l.shapes,map);if(r.changed.length){l.shapes=r.shapes;plProjSave(all);changed=r.changed;}}}
+  return changed;
+}
 function linkMsg(t,id){const e=document.getElementById(id||'cpMsg');if(e)e.textContent=t;}
 function linkAct(k,quiet){
   const g=id=>document.getElementById(id);
@@ -3237,6 +3333,15 @@ function linkAct(k,quiet){
       cp.dispatchEvent(new Event('input',{bubbles:true}));linkMsg('Se trajeron '+t.split('\n').length+' tramos. Si cambiás un largo, se actualiza en el plano.');
     }else if(k==='cut-upd'){const r=cutsRefresh(cp.value,sh);cp.value=r.text;cp.dispatchEvent(new Event('input',{bubbles:true}));linkMsg(r.n?'Se actualizaron '+r.n+' medida(s) desde el plano.':'Ya coincide con el plano.');}
     else{const ch=linkWrite(v,cp.value);if(ch.length)linkMsg('Plano actualizado: '+ch.join(', ')+'. Abrí Planos para verlo.');else if(!quiet)linkMsg('No hay cambios para enviar.');}
+  }else if(k==='gas-get'){
+    const v=V('gly'),gt=g('gt');if(!v||!gt){linkMsg('Elegí primero un plano.','gMsg');return;}
+    const tl=tramoList(linkShapes(v)||[]).filter(t=>t.ins==='gas');
+    if(!tl.length){linkMsg('Ese plano no tiene tramos de gas. En Planos elegí la línea de instalación «Gas» y dibujá.','gMsg');return;}
+    gt.value=tl.map(t=>t.id+' ; '+String(Math.round(t.len/10)/100).replace('.',',')+' ; ').join('\n');gt.dispatchEvent(new Event('input',{bubbles:true}));
+    linkMsg('Se trajeron '+tl.length+' tramos. Poné el consumo de cada uno y ordenalos del medidor al artefacto más lejano.','gMsg');
+  }else if(k==='gas-send'){
+    const v=V('gly');if(!v||!window.GASLAST){linkMsg('Elegí un plano y calculá primero.','gMsg');return;}
+    const ch=linkSetDia(v,window.GASLAST);linkMsg(ch.length?'Diámetros enviados al plano: '+ch.join(', ')+'.':'No hay tramos del plano con esos nombres (G1, G2…).','gMsg');
   }else if(k==='obra-get'){
     const v=V('oly'),os=g('os');if(!v||!os){linkMsg('Elegí primero un plano.','oMsg');return;}
     const sh=linkShapes(v)||[],d=store('plano-d'),t=surfFromShapes(sh,(d.cfg&&d.cfg.mh)||2600);
