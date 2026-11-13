@@ -539,6 +539,7 @@ function shapeBounds(s){
   if(s.t==='w'){const b=mm([s.a,s.b]),h=(s.th||150)/2;return [b[0]-h,b[1]-h,b[2]+h,b[3]+h];}
   if(s.t==='c')return [s.c[0]-s.r,s.c[1]-s.r,s.c[0]+s.r,s.c[1]+s.r];
   if(s.t==='tx')return [s.p[0],s.p[1],s.p[0]+s.s.length*.6*s.h,s.p[1]+s.h];
+  if(s.t==='an')return mm([s.a,s.p,[s.p[0]+s.s.length*.6*s.h,s.p[1]+s.h]]);
   if(s.t==='nb'){const nbm=nbSize(s);return [s.p[0],s.p[1]-nbm[1],s.p[0]+nbm[0],s.p[1]];}
   if(s.t==='door'||s.t==='win'){const h=s.wd/2;return [s.p[0]-h,s.p[1]-h,s.p[0]+h,s.p[1]+h];}
   if(s.t==='it'){const h=Math.hypot(s.w,s.h)/2;return [s.p[0]-h,s.p[1]-h,s.p[0]+h,s.p[1]+h];}
@@ -565,7 +566,8 @@ function hitDist(s,p){
   if(s.t==='c')return Math.abs(pdist(p,s.c)-s.r);
   if(s.t==='tx'||s.t==='nb'){const b=shapeBounds(s);const dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.hypot(dx,dy);}
   if(s.t==='door'||s.t==='win')return Math.max(0,pdist(p,s.p)-s.wd/2);
-  if(s.t==='fit')return Math.max(0,pdist(p,s.p)-110);
+  if(s.t==='fit')return s.hide?Infinity:Math.max(0,pdist(p,s.p)-110);
+  if(s.t==='an'){const b=shapeBounds({t:'tx',p:s.p,s:s.s,h:s.h}),dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.min(Math.hypot(dx,dy),segDist(p,s.a,s.p));}
   if(s.t==='it'){const r=-(s.ang||0)*Math.PI/180,dx=p[0]-s.p[0],dy=p[1]-s.p[1],lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r),ex=Math.max(Math.abs(lx)-s.w/2,0),ey=Math.max(Math.abs(ly)-s.h/2,0);return ex===0&&ey===0?2:Math.hypot(ex,ey);}
   return Infinity;
 }
@@ -759,7 +761,8 @@ function parsePlanoJson(txt){
     else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,120),h:+s.h>0?+s.h:150};}
     else if(s.t==='nb'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'nb',p,s:s.s.slice(0,400),h:+s.h>0?+s.h:100};}
     else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;if(+s.hh>0)o.hh=+s.hh;if(s.t==='win'&&s.sl!=null&&+s.sl>=0)o.sl=+s.sl;}}
-    else if(s.t==='fit'){const p=P(s.p);if(p&&FITS[s.k]&&(!s.ins||INSTS.some(x=>x[0]===s.ins))){o={t:'fit',k:s.k,ins:s.ins||'',p,ang:isFinite(s.ang)?+s.ang:0};if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);}}
+    else if(s.t==='fit'){const p=P(s.p);if(p&&FITS[s.k]&&(!s.ins||INSTS.some(x=>x[0]===s.ins))){o={t:'fit',k:s.k,ins:s.ins||'',p,ang:isFinite(s.ang)?+s.ang:0};if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);if(typeof s.dia2==='string'&&s.dia2)o.dia2=s.dia2.slice(0,14);if(+s.hide)o.hide=1;if(typeof s.ov==='string'&&FITS[s.ov])o.ov=s.ov;}}
+    else if(s.t==='an'){const a=P(s.a),p=P(s.p);if(a&&p&&typeof s.s==='string'&&s.s)o={t:'an',a,p,s:s.s.slice(0,200),h:+s.h>0?+s.h:150};}
     else if(s.t==='it'){const p=P(s.p);if(p&&ITEMS[s.k]&&+s.w>0&&+s.h>0)o={t:'it',k:s.k,p,w:+s.w,h:+s.h,ang:isFinite(s.ang)?+s.ang:0};}
     if(o&&s.lk)o.lk=1;
     if(o)out.push(o);else dropped++;
@@ -1117,7 +1120,7 @@ function plRotate(s,deg){
   if(s.t==='it'){r.ang=(((s.ang||0)+deg)%360+360)%360;return r;}
   if(s.t==='door'||s.t==='win'){if(!q90)return null;r.o=(((s.o||0)+Math.round(deg/90))%4+4)%4;return r;}
   if(s.t==='fit'){r.ang=(((s.ang||0)+deg)%360+360)%360;return r;}
-  if(s.t==='c'||s.t==='tx'||s.t==='nb')return r;
+  if(s.t==='c'||s.t==='tx'||s.t==='nb'||s.t==='an')return r;
   return null;
 }
 /* Paredes y aberturas del plano → líneas para Cantidades de obra (metros) */
@@ -1232,12 +1235,13 @@ function autoFits(sh){
       add((nd.ins==='clo'||nd.ins==='plu')&&br>=35&&br<=55?'y45':'tee');if(dset.length>1)add('red');
     }else if(n+m>=3){for(let i=0;i<n+m-2;i++)add('tee');if(dset.length>1)add('red');}
   });
-  return out;
+  const man=sh.filter(q=>q.t==='fit'&&q.ov);
+  return man.length?out.filter(a=>!man.some(m=>m.ov===a.k&&(m.ins||'')===(a.ins||'')&&pdist(m.p,a.p)<=60)):out;
 }
 /* Lista de piezas del plano: las automáticas y las que se colocaron a mano, agrupadas */
 function fitList(sh){
   const g={};
-  autoFits(sh).concat(sh.filter(s=>s.t==='fit')).forEach(f=>{
+  autoFits(sh).concat(sh.filter(s=>s.t==='fit'&&!s.hide)).forEach(f=>{
     const d=f.dia2?f.dia+'×'+f.dia2:(f.dia||''),kk=f.ins+'|'+f.k+'|'+d;
     (g[kk]=g[kk]||{ins:f.ins||'',k:f.k,name:fitName(f.k),dia:d,n:0}).n++;
   });
@@ -1311,6 +1315,88 @@ function wallGroup(sh,i){
       if(on(o.a,w)||on(o.b,w)||on(w.a,o)||on(w.b,o)){g.add(j);q.push(j);}});}
   sh.forEach((o,k)=>{if((o.t==='door'||o.t==='win')&&!o.fr){const ow=openingWall(sh,k);if(ow&&g.has(ow.j))g.add(k);}});
   return g;
+}
+/* ---- Ambientes: caras cerradas que forman las paredes ---- */
+function plRooms(sh){
+  const W=[];sh.forEach((s,i)=>{if(s.t==='w'&&!s.k&&Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1])>1)W.push({i,a:s.a,b:s.b,th:s.th||150});});
+  if(W.length<3)return [];
+  const nodes=[],nid=p=>{for(let k=0;k<nodes.length;k++)if(Math.abs(nodes[k][0]-p[0])<=2&&Math.abs(nodes[k][1]-p[1])<=2)return k;nodes.push([p[0],p[1]]);return nodes.length-1;};
+  const tOn=(w,p)=>{const dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1];return ((p[0]-w.a[0])*dx+(p[1]-w.a[1])*dy)/(dx*dx+dy*dy);};
+  const cuts=W.map(()=>[]),ep=W.map(w=>[w.a,w.b]);
+  W.forEach((w,x)=>{[0,1].forEach(e=>{
+    const P=e?w.b:w.a;let hit=false;
+    for(const o of W){if(o===w)continue;if(Math.hypot(P[0]-o.a[0],P[1]-o.a[1])<=2||Math.hypot(P[0]-o.b[0],P[1]-o.b[1])<=2){hit=true;break;}}
+    if(hit)return;
+    let best=null,bd=Infinity;
+    W.forEach((o,y)=>{if(o===w)return;const d=segDist(P,o.a,o.b);if(d<=o.th/2+1&&d<bd){bd=d;const t=Math.max(0,Math.min(1,tOn(o,P)));best={y,Q:[o.a[0]+(o.b[0]-o.a[0])*t,o.a[1]+(o.b[1]-o.a[1])*t],t};}});
+    if(best){ep[x][e]=best.Q;cuts[best.y].push([best.t,nid(best.Q)]);}
+  });});
+  for(let x=0;x<W.length;x++)for(let y=x+1;y<W.length;y++){
+    const p=ep[x][0],p2=ep[x][1],q=ep[y][0],q2=ep[y][1],d1=[p2[0]-p[0],p2[1]-p[1]],d2=[q2[0]-q[0],q2[1]-q[1]],den=d1[0]*d2[1]-d1[1]*d2[0];
+    if(Math.abs(den)<1e-6)continue;
+    const t=((q[0]-p[0])*d2[1]-(q[1]-p[1])*d2[0])/den,u=((q[0]-p[0])*d1[1]-(q[1]-p[1])*d1[0])/den,e1=3/Math.hypot(d1[0],d1[1]),e2=3/Math.hypot(d2[0],d2[1]);
+    if(t>e1&&t<1-e1&&u>e2&&u<1-e2){const pt=[p[0]+d1[0]*t,p[1]+d1[1]*t],n=nid(pt);cuts[x].push([t,n]);cuts[y].push([u,n]);}
+  }
+  const E=[],seen={};
+  W.forEach((w,x)=>{
+    const L=[[0,nid(ep[x][0])],[1,nid(ep[x][1])]].concat(cuts[x]).sort((u,v)=>u[0]-v[0]);
+    for(let k=0;k+1<L.length;k++){const u=L[k][1],v=L[k+1][1];if(u===v)continue;const key=Math.min(u,v)+'_'+Math.max(u,v);if(seen[key])continue;seen[key]=1;E.push({u,v,w:w.i,h:w.th/2});}
+  });
+  const alive=E.map(()=>true),deg=nodes.map(()=>0);E.forEach(e=>{deg[e.u]++;deg[e.v]++;});
+  for(let ch=true;ch;){ch=false;E.forEach((e,k)=>{if(alive[k]&&(deg[e.u]<2||deg[e.v]<2)){alive[k]=false;deg[e.u]--;deg[e.v]--;ch=true;}});}
+  const nb=nodes.map(()=>[]);
+  E.forEach((e,k)=>{if(!alive[k])return;nb[e.u].push({to:e.v,ei:k,ang:Math.atan2(nodes[e.v][1]-nodes[e.u][1],nodes[e.v][0]-nodes[e.u][0])});nb[e.v].push({to:e.u,ei:k,ang:Math.atan2(nodes[e.u][1]-nodes[e.v][1],nodes[e.u][0]-nodes[e.v][0])});});
+  nb.forEach(l=>l.sort((a,b)=>a.ang-b.ang));
+  const vis=new Set(),rooms=[];
+  E.forEach((e0,k0)=>{if(!alive[k0])return;[0,1].forEach(dr=>{
+    if(vis.has(k0*2+dr))return;
+    const loop=[];let ei=k0,d=dr,g=0;
+    while(g++<400){const key=ei*2+d;if(vis.has(key))break;vis.add(key);const ed=E[ei],from=d?ed.v:ed.u,to=d?ed.u:ed.v;loop.push({from,ei});
+      const list=nb[to],ix=list.findIndex(q=>q.ei===ei),nx=list[(ix-1+list.length)%list.length];ei=nx.ei;d=E[ei].u===to?0:1;}
+    if(loop.length<3)return;
+    const poly=loop.map(l=>nodes[l.from]),n=poly.length;let ar=0;for(let j=0;j<n;j++){const a=poly[j],b=poly[(j+1)%n];ar+=a[0]*b[1]-b[0]*a[1];}ar/=2;
+    if(!(ar>1e5))return;
+    const hs=loop.map(l=>E[l.ei].h),ws=loop.map(l=>E[l.ei].w);
+    const ln=poly.map((p,j)=>{const q=poly[(j+1)%n],dx=q[0]-p[0],dy=q[1]-p[1],L=Math.hypot(dx,dy)||1;return {p:[p[0]-dy/L*hs[j],p[1]+dx/L*hs[j]],d:[dx/L,dy/L]};});
+    const inner=poly.map((p,j)=>{const a=ln[(j-1+n)%n],b=ln[j],den=a.d[0]*b.d[1]-a.d[1]*b.d[0];if(Math.abs(den)<1e-6)return [b.p[0],b.p[1]];
+      const t=((b.p[0]-a.p[0])*b.d[1]-(b.p[1]-a.p[1])*b.d[0])/den;return [a.p[0]+a.d[0]*t,a.p[1]+a.d[1]*t];});
+    const keep=[];inner.forEach((p,j)=>{const a=inner[(j-1+n)%n],b=inner[(j+1)%n],dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1,dev=Math.abs((p[0]-a[0])*dy-(p[1]-a[1])*dx)/L;if(dev>8)keep.push(j);});
+    if(keep.length<3)return;
+    const v=keep.map(j=>inner[j]),m=v.length,edges=keep.map((j,x)=>{const j2=keep[(x+1)%m],set=new Set();for(let q=j;q!==j2;q=(q+1)%n)set.add(ws[q]);if(!set.size)set.add(ws[j]);const a=v[x],b=v[(x+1)%m];return {walls:[...set],len:Math.hypot(b[0]-a[0],b[1]-a[1])};});
+    const dot=(x)=>{const a=v[x],b=v[(x+1)%m],c=v[(x+2)%m];return ((b[0]-a[0])*(c[0]-b[0])+(b[1]-a[1])*(c[1]-b[1]))/((edges[x].len*edges[(x+1)%m].len)||1);};
+    const rect=m===4&&Math.abs(dot(0))<.02&&Math.abs(dot(1))<.02&&Math.abs(edges[0].len-edges[2].len)<3&&Math.abs(edges[1].len-edges[3].len)<3;
+    const xs=v.map(q=>q[0]),ys=v.map(q=>q[1]),bb=[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];
+    rooms.push({v,edges,rect,w:rect?edges[0].len:bb[2]-bb[0],h:rect?edges[1].len:bb[3]-bb[1],bb,c:[(bb[0]+bb[2])/2,(bb[1]+bb[3])/2],walls:new Set(ws)});
+  });});
+  return rooms;
+}
+/* Une las paredes que quedaron casi tocándose y apoya las aberturas sobre el eje de su pared */
+function plWeld(sh,tol){
+  const out=sh.map(s=>s.t==='w'&&!s.k?Object.assign({},s,{a:s.a.slice(),b:s.b.slice()}):s),idx=[];let n=0;
+  out.forEach((s,i)=>{if(s.t==='w'&&!s.k&&!s.lk)idx.push(i);});
+  const inter=(w,o)=>{const d1=[w.b[0]-w.a[0],w.b[1]-w.a[1]],d2=[o.b[0]-o.a[0],o.b[1]-o.a[1]],den=d1[0]*d2[1]-d1[1]*d2[0],L=Math.hypot(...d1)*Math.hypot(...d2);if(!L||Math.abs(den)/L<.05)return null;const t=((o.a[0]-w.a[0])*d2[1]-(o.a[1]-w.a[1])*d2[0])/den;return [w.a[0]+d1[0]*t,w.a[1]+d1[1]*t];};
+  idx.forEach(i=>{['a','b'].forEach(e=>{
+    const P=out[i][e];let best=null,bd=tol,bj=-1,bf='',ex=false;
+    idx.forEach(j=>{if(j===i)return;['a','b'].forEach(f=>{const Q=out[j][f],d=pdist(P,Q);if(d<=.01)ex=true;else if(d<=bd){bd=d;best=Q;bj=j;bf=f;}});});
+    if(ex)return;
+    if(best){const X=inter(out[i],out[bj]);if(X&&pdist(X,P)<=tol*1.5&&pdist(X,best)<=tol*1.5){out[i][e]=[X[0],X[1]];out[bj][bf]=[X[0],X[1]];}else out[i][e]=[best[0],best[1]];n++;return;}
+    let b2=tol,pj=-1,Q2=null;
+    idx.forEach(j=>{if(j===i)return;const w=out[j],d=segDist(P,w.a,w.b);if(d>.01&&d<=b2){const dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1],l2=dx*dx+dy*dy,t=Math.max(0,Math.min(1,((P[0]-w.a[0])*dx+(P[1]-w.a[1])*dy)/l2));b2=d;pj=j;Q2=[w.a[0]+dx*t,w.a[1]+dy*t];}});
+    if(Q2){const X=inter(out[i],out[pj]);out[i][e]=(X&&pdist(X,P)<=tol*1.5)?[X[0],X[1]]:Q2;n++;}
+  });});
+  out.forEach((s,k)=>{if((s.t==='door'||s.t==='win')&&!s.lk){let bw=null,bd=Math.max(tol,100);idx.forEach(j=>{const w=out[j],d=segDist(s.p,w.a,w.b);if(d<=bd){bd=d;bw=w;}});
+    if(bw){const dx=bw.b[0]-bw.a[0],dy=bw.b[1]-bw.a[1],l2=dx*dx+dy*dy,t=Math.max(0,Math.min(1,((s.p[0]-bw.a[0])*dx+(s.p[1]-bw.a[1])*dy)/l2)),q=[bw.a[0]+dx*t,bw.a[1]+dy*t],na=Math.atan2(dy,dx)*180/Math.PI,df=Math.abs(((s.ang||0)-na)%180),same=df<.5||df>179.5;
+      if(pdist(q,s.p)>.5||!same){out[k]=Object.assign({},s,{p:q,ang:same?s.ang:na});n++;}}}});
+  return {shapes:out,n};
+}
+/* Punto sobre el eje de una pared cercana (para que las paredes nuevas queden pegadas) */
+function plAxisSnap(sh,q,anchor,tol){
+  let best=null,bd=tol;
+  sh.forEach(w=>{if(w.t!=='w'||w.k)return;const dx=w.b[0]-w.a[0],dy=w.b[1]-w.a[1],l2=dx*dx+dy*dy;if(!l2)return;let r=null;
+    if(anchor){const ex=q[0]-anchor[0],ey=q[1]-anchor[1],den=dx*ey-dy*ex;if(Math.abs(den)>1e-9){const t=((anchor[0]-w.a[0])*ey-(anchor[1]-w.a[1])*ex)/den;if(t>=0&&t<=1)r=[w.a[0]+dx*t,w.a[1]+dy*t];}}
+    if(!r){const t=Math.max(0,Math.min(1,((q[0]-w.a[0])*dx+(q[1]-w.a[1])*dy)/l2));r=[w.a[0]+dx*t,w.a[1]+dy*t];}
+    const d=pdist(r,q);if(d<=bd){bd=d;best=r;}});
+  return best;
 }
 /*CALC-END*/
 
@@ -1521,9 +1607,9 @@ const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el nor
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
   cfg:{ortho:true,dims:true,big:false,grid:0,mp:0,unit:'mm',th:150,lw:2,title:'',dw:900,vw:1200,ve:3000,ca:8000,no:90,cmp:true}};
-const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared ext.'],['wi','Pared int.'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['nb','Cuadro de notas'],['door','Puerta'],['win','Ventana'],['gate','Portón'],['it','Ítem / escalera'],['fit','Pieza'],['wr','Pared rect.'],['wc','Pared círculo'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
+const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared ext.'],['wi','Pared int.'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['an','Anotación con flecha'],['nb','Cuadro de notas'],['door','Puerta'],['win','Ventana'],['gate','Portón'],['it','Ítem / escalera'],['fit','Pieza'],['wr','Pared rect.'],['wc','Pared círculo'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
 const PLLINE=['l','w','dim','lm','le','vr','ca'];
-const PLHINT={nb:'Tocá donde va la esquina de arriba a la izquierda del cuadro y escribí el texto (usá | para pasar a otra línea).',fit:'Elegí la pieza abajo (según la instalación) y tocá donde va. Si tocás sobre un tramo, queda alineada con él. El diámetro sale del campo «Diámetro».',ver:'Arrastrá con un dedo para mover el plano. Con dos dedos acercás o alejás.',sel:'Tocá una figura para elegirla. Arrastrala para moverla.',
+const PLHINT={an:'Tocá lo que querés señalar (ahí va la punta de la flecha) y después tocá dónde va el texto.',nb:'Tocá donde va la esquina de arriba a la izquierda del cuadro y escribí el texto (usá | para pasar a otra línea).',fit:'Elegí la pieza abajo (según la instalación) y tocá donde va. Si tocás sobre un tramo, queda alineada con él. El diámetro sale del campo «Diámetro».',ver:'Arrastrá con un dedo para mover el plano. Con dos dedos acercás o alejás.',sel:'Tocá una figura para elegirla. Arrastrala para moverla.',
   l:'Arrastrá para mover el plano. Tocá donde empieza la línea y después donde termina. Para una medida exacta usá los campos de abajo.',w:'Arrastrá para mover el plano. Tocá el inicio y el final de la pared. El espesor se define abajo.',
   r:'Arrastrá para mover el plano. Tocá una esquina y la esquina opuesta.',c:'Arrastrá para mover el plano. Tocá el centro y después un punto del borde.',dim:'Arrastrá para mover el plano. Tocá los dos puntos que querés medir.',tx:'Arrastrá para mover el plano. Tocá donde va el texto.',
   cal:'Arrastrá para mover el plano. Tocá dos puntos de la foto cuya distancia real conozcas y escribí esa distancia en milímetros. Los puntos quedan marcados en rojo.',img:'Arrastrá la foto para acomodarla. Con dos dedos acercás o alejás todo.',lm:'Arrastrá para mover el plano. Tocá los dos extremos de la línea municipal (límite entre el lote y la vereda).',le:'Arrastrá para mover el plano. Tocá los dos extremos de la línea de edificación (hasta dónde se puede construir).',vr:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la vereda. El ancho se define en Ajustes.',ca:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la calle. El ancho se define en Ajustes.',
@@ -1738,15 +1824,20 @@ function drawScene(ctx,sh,T,o){
     }
     else if(s.t==='c'){ctx.beginPath();ctx.arc(X(s.c[0]),Y(s.c[1]),s.r*S,0,7);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();}
     else if(s.t==='it'){plItem(ctx,s,X(s.p[0]),Y(s.p[1]),S,col,k,C);}
-    else if(s.t==='fit'){fitGlyph(ctx,s,X(s.p[0]),Y(s.p[1]),S,k,C,sel.includes(i),false);}
+    else if(s.t==='fit'){if(!s.hide)fitGlyph(ctx,s,X(s.p[0]),Y(s.p[1]),S,k,C,sel.includes(i),false);}
     else if(s.t==='nb'){const fs=Math.max(4,s.h*S),L=String(s.s).split('\n'),x=X(s.p[0]),y=Y(s.p[1]);ctx.font='600 '+fs+'px sans-serif';
       const w=Math.max(...L.map(l=>ctx.measureText(l).width))+fs,hh=L.length*fs*1.25+fs*.6;
       ctx.fillStyle=C.bg;ctx.fillRect(x,y,w,hh);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.strokeRect(x,y,w,hh);ctx.fillStyle=col;ctx.textAlign='left';ctx.textBaseline='top';L.forEach((l,j)=>ctx.fillText(l,x+fs*.5,y+fs*.3+j*fs*1.25));}
+    else if(s.t==='an'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),ax=X(s.a[0]),ay=Y(s.a[1]);ctx.font='600 '+fs+'px sans-serif';const tw=ctx.measureText(s.s).width,ty=y-fs*.35,Lp=[x,ty],Rp=[x+tw,ty],st=Math.hypot(ax-Lp[0],ay-Lp[1])<Math.hypot(ax-Rp[0],ay-Rp[1])?Lp:Rp;
+      ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=lw*.7;ctx.beginPath();ctx.moveTo(st[0],st[1]);ctx.lineTo(ax,ay);ctx.stroke();
+      const an=Math.atan2(ay-st[1],ax-st[0]),hs=Math.max(5*k,fs*.55);ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax-hs*Math.cos(an-.4),ay-hs*Math.sin(an-.4));ctx.lineTo(ax-hs*Math.cos(an+.4),ay-hs*Math.sin(an+.4));ctx.closePath();ctx.fill();
+      ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText(s.s,x,y);}
     else if(s.t==='tx'){ctx.fillStyle=col;ctx.font='600 '+Math.max(4,s.h*S)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText(s.s,X(s.p[0]),Y(s.p[1]));}
   });
   autoFits(sh).forEach(f=>fitGlyph(ctx,f,X(f.p[0]),Y(f.p[1]),S,k,C,false,true));
   // cotas
   const dm=(a,b,off,txt,ext,tg)=>plDim(ctx,[X(a[0]),Y(a[1])],[X(b[0]),Y(b[1])],off,txt,k,C,ext,tg&&o.hit?{i:o.imap?o.imap[tg.i]:tg.i,k:tg.k}:null);
+  const rooms=(o.rd&&o.dims!==false)?(()=>{try{return plRooms(sh);}catch(e){return [];}})():[],rmW=new Set();rooms.forEach(r=>r.walls.forEach(x=>rmW.add(x)));
   if(o.ub)sh.forEach((s,i)=>{
     if(s.t==='door'||s.t==='win'){
       const g=openingGaps(sh,i);if(!g)return;
@@ -1764,7 +1855,7 @@ function drawScene(ctx,sh,T,o){
     else if(o.dims){
       if(s.t==='l'){if(s.ls!=='cor'&&s.ls!=='le'&&!s.nd)dm(s.a,s.b,-16*k,dimTxt(pdist(s.a,s.b),u),false,{i,k:'eje'});}
       else if(s.t==='w'){if(!s.k&&!s.nd){
-        const th=(s.th||150)*S/2,wm=o.wm||{c:true},ln=wallLens(sh,i),osd=outerSide(s,cen),multi=(wm.c?1:0)+(wm.i?1:0)+(wm.e?1:0)>1;
+        const th=(s.th||150)*S/2,wm0=o.wm||{c:true},wm={c:wm0.c||(o.rd&&!rmW.has(i)&&!wm0.i&&!wm0.e),i:wm0.i,e:wm0.e},ln=wallLens(sh,i),osd=outerSide(s,cen),multi=(wm.c?1:0)+(wm.i?1:0)+(wm.e?1:0)>1;
         const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],L0=Math.hypot(dx,dy)||1,ux=dx/L0,uy=dy/L0;
         const tt=(lab,v)=>(multi?lab+' ':'')+dimTxt(v,u),off=(inner,v)=>((inner?osd!==1:osd===1)?-v:v);
         const ends=(e0,e1)=>[[s.a[0]+ux*e0,s.a[1]+uy*e0],[s.b[0]-ux*e1,s.b[1]-uy*e1]];
@@ -1781,6 +1872,23 @@ function drawScene(ctx,sh,T,o){
       else if((s.t==='door'||s.t==='win')&&o.od!==false){ctx.save();ctx.fillStyle=C.muted;ctx.font='600 '+(10*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(dimTxt(s.wd,u)+(s.hh>0?' × '+dimTxt(s.hh,u):'')+(s.t==='win'&&s.sl!=null?' · alf '+dimTxt(s.sl,u):''),X(s.p[0]),Y(s.p[1])+(s.t==='win'?-14*k:14*k));ctx.restore();}
     }
   });
+  if(o.dims!==false){
+    rooms.forEach(r=>{
+      const pv=r.v.map(q=>[X(q[0]),Y(q[1])]),big=r.rect&&r.edges[0].len*S>90*k&&r.edges[1].len*S>90*k;
+      if(big){
+        const w=r.edges[0].len*S,h=r.edges[1].len*S,a0=r.v[0],a1=r.v[1],a2=r.v[2],L0=Math.hypot(a1[0]-a0[0],a1[1]-a0[1])||1,L1=Math.hypot(a2[0]-a1[0],a2[1]-a1[1])||1;
+        const tg=(kk)=>o.hit?{rm:kk==='w'?{k:'w',len:r.edges[0].len,mv:r.edges[1].walls.map(x=>o.imap?o.imap[x]:x),dir:[(a1[0]-a0[0])/L0,(a1[1]-a0[1])/L0]}:{k:'h',len:r.edges[1].len,mv:r.edges[2].walls.map(x=>o.imap?o.imap[x]:x),dir:[(a2[0]-a1[0])/L1,(a2[1]-a1[1])/L1]}}:null;
+        plDim(ctx,pv[0],pv[1],-.36*h,dimTxt(r.edges[0].len,u),k,C,false,tg('w'));
+        plDim(ctx,pv[1],pv[2],-.36*w,dimTxt(r.edges[1].len,u),k,C,false,tg('h'));
+      }else{
+        const cx=X(r.c[0]),cy=Y(r.c[1]);ctx.save();ctx.font='600 '+(10*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=C.ink;ctx.strokeStyle=C.bg;ctx.lineWidth=3*k;
+        const t=dimTxt(r.w,u)+' × '+dimTxt(r.h,u);ctx.strokeText(t,cx,cy);ctx.fillText(t,cx,cy);ctx.restore();
+      }
+    });
+    if(o.ct){const ws=sh.filter(q=>q.t==='w'&&!q.k&&!q.nd);
+      if(ws.length){const bs=ws.map(shapeBounds),x0=Math.min(...bs.map(q=>q[0])),y0=Math.min(...bs.map(q=>q[1])),x1=Math.max(...bs.map(q=>q[2])),y1=Math.max(...bs.map(q=>q[3]));
+        dm([x0,y0],[x1,y0],34*k,'Total '+dimTxt(x1-x0,u),true);dm([x1,y0],[x1,y1],34*k,'Total '+dimTxt(y1-y0,u),true);}}
+  }
 }
 function plShapeFrom(mode,a,b){
   if(mode==='l'){const o={t:'l',a,b,w:PL.cfg.lw};if(PL.cfg.ins){o.ins=PL.cfg.ins;o.n=nextTramo(PL.shapes,PL.cfg.ins);if(PL.cfg.dia)o.dia=PL.cfg.dia;if(PL.cfg.mat)o.mat=PL.cfg.mat;}return o;}
@@ -1985,7 +2093,7 @@ function plDraw(){
   const list=PL.shapes.slice(),selA=PL.grp?[...PL.grp]:PL.sel>=0?[PL.sel]:[];
   if(PL.draft&&PL.draft.cur){const ds=plShapeFrom(PL.mode,PL.draft.a,PL.draft.cur);if(ds){ds.w=1;list.push(ds);selA.push(list.length-1);}}
   PL.lh=[];
-  sceneDraw(ctx,list,V0,{area:PL.cfg.area,hit:1,k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub});
+  sceneDraw(ctx,list,V0,{area:PL.cfg.area,hit:1,k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc===true,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub,rd:PL.cfg.rd!==false,ct:!!PL.cfg.ct});
   if(PL.draft&&PL.draft.cur&&PL.mode!=='dim'){
     const a=PL.draft.a,b=PL.draft.cur,txt=(PL.mode==='r'||PL.mode==='wr')?dimTxt(Math.abs(b[0]-a[0]),PL.cfg.unit)+' × '+dimTxt(Math.abs(b[1]-a[1]),PL.cfg.unit):(PL.mode==='c'||PL.mode==='wc')?'Ø '+dimTxt(2*pdist(a,b),PL.cfg.unit):dimTxt(pdist(a,b),PL.cfg.unit)+'  '+Math.round(((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)+360)%360)+'°';
     ctx.font='600 13px sans-serif';ctx.fillStyle=C.accent;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(txt,8,8);
@@ -2030,18 +2138,28 @@ function plFit(main){
 }
 function plPt(ev){const r=PL.cv.getBoundingClientRect();return [ev.clientX-r.left,ev.clientY-r.top];}
 function plSnap(px,ev,anchor){
-  const wp=plTW(px[0],px[1]),tol=(PL.cfg.mp||0)/PL.view.s,pts=tol>0?snapPoints(PL.shapes):[],g=PL.cfg.grid,ar=PL.cfg.area;
+  const wp=plTW(px[0],px[1]),isW=PL.mode==='w'||PL.mode==='wr',tol=Math.max(PL.cfg.mp||0,isW?18:0)/PL.view.s,pts=tol>0?snapPoints(PL.shapes):[],g=PL.cfg.grid,ar=PL.cfg.area;
   const cl=q=>{if(ar){q.p=[Math.max(ar.x,Math.min(ar.x+ar.w,q.p[0])),Math.max(ar.y,Math.min(ar.y+ar.h,q.p[1]))];}return q;};
   if(anchor&&PL.cfg.ortho&&(PLLINE.includes(PL.mode))){
     let q=snapTo(orthoPt(anchor,wp),pts,tol,g);
     if(q.kind!=='pt')q={p:orthoPt(anchor,q.p),kind:q.kind};
+    if(isW&&q.kind!=='pt'){const r=plAxisSnap(PL.shapes,q.p,anchor,tol);if(r)q={p:r,kind:'pt'};}
     return cl(q);
   }
-  return cl(snapTo(wp,pts,tol,g));
+  {let q=snapTo(wp,pts,tol,g);if(isW&&q.kind!=='pt'){const r=plAxisSnap(PL.shapes,q.p,null,tol);if(r)q={p:r,kind:'pt'};}return cl(q);}
 }
-function plPick(px){
+function plPick(px,conv){
   const wp=plTW(px[0],px[1]),tol=14/PL.view.s;let best=-1,bd=tol;
-  PL.shapes.forEach((s,i)=>{if(s.lk)return;const d=hitDist(s,wp);if(d<=bd){bd=d;best=i;}});return best;
+  PL.shapes.forEach((s,i)=>{if(s.lk)return;const d=hitDist(s,wp);if(d<=bd){bd=d;best=i;}});
+  /* Piezas (a mano o automáticas): ganan los empates y, si hay varias juntas, se alterna entre ellas. Una automática se vuelve editable al elegirla. */
+  const fc=[];
+  PL.shapes.forEach((s,i)=>{if(s.t==='fit'&&!s.lk&&!s.hide){const d=hitDist(s,wp);if(d<=tol)fc.push({i,d});}});
+  if(conv)autoFits(PL.shapes).forEach(f=>{const d=Math.max(0,pdist(wp,f.p)-110);if(d<=tol)fc.push({f,d});});
+  if(fc.length){const m=Math.min(...fc.map(c=>c.d)),g=fc.filter(c=>c.d<=m+.5);
+    if(m<=bd+.5){let c=g[0];if(g.length>1){const at=g.findIndex(x=>x.i===PL.sel);if(at>=0)c=g[(at+1)%g.length];}
+      if(c.f){const f=c.f,n={t:'fit',k:f.k,ins:f.ins||'',p:[f.p[0],f.p[1]],ang:0,ov:f.k};if(f.dia)n.dia=f.dia;if(f.dia2)n.dia2=f.dia2;plPush();PL.shapes.push(n);return PL.shapes.length-1;}
+      return c.i;}}
+  return best;
 }
 function plDown(ev){
   if(ev.pointerType==='mouse'&&ev.button>0)return;
@@ -2052,10 +2170,10 @@ function plDown(ev){
   const px=plPt(ev),m=PL.mode;
   if(PL.cfg.cmp){const q=plCmpGeom(PL.cv.getBoundingClientRect());if(Math.hypot(px[0]-q.x,px[1]-q.y)<=q.r*1.6){PL.drag={cmp:true,q};plCmpSet(px);return;}}
   plLpCancel();if(ev.pointerType!=='mouse'){PL.lp={px,t:setTimeout(()=>{const l=PL.lp;PL.lp=null;if(!l||PL.ptr.size!==1||PL.gest)return;PL.dn=null;PL.drag=null;PL.lpAt=Date.now();plMenuOpen(l.px,ev.clientX,ev.clientY);},560)};}
-  if(['sel','ver'].includes(m)||!PL.draft){const h=plLblHit(px);if(h){PL.dn=null;PL.drag=null;plLpCancel();PL.sel=h.i;plFill();plDraw();plEditMeasures(h.k);return;}}
+  if(['sel','ver'].includes(m)||!PL.draft){const h=plLblHit(px);if(h){PL.dn=null;PL.drag=null;plLpCancel();if(h.rm){plEditRoom(h.rm);return;}PL.sel=h.i;plFill();plDraw();plEditMeasures(h.k);return;}}
   if(m==='ver'){PL.drag={pan:true,px,v:Object.assign({},PL.view)};return;}
   if(m==='sel'){
-    const i=plPick(px);if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
+    const i=plPick(px,true);if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
     if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null,grp:PL.grp&&PL.grp.has(i)?JSON.parse(JSON.stringify(PL.shapes)):null,gs:PL.grp};
     else PL.drag={pan:true,px,v:Object.assign({},PL.view)};
     plDraw();return;
@@ -2130,6 +2248,13 @@ function plUp(ev){
     if(real>0){PL.bg=calibImage(PL.bg,A,B,real,V('plKa'));plSave();plFit();const mg=document.getElementById('plmsg');if(mg)mg.textContent='Escala calibrada. Comprobala con la herramienta Cota sobre otra medida conocida de la foto.';}
     plDraw();return;
   }
+  if(m==='an'){
+    const q=plSnap(px,ev,null);
+    if(!PL.an){PL.an={a:q.p};plMsg('Bien. Ahora tocá dónde va el texto de la anotación.');plDraw();return;}
+    const a=PL.an.a;PL.an=null;const t=window.prompt('Texto de la anotación:');
+    if(t&&t.trim())plAdd({t:'an',a,p:q.p,s:t.trim().slice(0,200),h:Math.round(Math.max(40,14/PL.view.s))},q.p);else plDraw();
+    return;
+  }
   if(m==='nb'){
     const q=plSnap(px,ev,null),t=window.prompt('Texto del cuadro (usá | para otra línea):');
     if(t&&t.trim()){const h=Math.round(Math.max(40,13/PL.view.s)),L=t.trim().split('|').map(x=>x.trim()).slice(0,12);plAdd({t:'nb',p:q.p,s:L.join('\n'),h},q.p);}
@@ -2190,7 +2315,7 @@ function plFill(){
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
-  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&s.t==='tx');
+  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'));q('plFt',!!s&&s.t==='fit');q('plDa',!!s&&(s.t==='fit'||(s.t==='l'&&!!s.ins)));
   const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?((s.t==='r'||s.t==='it'||s.t==='door'||s.t==='win')?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
   if(lab)lab.textContent=m==='r'?'Ancho':m==='c'?'Diámetro':'Largo';
   if(lb2)lb2.textContent=m==='r'?'Alto':'Ángulo (0° = derecha, 90° = arriba)';
@@ -2200,8 +2325,8 @@ function plFill(){
   {const sl=s&&s.t==='l'&&PL.mode==='sel',pc=plProjCur(),cur=sl?(s.ins||''):(pc?(pc.pj.mode==='base'?'base':(pc.pj.ins||PL.cfg.ins||'')):(PL.cfg.ins||''));document.querySelectorAll('#plIns [data-i]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.i===cur?'true':'false'));
    if(sl){const pt=String(s.mat||'').split(' + '),cv=COVERS.includes(pt[pt.length-1])||pt.length>1?pt.pop():'';set('plDi',s.dia||'');set('plMa',pt.join(' + '));set('plCv',cv);}}
   {const c=document.getElementById('plcur');if(c)c.textContent=plProjLabel();}
-  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
-  {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc!==false?'true':'false');const d=document.getElementById('plOd');if(d)d.setAttribute('aria-pressed',PL.cfg.od!==false?'true':'false');}
+  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
+  {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc===true?'true':'false');{const r=document.getElementById('plRd');if(r)r.setAttribute('aria-pressed',PL.cfg.rd!==false?'true':'false');}const d=document.getElementById('plOd');if(d)d.setAttribute('aria-pressed',PL.cfg.od!==false?'true':'false');}
 }
 function plNumAdd(){
   const L=N('plL'),A=N('plA'),p=[N('plX')||0,N('plY')||0],m=PL.mode;
@@ -2235,7 +2360,12 @@ function plNudge(dx,dy,step){
 }
 function plAction(a){
   const s=PL.shapes[PL.sel];
-  if(a==='del'&&s){plPush();PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
+  if(a==='del'&&s){plPush();if(s.t==='fit'&&s.ov)s.hide=1;else PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
+  else if(a==='rd'){PL.cfg.rd=!(PL.cfg.rd!==false);plSave();plFill();plDraw();}
+  else if(a==='ct'){PL.cfg.ct=!PL.cfg.ct;plSave();plFill();plDraw();}
+  else if(a==='weld'){const r=plWeld(PL.shapes,Math.max(300,(PL.cfg.th||150)*2));if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos de paredes y aberturas.');}else plMsg('No encontré paredes ni aberturas sueltas para unir.');}
+  else if(a==='fitrst'){const n=PL.shapes.filter(q=>q.t==='fit'&&q.ov).length;if(n){plPush();PL.shapes=PL.shapes.filter(q=>!(q.t==='fit'&&q.ov));PL.sel=-1;plChanged();plMsg('Se restauraron '+n+' piezas automáticas.');}else plMsg('No hay piezas automáticas modificadas para restaurar.');}
+  else if(a==='ftype'&&s&&s.t==='fit'){const r=PL.cv.getBoundingClientRect(),items=[['Tipo de pieza',null]].concat(fitsFor(s.ins||'').map(q=>[FITS[q].n+(q===s.k?' ✓':''),()=>{plPush();s.k=q;plChanged();}]));plMenuShow(items,r.left+16,r.top+16);}
   else if(a==='nL')plNudge(-1,0);else if(a==='nR')plNudge(1,0);else if(a==='nU')plNudge(0,1);else if(a==='nD')plNudge(0,-1);
   else if(a==='dup'&&s){plPush();const c=moveShape(s,Math.max(100,PL.cfg.grid||100),-Math.max(100,PL.cfg.grid||100));if(c.ins)c.n=nextTramo(PL.shapes,c.ins);PL.shapes.push(c);PL.sel=PL.shapes.length-1;plChanged();}
   else if(a==='meas'&&s)plEditMeasures();
@@ -2263,10 +2393,10 @@ function plAction(a){
   else if(a==='rot'&&s&&s.t==='it'){plRot(90);}
   else if(a==='od'){PL.cfg.od=!(PL.cfg.od!==false);plSave();plFill();plDraw();}
   else if(a==='ub'){PL.cfg.ub=!PL.cfg.ub;plSave();plFill();plDraw();}
-  else if(a==='wc'||a==='wi'||a==='we'){if(a==='wc')PL.cfg.wc=!(PL.cfg.wc!==false);else PL.cfg[a]=!PL.cfg[a];plSave();plFill();plDraw();}
+  else if(a==='wc'||a==='wi'||a==='we'){if(a==='wc')PL.cfg.wc=!(PL.cfg.wc===true);else PL.cfg[a]=!PL.cfg[a];plSave();plFill();plDraw();}
   else if(a==='cflip'&&s&&s.t==='cl'){plPush();s.dir=s.dir==='x'?'y':'x';plChanged();}
   else if(a==='flip'&&s&&(s.t==='door'||s.t==='win')){plPush();s.o=((s.o||0)+1)%4;plChanged();}
-  else if(a==='edt'&&s&&(s.t==='tx'||s.t==='nb')){const t=window.prompt(s.t==='nb'?'Texto del cuadro (| = otra línea):':'Texto:',s.t==='nb'?String(s.s).split('\n').join(' | '):s.s);if(t&&t.trim()){plPush();s.s=s.t==='nb'?t.trim().split('|').map(x=>x.trim()).slice(0,12).join('\n'):t.trim();plChanged();}}
+  else if(a==='edt'&&s&&(s.t==='tx'||s.t==='nb'||s.t==='an')){const t=window.prompt(s.t==='nb'?'Texto del cuadro (| = otra línea):':'Texto:',s.t==='nb'?String(s.s).split('\n').join(' | '):s.s);if(t&&t.trim()){plPush();s.s=s.t==='nb'?t.trim().split('|').map(x=>x.trim()).slice(0,12).join('\n'):t.trim();plChanged();}}
   else if(a==='cancel'){PL.draft=null;PL.hover=null;plFill();plDraw();}
   else if(a==='trace')plTrace();else if(a==='calsheet')plCalSheet();
   else if(a==='jsout'){const t=plJson(),ta=document.querySelector('.pljs');if(ta)ta.value=t;
@@ -2342,12 +2472,20 @@ function plSetIns(k){
 function plRot(deg){
   const s=PL.shapes[PL.sel];if(!s)return;const n=plRotate(s,deg);
   if(!n){plMsg('Esa figura solo gira de a 90°.');return;}
-  plPush();PL.shapes[PL.sel]=n;plChanged();
+  plPush();
+  if(s.t==='w'&&!s.k&&!s.fr)PL.shapes=wallMoveLinked(PL.shapes,PL.sel,[n.a[0]-s.a[0],n.a[1]-s.a[1]],[n.b[0]-s.b[0],n.b[1]-s.b[1]]);else PL.shapes[PL.sel]=n;
+  plChanged();
 }
 function plLblHit(px){
-  const L=PL.lh||[];for(let n=L.length-1;n>=0;n--){const q=L[n],c=Math.cos(q.ang),sn=Math.sin(q.ang),dx=px[0]-q.c[0],dy=px[1]-q.c[1],u=dx*c+dy*sn,v=-dx*sn+dy*c;
-    if(Math.abs(u)<=q.w&&v<=6&&v>=-18&&q.tag.i<PL.shapes.length)return q.tag;}
-  return null;
+  const L=PL.lh||[];let best=null,bd=Infinity;
+  for(let n=0;n<L.length;n++){const q=L[n],c=Math.cos(q.ang),sn=Math.sin(q.ang),dx=px[0]-q.c[0],dy=px[1]-q.c[1],u=dx*c+dy*sn,v=-dx*sn+dy*c;
+    if(Math.abs(u)<=q.w+12&&v<=10&&v>=-28){const d=Math.hypot(u*.4,v+8);if(d<bd&&(q.tag.rm||q.tag.i<PL.shapes.length)){bd=d;best=q.tag;}}}
+  return best;
+}
+function plEditRoom(r){
+  const t=window.prompt('Medida interior del ambiente ('+(r.k==='w'?'ancho':'largo')+') en mm. Se mueve la pared del otro lado. Ahora: '+Math.round(r.len),String(Math.round(r.len)));
+  if(t===null)return;const v=parseFloat(String(t).replace(',','.'));if(!(v>0))return;const dl=Math.round(v-r.len);if(!dl)return;
+  plPush();const d=[r.dir[0]*dl,r.dir[1]*dl];r.mv.forEach(i=>{if(PL.shapes[i]&&PL.shapes[i].t==='w')PL.shapes=wallMoveLinked(PL.shapes,i,d,d);});plChanged();
 }
 function plEditMeasures(kind){
   const s=PL.shapes[PL.sel];if(!s)return;const nn=t=>String(t).split(/[;x×*]/).map(v=>parseFloat(v.replace(',','.')));
@@ -2366,7 +2504,7 @@ function plEditMeasures(kind){
     const t=window.prompt('Ancho × alto en mm. Ahora: '+s.w+' × '+s.h,s.w+' x '+s.h);if(t===null)return;const v=nn(t);if(!pos(v[0],v[1]))return;plPush();s.w=v[0];s.h=v[1];
   }else if(s.t==='door'||s.t==='win'){
     const t=window.prompt('Ancho × alto × espesor en mm. Ahora: '+s.wd+' × '+(s.hh||'')+' × '+(s.th||150),s.wd+' x '+(s.hh||(s.t==='win'?1200:2050))+' x '+(s.th||150));if(t===null)return;const v=nn(t);if(!pos(v[0]))return;plPush();s.wd=v[0];if(pos(v[1]))s.hh=v[1];if(pos(v[2])){s.th=v[2];s.tm=1;}
-  }else if(s.t==='tx'||s.t==='nb'){plAction('edt');return;}
+  }else if(s.t==='tx'||s.t==='nb'||s.t==='an'){plAction('edt');return;}
   else return;
   plChanged();
 }
@@ -2378,10 +2516,14 @@ function plQuickSave(){
   if(l){const ln=document.getElementById('plLn');if(ln)ln.value=l.name;}
   plProjLayer();
 }
+function plAnnotate(a){
+  const t=window.prompt('Texto de la anotación:');if(!t||!t.trim())return;const d=Math.round(60/PL.view.s);
+  plAdd({t:'an',a:[a[0],a[1]],p:[a[0]+d,a[1]+d],s:t.trim().slice(0,200),h:Math.round(Math.max(40,14/PL.view.s))},[a[0],a[1]]);
+}
 function plMenuClose(){const m=document.getElementById('plmenu');if(m)m.remove();}
 function plMenuOpen(px,cx,cy){
   plMenuClose();
-  const hit=plPick(px);if(hit>=0){PL.sel=hit;PL.draft=null;plFill();plDraw();}
+  const hit=plPick(px,true);if(hit>=0){PL.sel=hit;PL.draft=null;plFill();plDraw();}
   const i=PL.sel,s=i>=0?PL.shapes[i]:null,items=[];
   const add=(t,f)=>items.push([t,f]),hd=t=>items.push([t,null]);
   if(s){
@@ -2394,11 +2536,13 @@ function plMenuOpen(px,cx,cy){
     if(s.t==='cl')add('Cambiar sentido de los montantes',()=>plAction('cflip'));
     if((s.t==='l'&&s.ins)||s.t==='fit')add('Cambiar diámetro…',()=>plAction('dia'));
     if(s.t==='l'&&s.ins)add('Cambiar material o recubrimiento…',()=>plAction('mat'));
-    if(s.t==='tx'||s.t==='nb')add('Editar texto…',()=>plAction('edt'));
+    if(s.t==='tx'||s.t==='nb'||s.t==='an')add('Editar texto…',()=>plAction('edt'));
+    if(s.t==='fit')add('Cambiar tipo de pieza…',()=>plAction('ftype'));
+    if(s.t!=='an'&&s.t!=='tx'&&s.t!=='nb')add('Agregar anotación a esto…',()=>plAnnotate(shapeCenter(s)));
     if(s.t==='l'||s.t==='r'||s.t==='c')add('Convertir en pared',()=>plAction('towall'));
     add('Duplicar',()=>plAction('dup'));add('Borrar',()=>plAction('del'));
     hd('General');
-  }else hd('Plano');
+  }else{hd('Plano');{const wq=plTW(px[0],px[1]);add('Agregar texto aquí…',()=>{const t=window.prompt('Texto:');if(t&&t.trim())plAdd({t:'tx',p:wq,s:t.trim(),h:Math.round(Math.max(40,14/PL.view.s))},wq);});add('Agregar anotación aquí…',()=>plAnnotate(wq));}}
   {const c=plProjCur();if(c){if(c.pj.mode==='base'){add('Guardar cambios de la base',plProjBase);add('Volver a una capa…',()=>plMenuOpen2(cx,cy));}else add('Editar plano base',()=>plGoIns('base',c));}}
   add('Guardar rápido',plQuickSave);
   add('Cambiar de plano…',()=>plMenuOpen2(cx,cy));
@@ -2471,7 +2615,7 @@ function plSidePanel(ctx,sh,x,y,w,h,mm){
   }
   ctx.restore();
 }
-function plSetMode(m){PL.grp=null;plSync();if(m==='wi'){m='w';PL.cfg.wloc='i';}else if(m==='w')PL.cfg.wloc='e';PL.cal=null;PL.mode=m;plSync();plOpLoad();PL.draft=null;PL.dn=null;PL.hover=null;PL.hover=null;if(m!=='sel')PL.sel=-1;plFill();plDraw();}
+function plSetMode(m){PL.grp=null;PL.an=null;plSync();if(m==='wi'){m='w';PL.cfg.wloc='i';}else if(m==='w')PL.cfg.wloc='e';PL.cal=null;PL.mode=m;plSync();plOpLoad();PL.draft=null;PL.dn=null;PL.hover=null;PL.hover=null;if(m!=='sel')PL.sel=-1;plFill();plDraw();}
 /* ---- exportar ---- */
 function plSheet(dpi,opt){
   opt=opt||{};const sh=opt.sh||PL.shapes,inc=!opt.sh&&V('plIn')==='1'&&PL.bg&&PL.img,b=opt.b||unionB(sceneBounds(sh),inc?bgBounds(PL.bg):null);if(!b)return null;
@@ -2484,7 +2628,7 @@ function plSheet(dpi,opt){
   const T={s,x0:areaX+(aw-w*s)/2-b[0]*s,y0:areaY+(ah+h*s)/2+b[1]*s};
   ctx.save();ctx.beginPath();ctx.rect(areaX-6*mm,areaY-6*mm,aw+12*mm,ah+12*mm);ctx.clip();
   if(inc)plDrawBg(ctx,PL.bg,PL.img,T,PL.bg.op);
-  sceneDraw(ctx,sh,T,{area:PL.cfg.area,k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc!==false,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub});ctx.restore();
+  sceneDraw(ctx,sh,T,{area:PL.cfg.area,k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc===true,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub,rd:PL.cfg.rd!==false,ct:!!PL.cfg.ct});ctx.restore();
   if(PL.cfg.cmp)plCompass(ctx,(ps.pw-10-sw-14)*mm,(24)*mm,8*mm,PL.cfg.no,C,dpi/96*.9);
   if(sw>0)plSidePanel(ctx,sh,(ps.pw-10-sw+1)*mm,10*mm,(sw-1)*mm,(ps.ph-10-24-3-10)*mm,mm);
   // cuadro de datos
@@ -3478,12 +3622,12 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
   <div class="form" style="margin:6px 0 0"><label class="f full" for="plFk"><span>Pieza a colocar con la herramienta «Pieza» (según la instalación elegida)</span><div class="in"><select id="plFk">${fitsFor('').map(q=>`<option value="${q}">${FITS[q].n}</option>`).join('')}</select></div></label><label class="f" for="plDi"><span>Diámetro o sección de las líneas y piezas nuevas</span><div class="in"><input id="plDi" type="text" list="plDiL" autocomplete="off" placeholder="Ej.: 3/4 · Ø110 · 2,5 mm²"><datalist id="plDiL"></datalist></div></label><label class="f" for="plMa"><span>Material de las líneas nuevas</span><div class="in"><input id="plMa" type="text" list="plMaL" autocomplete="off" placeholder="Ej.: epoxi · termofusión · PVC · cobre"><datalist id="plMaL"></datalist></div></label><label class="f full" for="plCv"><span>Recubrimiento o protección (opcional)</span><div class="in"><input id="plCv" type="text" list="plCvL" autocomplete="off" placeholder="Ej.: Metpol · cinta anticorrosiva · coquilla"><datalist id="plCvL">${COVERS.map(x=>`<option value="${x}">`).join('')}</datalist></div></label></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
    <button type="button" class="pb" data-a="meas">Modificar medidas</button><button type="button" class="pb" data-a="rotg">Girar 90°</button><button type="button" class="pb" data-a="rotn">Girar…</button><button type="button" class="pb" data-a="del">Borrar</button><button type="button" class="pb" data-a="dup">Duplicar</button><span style="display:inline-flex;gap:4px;align-items:center"><button type="button" class="pb" data-a="nL" aria-label="Mover a la izquierda">◀</button><button type="button" class="pb" data-a="nR" aria-label="Mover a la derecha">▶</button><button type="button" class="pb" data-a="nU" aria-label="Mover arriba">▲</button><button type="button" class="pb" data-a="nD" aria-label="Mover abajo">▼</button><select id="plNs" aria-label="Paso de movimiento"><option value="1">de a 1 mm</option><option value="10">de a 10 mm</option><option value="100">de a 100 mm</option></select></span>
-   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button></div>
+   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button><button type="button" class="pb" id="plFt" data-a="ftype" hidden>Cambiar tipo de pieza</button><button type="button" class="pb" id="plDa" data-a="dia" hidden>Cambiar diámetro</button></div>
   <div class="form" style="margin-top:14px">
    <h3 class="sec">Espacio de trabajo</h3>
    ${sel('plAk','Qué vas a dibujar',[['t','Terreno (planta): línea municipal y límites'],['f','Vista de frente o corte: ancho × alto']],'t','','full')}
