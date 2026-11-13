@@ -438,7 +438,7 @@ const CAT=[
  {s:'Polietileno agua (rollo)',g:'Caño de polietileno PE para agua, enterrado desde la red (rollo 100 m)',len:100000,it:[['Ø 16 mm',16,0],['Ø 20 mm',20,0],['Ø 25 mm',25,0],['Ø 32 mm',32,0],['Ø 40 mm',40,0],['Ø 50 mm',50,0],['Ø 63 mm',63,0]]},
  {s:'Manguera polietileno',g:'Manguera de polietileno (rollo 50 m)',len:50000,it:[['1/2"',0,0],['3/4"',0,0],['1"',0,0],['1 1/4"',0,0],['1 1/2"',0,0],['2"',0,0]]},
  {s:'Polietileno PE 100 (barra)',g:'Polietileno PE 100 en barras (tubo 6 m)',len:6000,it:[['Ø 63 mm',63,0],['Ø 75 mm',75,0],['Ø 90 mm',90,0],['Ø 110 mm',110,0],['Ø 125 mm',125,0],['Ø 160 mm',160,0]]},
- {s:'Metpol / aislante espuma PE',g:'Tubo aislante de espuma de polietileno, Metpol (tramo 2 m)',len:2000,it:[17,20,22,25,28,32,35,40,50,63].flatMap(d=>[10,20].map(e=>['Int. '+d+' × ext. '+(d+2*e)+' (esp. '+e+')',d,d===17&&e===10?1:0]))},
+ {s:'Metpol / aislante espuma PE',g:'Tubo aislante de espuma de polietileno, Metpol (tramo 2 m)',len:2000,it:[17,20,23,32,35,43,51,64].flatMap(d=>[10,20].map(e=>['Int. '+d+' × ext. '+(d+2*e)+' (esp. '+e+')',d,e===10?1:0]))},
  {s:'Cinta anticorrosiva',g:'Cinta anticorrosiva para enterrados (rollo 30 m)',len:30000,it:[['Ancho 50 mm',50,0],['Ancho 100 mm',100,0]]}
 ];
 function catPick(key){
@@ -2434,7 +2434,7 @@ function plMenuShow(items,cx,cy){
   setTimeout(()=>{const closer=e=>{if(!m.contains(e.target)){plMenuClose();document.removeEventListener('pointerdown',closer,true);}};document.addEventListener('pointerdown',closer,true);},0);
 }
 
-function plSideW(sh){const m=PL.cfg.sd||'auto';return m==='no'?0:(m==='si'||tramoList(sh).length)?64:0;}
+function plSideW(sh){const m=PL.cfg.sd||'auto';return m==='no'?0:(m==='si'||tramoList(sh).length||fitList(sh).length)?64:0;}
 /* Rótulo lateral: planilla de materiales, tramos con sus cotas y lista de cortes por diámetro */
 function plSidePanel(ctx,sh,x,y,w,h,mm){
   ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();ctx.fillStyle='#fff';ctx.fillRect(x,y,w,h);ctx.strokeStyle='#111';ctx.lineWidth=.4*mm;ctx.strokeRect(x,y,w,h);
@@ -2444,7 +2444,10 @@ function plSidePanel(ctx,sh,x,y,w,h,mm){
     if(o.r){ctx.textAlign='right';ctx.fillText(t,x+w-2.5*mm,cy);}else{ctx.textAlign='left';ctx.fillText(cut(t,mw-(o.rw||0)-(o.ox||0)),px+(o.ox||0),cy);}};
   const nl=k=>{cy+=(k||1)*fs*1.5;},ln=()=>{ctx.beginPath();ctx.moveTo(x,cy);ctx.lineTo(x+w,cy);ctx.lineWidth=.25*mm;ctx.strokeStyle='#111';ctx.stroke();};
   const m2=v=>fmt(v/1000,2)+' m';
-  const pl=planilla(sh),tl=tramoList(sh);
+  const pl=planilla(sh),tl=tramoList(sh),fl=fitList(sh);
+  const piezas=()=>{if(!fl.length||!room())return;nl(.5);T('PIEZAS',{b:1,f:3.1*mm});nl(.9);ln();nl(.7);
+    fl.forEach(f=>{if(!room())return;const I=instOf(f.ins);ctx.fillStyle=I[2];ctx.fillRect(px,cy-1.2*mm,4*mm,2.4*mm);
+      T(f.name+(f.dia?' Ø'+f.dia:''),{ox:5.5*mm,rw:12*mm});T(f.n+' u.',{r:1,b:1});nl();});};
   T('PLANILLA DE MATERIALES',{b:1,f:3.1*mm});nl(.9);ln();nl(.7);
   if(pl.length){
     pl.forEach(g=>{if(!room())return;const I=instOf(g.ins);ctx.fillStyle=I[2];ctx.fillRect(px,cy-1.2*mm,4*mm,2.4*mm);
@@ -2458,11 +2461,13 @@ function plSidePanel(ctx,sh,x,y,w,h,mm){
         let rest=txt;ctx.font='500 '+(2.6*mm)+'px sans-serif';while(rest&&room()){let cutAt=rest.length;while(cutAt>1&&ctx.measureText(rest.slice(0,cutAt)).width>mw)cutAt--;
           if(cutAt<rest.length){const sp=rest.lastIndexOf(' ',cutAt);if(sp>0)cutAt=sp;}T(rest.slice(0,cutAt).trim(),{f:2.6*mm,c:'#333'});nl(.95);rest=rest.slice(cutAt).trim();}
         nl(.3);});}
+    piezas();
   }else{
     let wl=0,nd=0,nv=0;const it={};sh.forEach(q=>{if(q.t==='w'&&!q.k)wl+=pdist(q.a,q.b);else if(q.t==='door')nd++;else if(q.t==='win')nv++;else if(q.t==='it'&&ITEMS[q.k]){const n=ITEMS[q.k][0];it[n]=(it[n]||0)+1;}});
     const rows=[];if(wl)rows.push(['Paredes (largo de eje)',m2(wl)]);if(nd)rows.push(['Puertas',nd+' u.']);if(nv)rows.push(['Ventanas',nv+' u.']);Object.keys(it).forEach(k=>rows.push([k,it[k]+' u.']));
-    if(!rows.length)T('Sin instalaciones en este plano',{c:'#555'});
+    if(!rows.length&&!fl.length)T('Sin instalaciones en este plano',{c:'#555'});
     rows.forEach(r=>{if(!room())return;T(r[0],{rw:16*mm});T(r[1],{r:1});nl();});
+    piezas();
   }
   ctx.restore();
 }
