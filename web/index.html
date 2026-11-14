@@ -1092,6 +1092,14 @@ function tramoList(shapes){
   const out=[],cnt={};
   shapes.forEach((s,i)=>{if(s.t!=='l'||!s.ins)return;cnt[s.ins]=(cnt[s.ins]||0)+1;const n=s.n||cnt[s.ins],I=instOf(s.ins);
     out.push({i,id:I[3]+n,ins:s.ins,name:I[1],dia:s.dia||'',mat:s.mat||'',len:Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1])});});
+  if(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.tt&&out.length){
+    const key=(ins,p)=>ins+'@'+Math.round(p[0]/2)+','+Math.round(p[1]/2),deg={},par=out.map((_,j)=>j),fd=j=>par[j]===j?j:(par[j]=fd(par[j]));
+    out.forEach((o,j)=>{const s=shapes[o.i];[s.a,s.b].forEach(p=>{const k=key(o.ins,p);(deg[k]=deg[k]||[]).push(j);});});
+    Object.keys(deg).forEach(k=>{const L=deg[k];if(L.length===2&&L[0]!==L[1])par[fd(L[0])]=fd(L[1]);});
+    const pre=(PL.cfg.tp||'A').slice(0,2),num={},best={};let n=0;
+    out.forEach((o,j)=>{const r=fd(j);if(!num[r])num[r]=++n;o.id=pre+num[r];o.g=r;if(!(r in best)||o.len>out[best[r]].len)best[r]=j;});
+    out.forEach((o,j)=>{o.main=best[o.g]===j;});
+  }
   const ord=INSTS.map(x=>x[0]);
   out.sort((a,b)=>(ord.indexOf(a.ins)-ord.indexOf(b.ins))||(a.id.localeCompare(b.id,'es',{numeric:true})));
   return out;
@@ -1739,6 +1747,7 @@ function fitGlyph(ctx,f,x,y,S,k,C,selected,auto){
   if(f.dia&&!auto&&S>0.03){ctx.save();ctx.fillStyle=col;ctx.font='600 '+(9*k)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('Ø'+f.dia,x+r+3*k,y-r*.6);ctx.restore();}
 }
 function drawScene(ctx,sh,T,o){
+  const TTM=new Map();if(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.tt)tramoList(sh).forEach(z=>TTM.set(z.i,z));
   const k=o.k||1,C=o.col,sel=o.sel||[],S=T.s,X=x=>T.x0+x*S,Y=y=>T.y0-y*S,u=o.unit||'mm';
   ctx.lineCap='round';ctx.lineJoin='round';
   const inkOf=i=>sel.includes(i)?C.accent:C.ink;
@@ -1837,9 +1846,9 @@ function drawScene(ctx,sh,T,o){
         ctx.translate(X((s.a[0]+s.b[0])/2),Y((s.a[1]+s.b[1])/2));ctx.rotate(ang);ctx.fillStyle=col;ctx.font='700 '+(9.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
         if(Math.hypot(dx,dy)*S>tx.length*5.5*k)ctx.fillText(tx,0,-4*k);ctx.restore();
       }else if(s.ins){
-        const I=instOf(s.ins),ic=sel.includes(i)?col:I[2];seg(s.a,s.b,ic,lw*1.3);
-        const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],tg=I[3]+(s.n||'')+(o.rt&&s.mat?' '+s.mat:'')+(s.dia?' Ø'+s.dia:'');
-        if(Math.hypot(dx,dy)*S>tg.length*6.5*k){ctx.save();let ang=Math.atan2(-dy,dx);if(ang>Math.PI/2||ang<-Math.PI/2)ang+=Math.PI;
+        const I=instOf(s.ins),ic=sel.includes(i)?col:I[2];seg(s.a,s.b,ic,lw*1.3);const TT=TTM.get(i);
+        const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],tg=(TT?TT.id:I[3]+(s.n||''))+(o.rt&&s.mat?' '+s.mat:'')+(s.dia?' Ø'+s.dia:'');
+        if((!TT||TT.main)&&Math.hypot(dx,dy)*S>tg.length*6.5*k){ctx.save();let ang=Math.atan2(-dy,dx);if(ang>Math.PI/2||ang<-Math.PI/2)ang+=Math.PI;
           ctx.translate(X((s.a[0]+s.b[0])/2),Y((s.a[1]+s.b[1])/2));ctx.rotate(ang);ctx.fillStyle=ic;ctx.font='700 '+(9.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(tg,0,-4*k);ctx.restore();}
       }else seg(s.a,s.b,col,lw);
     }
@@ -1866,7 +1875,7 @@ function drawScene(ctx,sh,T,o){
     else if(s.t==='c'){ctx.beginPath();ctx.arc(X(s.c[0]),Y(s.c[1]),s.r*S,0,7);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();}
     else if(s.t==='it'){plItem(ctx,s,X(s.p[0]),Y(s.p[1]),S,col,k,C);}
     else if(s.t==='fit'){if(!s.hide)fitGlyph(ctx,s,X(s.p[0]),Y(s.p[1]),S,k,C,sel.includes(i),false);}
-    else if(s.t==='tb'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),rows=tramoList(sh).filter(z=>!s.ins||z.ins===s.ins),pad=fs*.5,rh=fs*1.35,kd=s.k||'t';
+    else if(s.t==='tb'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),rows=((a)=>{if(!(PL.cfg&&PL.cfg.tt))return a;const m=new Map();a.forEach(z=>{const q=m.get(z.id);if(q)q.len+=z.len;else m.set(z.id,Object.assign({},z));});return [...m.values()];})(tramoList(sh).filter(z=>!s.ins||z.ins===s.ins)),pad=fs*.5,rh=fs*1.35,kd=s.k||'t';
       ctx.font='600 '+fs+'px sans-serif';let hd,R,ttl;
       if(kd==='m'){ttl='MATERIALES';hd=['Material','Ø','Cant.'];R=planilla(sh).filter(z=>z.ins&&(!s.ins||z.ins===s.ins)).map(z=>[(z.mat||z.name),z.dia||'-',(z.len/1000).toFixed(2)+' m']);
         fitList(sh).filter(z=>!s.ins||z.ins===s.ins).forEach(z=>R.push([z.name,z.dia||'-',z.n+' u.']));}
@@ -2095,7 +2104,16 @@ function plReport(){
   o.innerHTML=hi+h0+h;
 }
 function plChanged(){plSave();plFill();plDraw();plReport();}
-function plAdd(s,last){plPush();if(s.t==='w'&&!s.k&&!s.fr){const tr=wallTrim(PL.shapes.concat([s]),PL.shapes.length);if(tr){s.a=tr.a;s.b=tr.b;}const n=wallAttach(PL.shapes.concat([s]),PL.shapes.length,Math.max(60,14/PL.view.s));if(n){s.a=n.a;s.b=n.b;}}PL.shapes.push(s);if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();}
+function teeSplit(shapes,s){
+  const tol=Math.max(4,10/PL.view.s),isL=z=>z.t==='l'&&z.ins===s.ins&&!z.ls,res={shapes:shapes.slice(),add:[s]};
+  const proj=(p,a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy||1,u=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/l2));return {u,q:[a[0]+u*dx,a[1]+u*dy]};};
+  const inner=(p,L)=>{const r=proj(p,L.a,L.b);return pdist(r.q,p)<=tol&&pdist(p,L.a)>tol&&pdist(p,L.b)>tol?r.q:null;};
+  ['a','b'].forEach(e=>{for(let j=0;j<res.shapes.length;j++){const L=res.shapes[j];if(!isL(L))continue;const q=inner(s[e],L);if(q){s[e]=q;const L2=Object.assign({},L,{a:q}),L1=Object.assign({},L,{b:q});if(L.n)L2.n=nextTramo(res.shapes.concat([s]),L.ins);res.shapes.splice(j,1,L1,L2);break;}}});
+  const pts=[];res.shapes.forEach(L=>{if(isL(L))[L.a,L.b].forEach(p=>{const q=inner(p,s);if(q)pts.push(q);});});
+  if(pts.length){const d=z=>pdist(z,s.a);pts.sort((x,y)=>d(x)-d(y));const ch=[s.a].concat(pts,[s.b]);res.add=[];for(let j=0;j<ch.length-1;j++)res.add.push(Object.assign({},s,{a:ch[j],b:ch[j+1]}));}
+  return res;
+}
+function plAdd(s,last){plPush();if(s.t==='l'&&s.ins&&!s.ls&&PL.cfg.tt){const r=teeSplit(PL.shapes,s);PL.shapes=r.shapes;r.add.forEach(z=>PL.shapes.push(z));if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();return;}if(s.t==='w'&&!s.k&&!s.fr){const tr=wallTrim(PL.shapes.concat([s]),PL.shapes.length);if(tr){s.a=tr.a;s.b=tr.b;}const n=wallAttach(PL.shapes.concat([s]),PL.shapes.length,Math.max(60,14/PL.view.s));if(n){s.a=n.a;s.b=n.b;}}PL.shapes.push(s);if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();}
 function plRevSync(x){
   const k=x||'-';if(PL.rvK===k)return;PL.rvK=k;
   const all=Object.keys(WREV),L=x==='e'?[WREV_E,WREV_I]:x==='i'?[WREV_I,WREV_I]:[all,all];
@@ -2420,7 +2438,7 @@ function plFill(){
   {const sl=s&&s.t==='l'&&PL.mode==='sel',pc=plProjCur(),cur=sl?(s.ins||''):(pc?(pc.pj.mode==='base'?'base':(pc.pj.ins||PL.cfg.ins||'')):(PL.cfg.ins||''));document.querySelectorAll('#plIns [data-i]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.i===cur?'true':'false'));
    if(sl){const pt=String(s.mat||'').split(' + '),cv=COVERS.includes(pt[pt.length-1])||pt.length>1?pt.pop():'';set('plDi',s.dia||'');set('plMa',pt.join(' + '));set('plCv',cv);}}
   {const c=document.getElementById('plcur');if(c)c.textContent=plProjLabel();}
-  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct'],['plGm','gm']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});{const b=document.getElementById('plRtl');if(b)b.setAttribute('aria-pressed',PL.cfg.rt!==false?'true':'false');}
+  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct'],['plGm','gm']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});{const b0=document.getElementById('plTt');if(b0)b0.setAttribute('aria-pressed',PL.cfg.tt?'true':'false');}{const b=document.getElementById('plRtl');if(b)b.setAttribute('aria-pressed',PL.cfg.rt!==false?'true':'false');}
   {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc===true?'true':'false');{const r=document.getElementById('plRd');if(r)r.setAttribute('aria-pressed',PL.cfg.rd!==false?'true':'false');}const d=document.getElementById('plOd');if(d)d.setAttribute('aria-pressed',PL.cfg.od!==false?'true':'false');}
 }
 function plNumAdd(){
@@ -2463,6 +2481,7 @@ function plAction(a){
   else if(a==='unlockg'&&PL.ul>=0){const q=PL.shapes[PL.ul];if(q){const b=plStructBase(PL.ul),g=b>=0?wallGroup(PL.shapes,b,true):new Set([PL.ul]);plPush();let n=0;g.forEach(i=>{const z=PL.shapes[i];if(z&&z.lk===1){delete z.lk;n++;}});if(!n&&q.lk===1){delete q.lk;n=1;}PL.ul=-1;plChanged();plMsg('Estructura desbloqueada ('+n+' piezas).');}}
   else if(a==='rd'){PL.cfg.rd=!(PL.cfg.rd!==false);plSave();plFill();plDraw();}
   else if(a==='ct'){PL.cfg.ct=!PL.cfg.ct;plSave();plFill();plDraw();}
+  else if(a==='tt'){if(!PL.cfg.tt){const p=window.prompt('Letra con que empiezan los tramos (ej: A). El número sube cada vez que una TEE divide la cañería.',PL.cfg.tp||'A');if(p===null)return;PL.cfg.tp=(p.trim().toUpperCase().replace(/[^A-Z]/g,'')||'A').slice(0,2);PL.cfg.tt=true;}else PL.cfg.tt=false;plSave();plFill();plDraw();}
   else if(a==='rtl'){PL.cfg.rt=PL.cfg.rt===false;plSave();plFill();plDraw();}
   else if(a==='weld'){const r=plWeld(PL.shapes,Math.max(300,(PL.cfg.th||150)*2));if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos de paredes y aberturas.');}else plMsg('No encontré paredes ni aberturas sueltas para unir.');}
   else if(a==='fitrst'){const n=PL.shapes.filter(q=>q.t==='fit'&&q.ov).length;if(n){plPush();PL.shapes=PL.shapes.filter(q=>!(q.t==='fit'&&q.ov));PL.sel=-1;plChanged();plMsg('Se restauraron '+n+' piezas automáticas.');}else plMsg('No hay piezas automáticas modificadas para restaurar.');}
@@ -3730,7 +3749,7 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
   <div class="form" style="margin:6px 0 0"><label class="f full" for="plFk"><span>Pieza a colocar con la herramienta «Pieza» (según la instalación elegida)</span><div class="in"><select id="plFk">${fitsFor('').map(q=>`<option value="${q}">${FITS[q].n}</option>`).join('')}</select></div></label><label class="f" for="plDi"><span>Diámetro o sección de las líneas y piezas nuevas</span><div class="in"><input id="plDi" type="text" list="plDiL" autocomplete="off" placeholder="Ej.: 3/4 · Ø110 · 2,5 mm²"><datalist id="plDiL"></datalist></div></label><label class="f" for="plMa"><span>Material de las líneas nuevas</span><div class="in"><input id="plMa" type="text" list="plMaL" autocomplete="off" placeholder="Ej.: epoxi · termofusión · PVC · cobre"><datalist id="plMaL"></datalist></div></label><label class="f full" for="plCv"><span>Recubrimiento o protección (opcional)</span><div class="in"><input id="plCv" type="text" list="plCvL" autocomplete="off" placeholder="Ej.: Metpol · cinta anticorrosiva · coquilla"><datalist id="plCvL">${COVERS.map(x=>`<option value="${x}">`).join('')}</datalist></div></label></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plTt" data-a="tt" aria-pressed="false">Tramos por TEE (A1, A2…)</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
@@ -3857,7 +3876,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 38 · 14/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 39 · 14/11/2026</p>');
   window.scrollTo(0,0);
 }
 
