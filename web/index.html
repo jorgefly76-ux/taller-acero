@@ -948,7 +948,7 @@ function wallProps(mt,mx,mr,mr2,la){const o={};if(la==='1'||la===1)o.lana=1;if(m
 /* Mitad del espesor de la pared que se une en cada extremo (para pasar de medida de eje a interior y exterior) */
 function wallEnds(sh,i){
   const s=sh[i],r=[0,0];
-  [s.a,s.b].forEach((P,e)=>{let t=0;sh.forEach((o,j)=>{if(j===i||o.t!=='w'||o.k)return;if(pdist(o.a,P)<2||pdist(o.b,P)<2)t=Math.max(t,o.th||150);});r[e]=t/2;});
+  [s.a,s.b].forEach((P,e)=>{let t=0;sh.forEach((o,j)=>{if(j===i||o.t!=='w'||o.k)return;const lo=pdist(o.a,o.b)||1,ls=pdist(s.a,s.b)||1,cr0=Math.abs((o.b[0]-o.a[0])*(s.b[1]-s.a[1])-(o.b[1]-o.a[1])*(s.b[0]-s.a[0]))/(lo*ls);if(pdist(o.a,P)<2||pdist(o.b,P)<2||(cr0>.2&&segDist(P,o.a,o.b)<=(o.th||150)/2+1))t=Math.max(t,o.th||150);});r[e]=t/2;});
   return r;
 }
 /* Espesor típico de cada acabado (mm): sirve para medir de pared TERMINADA a pared terminada */
@@ -1292,6 +1292,21 @@ function wallNear(sh,i){
   return Object.values(best);
 }
 /* Une los extremos de una pared recién colocada a las paredes cercanas (el extremo queda sobre el eje de la otra): así forman una sola estructura */
+/* Recorta una pared que se pasa de otra: queda cortada justo en el eje de la pared que toca */
+function wallTrim(sh,i){
+  const w=sh[i];if(!w||w.t!=='w'||w.k||w.fr)return null;const r={a:w.a,b:w.b};let ch=false;
+  [0,1].forEach(e=>{
+    const P=e?w.b:w.a,Q=e?w.a:w.b,dx=P[0]-Q[0],dy=P[1]-Q[1],L=Math.hypot(dx,dy);if(L<1)return;
+    let bt=null;
+    sh.forEach((o,j)=>{if(j===i||o.t!=='w'||o.k)return;
+      const ex=o.b[0]-o.a[0],ey=o.b[1]-o.a[1],den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)return;
+      const t=((o.a[0]-Q[0])*ey-(o.a[1]-Q[1])*ex)/den,u=((o.a[0]-Q[0])*dy-(o.a[1]-Q[1])*dx)/den;
+      if(u<-.001||u>1.001||t*L<=(o.th||150)/2+5)return;
+      const over=(1-t)*L;if(over>1&&over<=Math.max(2*(o.th||150),450)&&(bt===null||t<bt))bt=t;});
+    if(bt!==null){const n=[Math.round(Q[0]+dx*bt),Math.round(Q[1]+dy*bt)];if(e)r.b=n;else r.a=n;ch=true;}
+  });
+  return ch?r:null;
+}
 function wallAttach(sh,i,tol){
   const w=sh[i];if(!w||w.t!=='w'||w.k||w.fr)return null;
   const fix=P=>{
@@ -1855,7 +1870,7 @@ function drawScene(ctx,sh,T,o){
     else if(o.dims){
       if(s.t==='l'){if(s.ls!=='cor'&&s.ls!=='le'&&!s.nd)dm(s.a,s.b,-16*k,dimTxt(pdist(s.a,s.b),u),false,{i,k:'eje'});}
       else if(s.t==='w'){if(!s.k&&!s.nd){
-        const th=(s.th||150)*S/2,wm0=o.wm||{c:true},wm={c:wm0.c||(o.rd&&!rmW.has(i)&&!wm0.i&&!wm0.e),i:wm0.i,e:wm0.e},ln=wallLens(sh,i),osd=outerSide(s,cen),multi=(wm.c?1:0)+(wm.i?1:0)+(wm.e?1:0)>1;
+        const th=(s.th||150)*S/2,wm0=o.wm||{c:true},ln=wallLens(sh,i),fb=o.rd&&!rmW.has(i)&&!wm0.c&&!wm0.i&&!wm0.e,jn=ln.e0>0||ln.e1>0,wm={c:wm0.c||(fb&&!jn),i:wm0.i||(fb&&jn),e:wm0.e},osd=outerSide(s,cen),multi=(wm.c?1:0)+(wm.i?1:0)+(wm.e?1:0)>1;
         const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],L0=Math.hypot(dx,dy)||1,ux=dx/L0,uy=dy/L0;
         const tt=(lab,v)=>(multi?lab+' ':'')+dimTxt(v,u),off=(inner,v)=>((inner?osd!==1:osd===1)?-v:v);
         const ends=(e0,e1)=>[[s.a[0]+ux*e0,s.a[1]+uy*e0],[s.b[0]-ux*e1,s.b[1]-uy*e1]];
@@ -2030,7 +2045,7 @@ function plReport(){
   o.innerHTML=hi+h0+h;
 }
 function plChanged(){plSave();plFill();plDraw();plReport();}
-function plAdd(s,last){plPush();if(s.t==='w'&&!s.k&&!s.fr){const n=wallAttach(PL.shapes.concat([s]),PL.shapes.length,Math.max(60,14/PL.view.s));if(n){s.a=n.a;s.b=n.b;}}PL.shapes.push(s);if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();}
+function plAdd(s,last){plPush();if(s.t==='w'&&!s.k&&!s.fr){const tr=wallTrim(PL.shapes.concat([s]),PL.shapes.length);if(tr){s.a=tr.a;s.b=tr.b;}const n=wallAttach(PL.shapes.concat([s]),PL.shapes.length,Math.max(60,14/PL.view.s));if(n){s.a=n.a;s.b=n.b;}}PL.shapes.push(s);if(last)PL.last=last;PL.sel=PL.shapes.length-1;plChanged();}
 function plRevSync(x){
   const k=x||'-';if(PL.rvK===k)return;PL.rvK=k;
   const all=Object.keys(WREV),L=x==='e'?[WREV_E,WREV_I]:x==='i'?[WREV_I,WREV_I]:[all,all];
@@ -3746,7 +3761,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 31 · 13/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 32 · 13/11/2026</p>');
   window.scrollTo(0,0);
 }
 
