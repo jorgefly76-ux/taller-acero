@@ -752,7 +752,7 @@ function parsePlanoJson(txt){
         if(s.t==='l'){o.w=[1,2,3].includes(+s.w)?+s.w:2;if(['lm','le','cor'].includes(s.ls))o.ls=s.ls;if(INSTS.some(x=>x[0]&&x[0]===s.ins)){o.ins=s.ins;if(+s.n>0)o.n=Math.round(+s.n);if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);if(typeof s.mat==='string'&&s.mat)o.mat=s.mat.slice(0,60);}}
         if((s.t==='l'||s.t==='w')&&s.nd)o.nd=1;
         if(s.t==='r')o.w=[1,2,3].includes(+s.w)?+s.w:2;
-        if(s.t==='w'){o.th=+s.th>0?+s.th:150;if(s.k==='v'||s.k==='c')o.k=s.k;else Object.assign(o,wallProps(s.m,s.x,s.r,s.r2,s.lana?'1':'0'));}
+        if(s.t==='w'){o.th=+s.th>0?+s.th:150;if(s.k==='v'||s.k==='c')o.k=s.k;else{Object.assign(o,wallProps(s.m,s.x,s.r,s.r2,s.lana?'1':'0'));delete o.sp;delete o.ch;if(WFRAME[o.m]){if(+s.sp>0)o.sp=+s.sp;if(+s.ch>0)o.ch=+s.ch;}}}
         if(s.t==='dim')o.off=isFinite(s.off)?+s.off:100;}
     }else if(s.t==='rj'||s.t==='cl'){const a=P(s.a),b=P(s.b);if(a&&b){o={t:s.t,a,b};
       if(s.t==='rj'){o.fr=+s.fr>0?+s.fr:40;o.bw=+s.bw>0?+s.bw:12;o.sp=+s.sp>0?+s.sp:110;o.dir=s.dir==='h'?'h':'v';o.n=+s.n>0?Math.round(+s.n):0;}
@@ -937,8 +937,8 @@ const WMAT={ot:'Sin definir',lh:'Ladrillo hueco',lc:'Ladrillo común',bl:'Bloque
 /* Estructura de pared: PGC = montante, PGU = solera (steel frame); tirantes de madera con medida nominal en pulgadas.
    d = profundidad (queda como espesor de la pared), ala/e = lado de cada montante visto desde arriba, bar = largo comercial de la barra */
 const WFRAME={
-  sf90:{k:'sf',d:90,ala:40,pgc:'PGC 90×40×0,89',pgu:'PGU 90 (alma 92)',bar:6000},
-  sf100:{k:'sf',d:100,ala:40,pgc:'PGC 100×40×0,89',pgu:'PGU 100 (alma 102)',bar:6000},
+  sf90:{k:'sf',d:90,ala:40,pgc:'PGC 90×40',pgu:'PGU 90 (alma 92)',bar:6000},
+  sf100:{k:'sf',d:100,ala:40,pgc:'PGC 100×40',pgu:'PGU 100 (alma 102)',bar:6000},
   sf150:{k:'sf',d:150,ala:40,pgc:'PGC 150×40',pgu:'PGU 150',bar:6000},
   sf200:{k:'sf',d:200,ala:40,pgc:'PGC 200×40',pgu:'PGU 200',bar:6000},
   w23:{k:'mo',d:75,e:50,n:'2×3',bar:3050},w24:{k:'mo',d:100,e:50,n:'2×4',bar:3050},w25:{k:'mo',d:125,e:50,n:'2×5',bar:3050},
@@ -958,7 +958,7 @@ const OPEN_G={g2:'Portón 2 hojas batientes',gc:'Portón corredizo'};
 const ITEMS={esc:['Escalera recta',900,2800],eca:['Escalera caracol',1500,1500],inod:['Inodoro',400,700],bide:['Bidet',400,600],lava:['Lavatorio',500,400],bana:['Bañera',700,1700],duch:['Ducha',800,800],coci:['Cocina',600,600],mesd:['Mesada con pileta',600,1800],hela:['Heladera',700,700],cama:['Cama 2 plazas',1600,2000],mesa:['Mesa con sillas',900,1500],plac:['Placard',600,1800],sofa:['Sillón',800,2000],col:['Columna',300,300]};
 /* Capas de revestimiento de una cara: lista separada por comas, de la pared hacia afuera (ej. 'os,mb,ca'). Acepta también las combinaciones viejas. */
 function revList(v){return String(v||'').split(',').flatMap(k=>WCOMP[k]||[k]).filter(k=>k&&k!=='no'&&WREV[k]);}
-function wallProps(mt,mx,mr,mr2,la){const o={};if(la==='1'||la===1)o.lana=1;if(mt&&mt!=='ot'&&WMAT[mt])o.m=mt;if(mx==='e'||mx==='i')o.x=mx;const a=revList(mr).join(','),b=revList(mr2).join(',');if(a)o.r=a;if(b)o.r2=b;return o;}
+function wallProps(mt,mx,mr,mr2,la){const o={};if(la==='1'||la===1)o.lana=1;if(mt&&mt!=='ot'&&WMAT[mt])o.m=mt;if(mx==='e'||mx==='i')o.x=mx;const a=revList(mr).join(','),b=revList(mr2).join(',');if(a)o.r=a;if(b)o.r2=b;if(WFRAME[o.m]&&typeof PL!=='undefined'&&PL.cfg){if(PL.cfg.fs>0)o.sp=PL.cfg.fs;if(WFRAME[o.m].k==='sf'&&PL.cfg.fc>0)o.ch=PL.cfg.fc;}return o;}
 /* Mitad del espesor de la pared que se une en cada extremo (para pasar de medida de eje a interior y exterior) */
 function wallEnds(sh,i){
   const s=sh[i],r=[0,0];
@@ -1051,7 +1051,7 @@ function wallStats(sh,h){
     if(s.t!=='w'||s.k)return;
     const ln=wallLens(sh,i),th=s.th||150,oa=Math.min(openA[i]||0,ln.c*h),net=ln.c*h-oa,key=(s.x||'-')+'|'+(s.m||'ot'),r=rows[key]||(rows[key]={x:s.x||'',m:s.m||'ot',len:0,area:0,vol:0});
     r.len+=ln.c;r.area+=net;r.vol+=net*th;len+=ln.c;open+=oa;if(s.lana)lana+=net;
-    if(WFRAME[s.m]){const e=fr[s.m]||(fr[s.m]={L:[],open:0});e.L.push(ln.c);e.open+=openN[i]||0;}
+    if(WFRAME[s.m]){const fk=s.m+'|'+(s.ch||0)+'|'+(s.sp||0),e=fr[fk]||(fr[fk]={m:s.m,ch:s.ch||0,sp:s.sp||0,L:[],open:0});e.L.push(ln.c);e.open+=openN[i]||0;}
     const l1=s.x==='e'?ln.e:ln.c,l2=s.x==='e'?ln.i:ln.c;
     [[s.r,l1,0],[s.r2,l2,1]].forEach(([rl,fl,fi])=>{
       const a=Math.max(0,fl*h-oa),g=s.x==='e'?(fi?'i':'e'):s.x==='i'?'i':'n';
@@ -1776,7 +1776,7 @@ function drawScene(ctx,sh,T,o){
       if(s.m==='bl')for(let t=0;t<=T;t+=step)ln(P(t,-1),P(t,1));
       if(s.m==='dr'){ln(P(0,-.45),P(T,-.45));ln(P(0,.45),P(T,.45));}
       if(s.m==='mo'){ln(P(0,-.5),P(T,-.5));ln(P(0,0),P(T,0));ln(P(0,.5),P(T,.5));}
-      {const fr=WFRAME[s.m];if(fr){const sp=Math.max(100,(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.ds)||400),w=fr.k==='sf'?fr.ala:fr.e,xs=[];for(let x=0;x<=L-1;x+=sp)xs.push(x);xs.push(L);
+      {const fr=WFRAME[s.m];if(fr){const sp=Math.max(100,s.sp||(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.ds)||400),w=fr.k==='sf'?fr.ala:fr.e,xs=[];for(let x=0;x<=L-1;x+=sp)xs.push(x);xs.push(L);
         if(xs.length<400&&w*S>=1.2)xs.forEach(x=>{const t0=Math.max(0,Math.min(T-w,h+x-w/2));
           if(fr.k==='sf'){const A=P(t0+w,-.88),B=P(t0,-.88),Cc=P(t0,.88),D=P(t0+w,.88);ln(A,B);ln(B,Cc);ln(Cc,D);}
           else{const A=P(t0,-.9),B=P(t0+w,-.9),Cc=P(t0+w,.9),D=P(t0,.9);ln(A,B);ln(B,Cc);ln(Cc,D);ln(D,A);ln(A,Cc);ln(B,D);}});}}
@@ -2028,16 +2028,16 @@ function plReport(){
       [['e','Revestimiento de paredes exteriores'],['i','Revestimiento de paredes interiores'],['n','Revestimiento (pared sin ubicación)']].forEach(([g,tt])=>{const ks=Object.keys(st.revS[g]);if(!ks.length)return;
         rows+='<h3 class="sec" style="margin:10px 0 0">'+tt+'</h3>';ks.forEach(k=>{rows+=row(WREV[k],fmt(st.revS[g][k]/1e6,2),'m²');if(k==='os')rows+=row('Placas de OSB 1,22 × 2,44 m (con 10 % de desperdicio)',Math.ceil(st.revS[g][k]/1e6*1.1/2.9768-1e-9),'u.');});});
       if(st.open>0)rows+=row('Aberturas descontadas',fmt(st.open/1e6,2),'m²');
-      Object.keys(st.fr||{}).forEach(k=>{const fm=WFRAME[k],e=st.fr[k],sp=PL.cfg.ds||400,H=PL.cfg.mh||2600,nst=e.L.reduce((a,L)=>a+Math.ceil(L/sp-1e-9)+1,0)+2*e.open;
+      Object.keys(st.fr||{}).forEach(k=>{const e=st.fr[k],fm=WFRAME[e.m],sp=e.sp||PL.cfg.ds||400,H=PL.cfg.mh||2600,chs=String(e.ch||0.89).replace('.',','),nst=e.L.reduce((a,L)=>a+Math.ceil(L/sp-1e-9)+1,0)+(isFinite(PL.cfg.fo)?PL.cfg.fo:2)*e.open;
         const studs=packCuts(fm.bar,3,splitLens(H,fm.bar).length>1?Array(nst).fill(0).flatMap(()=>splitLens(H,fm.bar)):Array(nst).fill(H)).length,pl=[];e.L.forEach(L=>{splitLens(L,fm.bar).forEach(x=>{pl.push(x);pl.push(x);});});
         const plBars=pl.length?packCuts(fm.bar,3,pl).length:0,plm=e.L.reduce((a,L)=>a+2*L,0);
-        rows+='<h3 class="sec" style="margin:10px 0 0">Estructura · '+WMAT[k]+'</h3>';
-        if(fm.k==='sf')rows+=row('Montantes '+fm.pgc+' (cada '+fmt(sp/1000,2)+' m, de '+fmt(H,0)+' mm)',nst,'u.','key')+row('Barras de PGC de '+fmt(fm.bar/1000,1)+' m',studs,'u.','key')+row('Soleras '+fm.pgu+' (arriba y abajo)',fmt(plm/1000,2),'m')+row('Barras de PGU de '+fmt(fm.bar/1000,1)+' m',plBars,'u.','key');
+        rows+='<h3 class="sec" style="margin:10px 0 0">Estructura · '+WMAT[e.m]+(fm.k==='sf'?' · chapa '+chs+' mm':'')+'</h3>';
+        if(fm.k==='sf')rows+=row('Montantes '+fm.pgc+'×'+chs+' (cada '+fmt(sp/1000,2)+' m, de '+fmt(H,0)+' mm)',nst,'u.','key')+row('Barras de PGC de '+fmt(fm.bar/1000,1)+' m',studs,'u.','key')+row('Soleras '+fm.pgu+' (arriba y abajo)',fmt(plm/1000,2),'m')+row('Barras de PGU de '+fmt(fm.bar/1000,1)+' m',plBars,'u.','key');
         else rows+=row('Montantes de madera '+fm.n+' (cada '+fmt(sp/1000,2)+' m, de '+fmt(H,0)+' mm)',nst,'u.','key')+row('Tirantes '+fm.n+' de '+fmt(fm.bar/1000,2)+' m para montantes',studs,'u.','key')+row('Soleras '+fm.n+' (arriba y abajo)',fmt(plm/1000,2),'m')+row('Tirantes '+fm.n+' de 4,27 m para soleras',pl.length?packCuts(4270,3,pl.map(x=>Math.min(x,4270))).length:0,'u.','key');});
       ['dm','dp','do'].forEach(kd=>{const dq=durlockCalc(st.dl[kd],kd,{sep:PL.cfg.ds||400,bar:PL.cfg.db||2600,plate:PL.cfg.dp||2.88,waste:isFinite(PL.cfg.dwa)?PL.cfg.dwa:5,A:st.dlA[kd]});if(dq.length)rows+='<h3 class="sec" style="margin:10px 0 0">'+(kd==='dp'?'Durlock sobre steel frame o madera (solo placas)':WREV[kd])+'</h3>'+dq.map(r=>row(r.label,fmt(r.q,r.u==='u.'?0:2),r.u,r.key?'key':'')).join('');});
     }
     Object.keys(op).forEach(k=>{rows+=row(k,op[k],'u.');});Object.keys(it).forEach(k=>{rows+=row(k,it[k],'u.');});
-    if(rows)h0='<h3 class="sec">Paredes, aberturas e ítems</h3>'+res(rows)+(st.len>0?'<p class="hint">Superficies con altura de '+fmt(PL.cfg.mh||2600,0)+' mm, descontando las puertas y ventanas que están sobre las paredes. Cada revestimiento se cuenta por cara; las medidas de perfiles usan el largo y la altura de cada pared completa. En steel frame y madera se cuentan un montante en cada punta, dos más por cada puerta o ventana y las soleras arriba y abajo; no incluye cabezales, dinteles, diagonales ni tornillos. Las medidas de la madera son nominales (el tirante cepillado es algo menor).</p>':'');
+    if(rows)h0='<h3 class="sec">Paredes, aberturas e ítems</h3>'+res(rows)+(st.len>0?'<p class="hint">Superficies con altura de '+fmt(PL.cfg.mh||2600,0)+' mm, descontando las puertas y ventanas que están sobre las paredes. Cada revestimiento se cuenta por cara; las medidas de perfiles usan el largo y la altura de cada pared completa. En steel frame y madera se cuentan un montante en cada punta, los montantes extra que elijas por cada puerta o ventana y las soleras arriba y abajo; no incluye cabezales, dinteles, diagonales ni tornillos. Las medidas de la madera son nominales (el tirante cepillado es algo menor).</p>':'');
   }
   const rj=PL.shapes.filter(s=>s.t==='rj'),cl=PL.shapes.filter(s=>s.t==='cl');let h='';
   const m=v=>fmt(v/1000,3);
@@ -2107,13 +2107,25 @@ function plSync(){
   plOpSync(c);
   c.ds=+V('plDs')||400;c.db=N('plDb')>0?N('plDb'):2600;c.dp=+V('plDp')||2.88;c.dwa=N('plDw')>=0?N('plDw'):5;
   {const loc=c.wloc==='i'?'i':'e',pf=loc==='i'?'pwi':'pwe';c.mx=loc;c.th=N(pf+'T')>0?N(pf+'T'):(loc==='i'?100:150);c.mt=WMAT[V(pf+'M')]?V(pf+'M'):'ot';c.mr=rvGet(pf+'R');c.mr2=rvGet(pf+'R2');c.rvs=c.rvs||{};['pweR','pweR2','pwiR','pwiR2'].forEach(f=>{if(document.querySelector('input[data-rv="'+f+'"]'))c.rvs[f]=rvGet(f);});c.la=V(pf+'L')==='1'?'1':'0';}
-  c.mh=N('plMh')>0?N('plMh'):2600;
+  c.mh=N('plMh')>0?N('plMh'):2600;c.fs=+V('plFs')||0;c.fc=+V('plFc')||0;{const fo=V('plFo');c.fo=fo===''?2:+fo;}
   c.ik=ITEMS[V('plIk')]?V('plIk'):'esc';c.iw=N('plIw')>0?N('plIw'):900;c.ih=N('plIh')>0?N('plIh'):2800;
   if(PL.ikLast===undefined)PL.ikLast=c.ik;else if(c.ik!==PL.ikLast){PL.ikLast=c.ik;c.iw=ITEMS[c.ik][1];c.ih=ITEMS[c.ik][2];const a1=document.getElementById('plIw'),a2=document.getElementById('plIh');if(a1)a1.value=c.iw;if(a2)a2.value=c.ih;}
   c.dia=(V('plDi')||'').trim().replace(/^Ø\s*/,'').slice(0,14);c.mat=((V('plMa')||'').trim()+((V('plCv')||'').trim()?((V('plMa')||'').trim()?' + ':'')+(V('plCv')||'').trim():'')).slice(0,60);c.sd=['no','si'].includes(V('plSd'))?V('plSd'):'auto';c.rf=['ext','int'].includes(V('plRf'))?V('plRf'):'eje';plFitSync(c.ins);c.fk=V('plFk')||c.fk||'c90';
   c.cd=['x','y'].includes(V('plCd'))?V('plCd'):'a';c.cs=N('plCs')>0?N('plCs'):400;c.cb=N('plCb')>0?N('plCb'):2600;c.cw=V('plCw')==='0'?0:1;
   if(PL.bg){const o=N('plIo');PL.bg.op=Math.max(0,Math.min(1,(isFinite(o)?o:55)/100));}
   const vs=V('plVs');if(PL.vsLast===undefined)PL.vsLast=vs;else if(vs!==PL.vsLast){PL.vsLast=vs;if(+vs>0)plZoomTo(3.7795275/+vs);}
+  {const sw=PL.shapes&&PL.shapes[PL.sel];if(sw&&sw.t==='w'&&!sw.k&&WFRAME[sw.m]){const ns=c.fs>0?c.fs:0,nc=WFRAME[sw.m].k==='sf'&&c.fc>0?c.fc:0;if((sw.sp||0)!==ns||(sw.ch||0)!==nc){plPush();if(ns)sw.sp=ns;else delete sw.sp;if(nc)sw.ch=nc;else delete sw.ch;plSave();plDraw();plReport();}}}
+  plFrInfo();
+}
+function plFrInfo(){
+  const e=document.getElementById('plFrInfo');if(!e||!PL.shapes)return;
+  const w0=PL.shapes[PL.sel],w=w0&&w0.t==='w'&&!w0.k&&WFRAME[w0.m]?w0:null,m=w?w.m:(WFRAME[PL.cfg.mt]?PL.cfg.mt:'');
+  if(!m){e.textContent='Elegí un material de steel frame o de madera en «Pared ext.» o «Pared int.» para ver las medidas de los montantes.';return;}
+  const fm=WFRAME[m],sp=(w&&w.sp)||PL.cfg.fs||PL.cfg.ds||400,ch=(w&&w.ch)||PL.cfg.fc||0.89,H=PL.cfg.mh||2600,fo=isFinite(PL.cfg.fo)?PL.cfg.fo:2;
+  let t=fm.k==='sf'?'Montante '+fm.pgc+'×'+String(ch).replace('.',',')+' mm (alma '+fm.d+', ala '+fm.ala+', labio 17) y solera PGU '+fm.d+' (alma '+(fm.d+2)+', ala 35, sin labio). Barras de 6 m. Confirmá espesor y medidas con tu proveedor.':'Tirante '+fm.n+' (nominal '+fm.e+' × '+fm.d+' mm; el cepillado es algo menor). Largos de '+fmt(fm.bar/1000,2)+' m.';
+  t+=' Montantes cada '+fmt(sp/1000,2)+' m.';
+  if(w){const L=pdist(w.a,w.b);t+=' Esta pared: '+fmt(L/1000,2)+' m = '+(Math.ceil(L/sp-1e-9)+1)+' montantes de '+fmt(H,0)+' mm (más '+fo+' por cada abertura).';}
+  e.textContent=t;
 }
 /* ---- pantalla ---- */
 const plTW=(px,py)=>[(px-PL.view.x0)/PL.view.s,(PL.view.y0-py)/PL.view.s];
@@ -2355,11 +2367,11 @@ function plFill(){
     else if(s.t==='c'){set('plL',+(2*s.r).toFixed(1));}
     else if(s.t==='it'){set('plL',s.w);set('plA',s.h);}
     else if(s.t==='door'||s.t==='win'){set('plL',s.wd);set('plA',s.hh>0?s.hh:(s.t==='win'?1200:2050));if(s.t==='win')set('plSs',s.sl!=null?s.sl:900);}
-    if(s.t==='w'&&!s.k){const pf=s.x==='i'?'pwi':'pwe';PL.cfg.wloc=s.x==='i'?'i':'e';set(pf+'T',s.th||150);set(pf+'M',s.m||'ot');PL.lm=PL.lm||{};PL.lm[pf]=s.m||'ot';rvSet(pf+'R',s.r);rvSet(pf+'R2',s.r2);set(pf+'L',s.lana?'1':'0');plSync();}
+    if(s.t==='w'&&!s.k){const pf=s.x==='i'?'pwi':'pwe';PL.cfg.wloc=s.x==='i'?'i':'e';set(pf+'T',s.th||150);{const e1=document.getElementById('plFs'),e2=document.getElementById('plFc');if(e1)e1.value=s.sp?String(s.sp):'';if(e2)e2.value=s.ch?String(s.ch):'';}set(pf+'M',s.m||'ot');PL.lm=PL.lm||{};PL.lm[pf]=s.m||'ot';rvSet(pf+'R',s.r);rvSet(pf+'R2',s.r2);set(pf+'L',s.lana?'1':'0');plSync();}
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
-  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'));q('plFt',!!s&&s.t==='fit');{const st=!!s&&((s.t==='w'&&!s.k)||s.t==='door'||s.t==='win');q('plGrp',st);q('plLkg',st);}q('plDa',!!s&&(s.t==='fit'||(s.t==='l'&&!!s.ins)));
+  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'));q('plFt',!!s&&s.t==='fit');{const st=!!s&&((s.t==='w'&&!s.k)||s.t==='door'||s.t==='win');q('plGrp',st);q('plLkg',st);q('plMt',!!s&&s.t==='w'&&!s.k&&!!WFRAME[s.m]);}q('plDa',!!s&&(s.t==='fit'||(s.t==='l'&&!!s.ins)));
   const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?((s.t==='r'||s.t==='it'||s.t==='door'||s.t==='win')?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
   if(lab)lab.textContent=m==='r'?'Ancho':m==='c'?'Diámetro':'Largo';
   if(lb2)lb2.textContent=m==='r'?'Alto':'Ángulo (0° = derecha, 90° = arriba)';
@@ -2405,6 +2417,7 @@ function plNudge(dx,dy,step){
 function plAction(a){
   const s=PL.shapes[PL.sel];
   if(a==='del'&&s){plPush();if(s.t==='fit'&&s.ov)s.hide=1;else PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
+  else if(a==='mont'){plFrInfo();const e=document.getElementById('plMont');if(e)e.scrollIntoView({behavior:'smooth',block:'start'});}
   else if(a==='gm'){PL.cfg.gm=!PL.cfg.gm;if(!PL.cfg.gm)PL.grp=null;plSave();plFill();plDraw();plMsg(PL.cfg.gm?'Al tocar una pared o abertura se elige toda la estructura unida: arrastrala y se mueve completa.':'Cada pieza se mueve sola.');}
   else if(a==='grp'&&s){const b=plStructBase(PL.sel);if(b>=0){PL.grp=wallGroup(PL.shapes,b);plMsg('Arrastrá cualquier pieza de la estructura ('+PL.grp.size+' piezas) y se mueve todo junto. Tocá en un lugar vacío para terminar.');plDraw();}}
   else if(a==='lockg'&&s){const b=plStructBase(PL.sel);if(b>=0){const g=PL.grp&&PL.grp.has(PL.sel)?PL.grp:wallGroup(PL.shapes,b);plPush();let n=0;g.forEach(i=>{if(PL.shapes[i]&&!PL.shapes[i].lk){PL.shapes[i].lk=1;n++;}});PL.grp=null;PL.sel=-1;plChanged();plMsg('Se bloqueó la estructura ('+n+' piezas): queda tenue, fija y no se elige. Para soltarla, clic derecho o mantené apretado sobre ella y elegí «Desbloquear esta estructura».');}}
@@ -2436,7 +2449,7 @@ function plAction(a){
   else if(a==='towall'&&s){const w=shapeToWalls(s,PL.cfg.th,wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2,PL.cfg.la));if(w&&w.length){plPush();PL.shapes.splice(PL.sel,1,...w);PL.sel=-1;plChanged();}}
   else if((a==='wapp'||a==='wappall')&&(a==='wappall'||(s&&s.t==='w'&&!s.k))){
     const pr=wallProps(PL.cfg.mt,PL.cfg.mx,PL.cfg.mr,PL.cfg.mr2,PL.cfg.la);plPush();
-    PL.shapes.forEach((w,j)=>{if(w.t==='w'&&!w.k&&(a==='wappall'||j===PL.sel)){w.th=PL.cfg.th;delete w.m;delete w.x;delete w.r;delete w.r2;delete w.lana;Object.assign(w,pr);}});
+    PL.shapes.forEach((w,j)=>{if(w.t==='w'&&!w.k&&(a==='wappall'||j===PL.sel)){w.th=PL.cfg.th;delete w.m;delete w.x;delete w.r;delete w.r2;delete w.lana;delete w.sp;delete w.ch;Object.assign(w,pr);}});
     plChanged();}
   else if(a==='rot'&&s&&s.t==='it'){plRot(90);}
   else if(a==='od'){PL.cfg.od=!(PL.cfg.od!==false);plSave();plFill();plDraw();}
@@ -3677,7 +3690,7 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
    <button type="button" class="pb" data-a="meas">Modificar medidas</button><button type="button" class="pb" data-a="rotg">Girar 90°</button><button type="button" class="pb" data-a="rotn">Girar…</button><button type="button" class="pb" data-a="del">Borrar</button><button type="button" class="pb" data-a="dup">Duplicar</button><span style="display:inline-flex;gap:4px;align-items:center"><button type="button" class="pb" data-a="nL" aria-label="Mover a la izquierda">◀</button><button type="button" class="pb" data-a="nR" aria-label="Mover a la derecha">▶</button><button type="button" class="pb" data-a="nU" aria-label="Mover arriba">▲</button><button type="button" class="pb" data-a="nD" aria-label="Mover abajo">▼</button><select id="plNs" aria-label="Paso de movimiento"><option value="1">de a 1 mm</option><option value="10">de a 10 mm</option><option value="100">de a 100 mm</option></select></span>
-   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button><button type="button" class="pb" id="plFt" data-a="ftype" hidden>Cambiar tipo de pieza</button><button type="button" class="pb" id="plGrp" data-a="grp" hidden>Mover toda la estructura</button><button type="button" class="pb" id="plLkg" data-a="lockg" hidden>Bloquear esta estructura</button><button type="button" class="pb" id="plDa" data-a="dia" hidden>Cambiar diámetro</button></div>
+   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button><button type="button" class="pb" id="plFt" data-a="ftype" hidden>Cambiar tipo de pieza</button><button type="button" class="pb" id="plMt" data-a="mont" hidden>Montantes y medidas</button><button type="button" class="pb" id="plGrp" data-a="grp" hidden>Mover toda la estructura</button><button type="button" class="pb" id="plLkg" data-a="lockg" hidden>Bloquear esta estructura</button><button type="button" class="pb" id="plDa" data-a="dia" hidden>Cambiar diámetro</button></div>
   <div class="form" style="margin-top:14px">
    <h3 class="sec">Espacio de trabajo</h3>
    ${sel('plAk','Qué vas a dibujar',[['t','Terreno (planta): línea municipal y límites'],['f','Vista de frente o corte: ancho × alto']],'t','','full')}
@@ -3699,6 +3712,9 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
    <h3 class="sec" style="color:var(--accent)">Pared interior (tabiques)</h3>
    ${fld('pwiT','Espesor','100','mm')}${sel('pwiM','Material',WMAT_SEL,'ot')}
    ${rvBox('pwiR','Lado 1: tildá las capas que lleva',RVC_I)}${rvBox('pwiR2','Lado 2: tildá las capas que lleva',RVC_I)}${sel('pwiL','Aislación',[['0','Sin lana de vidrio'],['1','Con lana de vidrio dentro de la pared']],'0','','full')}
+   <h3 class="sec" id="plMont" style="color:var(--accent)">Montantes (steel frame y madera)</h3>
+   ${sel('plFs','Separación entre montantes',[['','La general (la de Durlock, abajo)'],['300','30 cm'],['400','40 cm'],['450','45 cm'],['480','48 cm'],['600','60 cm']],'')}${sel('plFc','Espesor de chapa del PGC / PGU',[['','0,89 mm (estándar)'],['1.25','1,25 mm *'],['1.6','1,6 mm *']],'')}${sel('plFo','Montantes extra por puerta o ventana',[['2','2 (jamba doble)'],['1','1'],['0','Ninguno']],'2')}
+   <p class="hint" id="plFrInfo"></p>
    ${fld('plMh','Altura de paredes (para superficies)','2600','mm')}
    ${sel('plDs','Durlock: separación de perfiles',[['400','40 cm'],['480','48 cm'],['600','60 cm']],'400')}${fld('plDb','Durlock: largo de barra','2600','mm')}
    ${sel('plDp','Durlock: placa',[['2.88','1,20 × 2,40 m'],['3.12','1,20 × 2,60 m'],['3.6','1,20 × 3,00 m']],'2.88')}${fld('plDw','Durlock: desperdicio','5','%')}
@@ -3796,7 +3812,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 34 · 14/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 35 · 14/11/2026</p>');
   window.scrollTo(0,0);
 }
 
