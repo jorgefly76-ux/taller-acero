@@ -930,7 +930,21 @@ function cieloSum(list,bar){
 }
 
 /* ---- Paredes con material, aberturas e ítems ---- */
-const WMAT={ot:'Sin definir',lh:'Ladrillo hueco',lc:'Ladrillo común',bl:'Bloque de hormigón',ho:'Hormigón armado',dr:'Durlock / steel frame',mo:'Madera'};
+const WMAT={ot:'Sin definir',lh:'Ladrillo hueco',lc:'Ladrillo común',bl:'Bloque de hormigón',ho:'Hormigón armado',
+  sf90:'Steel frame · PGC 90 / PGU 90',sf100:'Steel frame · PGC 100 / PGU 100',sf150:'Steel frame · PGC 150 / PGU 150 *',sf200:'Steel frame · PGC 200 / PGU 200 *',
+  w23:'Madera · tirantes 2×3 *',w24:'Madera · tirantes 2×4',w25:'Madera · tirantes 2×5',w26:'Madera · tirantes 2×6',w36:'Madera · tirantes 3×6',
+  dr:'Durlock / steel frame (sin perfil, antiguo)',mo:'Madera (sin medida, antiguo)'};
+/* Estructura de pared: PGC = montante, PGU = solera (steel frame); tirantes de madera con medida nominal en pulgadas.
+   d = profundidad (queda como espesor de la pared), ala/e = lado de cada montante visto desde arriba, bar = largo comercial de la barra */
+const WFRAME={
+  sf90:{k:'sf',d:90,ala:40,pgc:'PGC 90×40×0,89',pgu:'PGU 90 (alma 92)',bar:6000},
+  sf100:{k:'sf',d:100,ala:40,pgc:'PGC 100×40×0,89',pgu:'PGU 100 (alma 102)',bar:6000},
+  sf150:{k:'sf',d:150,ala:40,pgc:'PGC 150×40',pgu:'PGU 150',bar:6000},
+  sf200:{k:'sf',d:200,ala:40,pgc:'PGC 200×40',pgu:'PGU 200',bar:6000},
+  w23:{k:'mo',d:75,e:50,n:'2×3',bar:3050},w24:{k:'mo',d:100,e:50,n:'2×4',bar:3050},w25:{k:'mo',d:125,e:50,n:'2×5',bar:3050},
+  w26:{k:'mo',d:150,e:50,n:'2×6',bar:3050},w36:{k:'mo',d:150,e:75,n:'3×6',bar:4270}};
+const WMAT_SEL=Object.entries(WMAT).filter(([k])=>k!=='dr'&&k!=='mo');
+function splitLens(L,bar){const o=[];let r=L;while(r>bar+1e-6){o.push(bar);r-=bar;}if(r>1e-6)o.push(r);return o;}
 const WREV={no:'Sin revestimiento',rv:'Revoque y pintura',lv:'Ladrillo visto',ce:'Cerámico / porcelanato',pc:'Placa cementicia',tx:'Texturado / símil piedra',os:'OSB',mb:'Membrana hidrófuga',om:'OSB + membrana hidrófuga',omc:'OSB + membrana hidrófuga + chapa acanalada',omp:'OSB + membrana hidrófuga + placa cementicia',ye:'Placa de yeso',yc:'Placa de yeso + cerámico',pg:'Porcelanato',yp:'Placa de yeso + porcelanato',ca:'Chapa acanalada',si:'Siding (vinílico o fibrocemento)',ma:'Madera / machimbre',do:'Durlock sobre perfiles omega',dm:'Durlock sobre montantes y soleras'};
 const RVC_E=['os','mb','ca','pc','si','rv','lv','tx'],RVC_I=['ye','ma','do','dm','pc','ce','pg','rv'];
 function rvBox(face,title,list){return '<div class="f full" data-rvg="'+face+'"><span>'+title+'</span><div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px">'+list.map(k=>'<label style="display:inline-flex;gap:5px;align-items:center;font-size:14px"><input type="checkbox" data-rv="'+face+'" value="'+k+'" style="width:18px;height:18px">'+WREV[k]+'</label>').join('')+'</div></div>';}
@@ -1026,24 +1040,25 @@ function itemGaps(sh,i){
 /* Resumen de paredes por ubicación y material, descontando puertas y ventanas.
    cara 1 = la que mira hacia afuera, cara 2 = la otra. h = altura (mm). */
 function wallStats(sh,h){
-  const rows={},rev={},revS={e:{},i:{},n:{}},dl={do:[],dm:[]},dlA={do:0,dm:0},openA={};let lana=0;
+  const rows={},rev={},revS={e:{},i:{},n:{}},dl={do:[],dm:[],dp:[]},dlA={do:0,dm:0,dp:0},openA={},openN={},fr={};let lana=0;
   sh.forEach((s,k)=>{
     if(s.t!=='door'&&s.t!=='win')return;
     const ow=openingWall(sh,k);if(!ow)return;
-    const oh=s.hh>0?s.hh:(s.t==='win'?1200:2050);openA[ow.j]=(openA[ow.j]||0)+s.wd*Math.min(oh,h);
+    const oh=s.hh>0?s.hh:(s.t==='win'?1200:2050);openA[ow.j]=(openA[ow.j]||0)+s.wd*Math.min(oh,h);openN[ow.j]=(openN[ow.j]||0)+1;
   });
   let len=0,open=0;
   sh.forEach((s,i)=>{
     if(s.t!=='w'||s.k)return;
     const ln=wallLens(sh,i),th=s.th||150,oa=Math.min(openA[i]||0,ln.c*h),net=ln.c*h-oa,key=(s.x||'-')+'|'+(s.m||'ot'),r=rows[key]||(rows[key]={x:s.x||'',m:s.m||'ot',len:0,area:0,vol:0});
     r.len+=ln.c;r.area+=net;r.vol+=net*th;len+=ln.c;open+=oa;if(s.lana)lana+=net;
+    if(WFRAME[s.m]){const e=fr[s.m]||(fr[s.m]={L:[],open:0});e.L.push(ln.c);e.open+=openN[i]||0;}
     const l1=s.x==='e'?ln.e:ln.c,l2=s.x==='e'?ln.i:ln.c;
     [[s.r,l1,0],[s.r2,l2,1]].forEach(([rl,fl,fi])=>{
       const a=Math.max(0,fl*h-oa),g=s.x==='e'?(fi?'i':'e'):s.x==='i'?'i':'n';
-      revList(rl).forEach(rv=>{rev[rv]=(rev[rv]||0)+a;revS[g][rv]=(revS[g][rv]||0)+a;if(rv==='do'||rv==='dm'){dl[rv].push({L:fl,H:h,q:1});dlA[rv]+=a;}});
+      revList(rl).forEach(rv=>{rev[rv]=(rev[rv]||0)+a;revS[g][rv]=(revS[g][rv]||0)+a;if(rv==='do'||rv==='dm'){const kk=(rv==='dm'&&WFRAME[s.m])?'dp':rv;dl[kk].push({L:fl,H:h,q:1});dlA[kk]+=a;}});
     });
   });
-  return {rows:Object.values(rows),rev,revS,len,dl,dlA,open,lana};
+  return {rows:Object.values(rows),rev,revS,len,dl,dlA,open,lana,fr};
 }
 /* Durlock sobre pared: dm = montantes y soleras, do = perfiles omega. items [{L,H,q}] y A en mm². */
 function durlockCalc(items,kind,o){
@@ -1052,7 +1067,8 @@ function durlockCalc(items,kind,o){
   const scr2=sep<=400?30:sep<=480?26:22,scr1=sep<=400?10:8;
   out.push({label:'Placas de yeso',q:c(m2*w/o.plate-1e-9),u:'u.',key:1});
   const r=perfilesPared(items,sep,bar);
-  if(kind==='dm'){
+  if(kind==='dp'){}
+  else if(kind==='dm'){
     out.push({label:'Montantes de '+bar+' mm',q:r.mont,u:'u.',key:1},{label:'Soleras de '+bar+' mm',q:r.sol,u:'u.',key:1});
     out.push({label:'Tornillos T1 (perfil)',q:c(m2*scr1),u:'u.'});
   }else{
@@ -1617,7 +1633,8 @@ function matRows(d){
   const o=Object.assign({},store('mats'));o.mrows=String(matN);persist('mats',o);
   openTool(TOOLS.find(x=>x.id==='mats'));
 }
-const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el norte en otra dirección, cambiá el ángulo en Ajustes (90° = arriba, 0° = derecha, 180° = izquierda, 270° = abajo). Sale también en el PDF y el PNG.'],['Línea municipal (L.M.)','Límite entre tu lote y la vereda, o sea el espacio público. Se dibuja con trazo y punto.'],['Línea de edificación (L.E.)','Línea hasta donde se puede construir. A veces coincide con la línea municipal y a veces hay un retiro de frente.'],['Vereda y calle','La vereda va entre la línea municipal y el cordón, y la calle (calzada) está del otro lado del cordón. Los anchos que vienen cargados son de ejemplo: usá los de tu municipio.'],['Escuadra','Obliga a que las líneas queden horizontales o verticales. Apagala para dibujar en diagonal.'],['Imán','Los puntos se ajustan a la cuadrícula elegida y a las esquinas de lo ya dibujado, así las medidas salen redondas.'],['Cotas auto','Muestra la medida de cada línea, pared o rectángulo. La herramienta Cota agrega una medida entre dos puntos que vos elegís.'],['Pared','Línea gruesa con el espesor indicado. Su medida es de eje a eje (por el centro de la pared).'],['Puerta y ventana','Se apoyan sobre la pared que tocás y se alinean con ella. Elegida una puerta, Invertir cambia el lado de la bisagra y hacia dónde abre.'],['Aberturas','Puerta, ventana y portón tienen varios tipos: de una hoja o dos, batientes o corredizos. Elegida una, Girar sentido cambia el lado de la bisagra o de corrida. Arrastrándola con Elegir se desliza sobre las paredes.'],['Pared exterior e interior','Cada pared puede tener ubicación, material (ladrillo, bloque, hormigón, Durlock, madera) y revestimiento. Se ve con un rayado distinto por material, un borde más grueso en las exteriores y una franja de color para el revestimiento.'],['Medidas de eje, interior y exterior','Eje es por el centro de la pared. Interior y exterior descuentan o suman el espesor donde se une otra pared. El lado «exterior» se decide con el centro de todas las paredes del plano, así que en construcciones raras revisalo. Cada medida se prende y apaga con su botón.'],['Ítems','Escaleras, sanitarios y muebles vistos desde arriba, para ubicar cada cosa a escala. Sirven de referencia: no reemplazan el cálculo de la escalera.'],['Proyectos y capas','Un proyecto reúne la planta base y un plano por instalación. Las capas se dibujan sobre la base bloqueada y se pueden mirar juntas con «Ver encima». «Imprimir todo a escala» arma un PDF con una hoja por capa, todas con la misma escala y hoja que elijas en Exportar.'],['Plano base','Es la planta (paredes, aberturas, medidas) que repetís en varios planos. Al abrirla bloqueada queda tenue y fija, para dibujar encima cada instalación sin mover nada de la base. Lo guardado no cambia al editar: solo si lo guardás de nuevo.'],['Escala','1:50 quiere decir que 50 mm reales se dibujan como 1 mm en el papel. Imprimí al 100 % para que las medidas sean exactas.'],['Elegir','Tocá una figura para moverla, borrarla o cambiarle la medida desde los campos de Medida exacta.']];
+const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el norte en otra dirección, cambiá el ángulo en Ajustes (90° = arriba, 0° = derecha, 180° = izquierda, 270° = abajo). Sale también en el PDF y el PNG.'],['Línea municipal (L.M.)','Límite entre tu lote y la vereda, o sea el espacio público. Se dibuja con trazo y punto.'],['Línea de edificación (L.E.)','Línea hasta donde se puede construir. A veces coincide con la línea municipal y a veces hay un retiro de frente.'],['Vereda y calle','La vereda va entre la línea municipal y el cordón, y la calle (calzada) está del otro lado del cordón. Los anchos que vienen cargados son de ejemplo: usá los de tu municipio.'],['Escuadra','Obliga a que las líneas queden horizontales o verticales. Apagala para dibujar en diagonal.'],['Imán','Los puntos se ajustan a la cuadrícula elegida y a las esquinas de lo ya dibujado, así las medidas salen redondas.'],['Cotas auto','Muestra la medida de cada línea, pared o rectángulo. La herramienta Cota agrega una medida entre dos puntos que vos elegís.'],['Pared','Línea gruesa con el espesor indicado. Su medida es de eje a eje (por el centro de la pared).'],['Puerta y ventana','Se apoyan sobre la pared que tocás y se alinean con ella. Elegida una puerta, Invertir cambia el lado de la bisagra y hacia dónde abre.'],['Aberturas','Puerta, ventana y portón tienen varios tipos: de una hoja o dos, batientes o corredizos. Elegida una, Girar sentido cambia el lado de la bisagra o de corrida. Arrastrándola con Elegir se desliza sobre las paredes.'],['Steel frame y madera','En el material de la pared elegí el perfil: PGC es el montante (de pie, cada 40, 48 o 60 cm según «Durlock: separación de perfiles») y PGU la solera (arriba y abajo). En madera elegí la medida del tirante. El espesor de la pared pasa a ser la profundidad del perfil y el plano dibuja cada montante a escala. En las cantidades salen montantes, soleras y barras. Las medidas de los perfiles marcadas con asterisco (*) hay que confirmarlas con tu proveedor.'],
+['Pared exterior e interior','Cada pared puede tener ubicación, material (ladrillo, bloque, hormigón, Durlock, madera) y revestimiento. Se ve con un rayado distinto por material, un borde más grueso en las exteriores y una franja de color para el revestimiento.'],['Medidas de eje, interior y exterior','Eje es por el centro de la pared. Interior y exterior descuentan o suman el espesor donde se une otra pared. El lado «exterior» se decide con el centro de todas las paredes del plano, así que en construcciones raras revisalo. Cada medida se prende y apaga con su botón.'],['Ítems','Escaleras, sanitarios y muebles vistos desde arriba, para ubicar cada cosa a escala. Sirven de referencia: no reemplazan el cálculo de la escalera.'],['Proyectos y capas','Un proyecto reúne la planta base y un plano por instalación. Las capas se dibujan sobre la base bloqueada y se pueden mirar juntas con «Ver encima». «Imprimir todo a escala» arma un PDF con una hoja por capa, todas con la misma escala y hoja que elijas en Exportar.'],['Plano base','Es la planta (paredes, aberturas, medidas) que repetís en varios planos. Al abrirla bloqueada queda tenue y fija, para dibujar encima cada instalación sin mover nada de la base. Lo guardado no cambia al editar: solo si lo guardás de nuevo.'],['Escala','1:50 quiere decir que 50 mm reales se dibujan como 1 mm en el papel. Imprimí al 100 % para que las medidas sean exactas.'],['Elegir','Tocá una figura para moverla, borrarla o cambiarle la medida desde los campos de Medida exacta.']];
 
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
@@ -1704,6 +1721,7 @@ function sceneDraw(ctx,sh,T,o){
   drawScene(ctx,fr,T,Object.assign({},o,{imap:map,sel:(o.sel||[]).map(i=>map.indexOf(i)).filter(i=>i>=0)}));
 }
 const MATCOL={lh:'rgba(214,120,70,.42)',lc:'rgba(176,64,44,.45)',bl:'rgba(120,130,142,.5)',ho:'rgba(90,92,104,.55)',dr:'rgba(110,170,215,.42)',mo:'rgba(190,140,70,.5)'};
+Object.keys(WFRAME).forEach(k=>{MATCOL[k]=WFRAME[k].k==='sf'?MATCOL.dr:MATCOL.mo;});
 const REVCOL={om:'#b89a63',omc:'#6e7c88',omp:'#9aa3a8',yc:'#e8dccb',yp:'#d8d0c4',ye:'#eee6d8',mb:'#7fb0c9',pg:'#d8d0c4',os:'#c8a26a',ca:'#6e7c88',si:'#8fae9a',ma:'#9a6b3c',rv:'#d9b894',lv:'#b3452d',ce:'#3d8fa8',pc:'#8c9097',tx:'#c9ad5f',do:'#7fb2e0',dm:'#4f86c6'};
 function fitGlyph(ctx,f,x,y,S,k,C,selected,auto){
   const F=FITS[f.k]||{g:'circ',l:'?'},col=selected?C.accent:instOf(f.ins)[2],r=(auto?.72:1)*Math.max(5*k,Math.min(9*k,110*S));
@@ -1758,6 +1776,10 @@ function drawScene(ctx,sh,T,o){
       if(s.m==='bl')for(let t=0;t<=T;t+=step)ln(P(t,-1),P(t,1));
       if(s.m==='dr'){ln(P(0,-.45),P(T,-.45));ln(P(0,.45),P(T,.45));}
       if(s.m==='mo'){ln(P(0,-.5),P(T,-.5));ln(P(0,0),P(T,0));ln(P(0,.5),P(T,.5));}
+      {const fr=WFRAME[s.m];if(fr){const sp=Math.max(100,(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.ds)||400),w=fr.k==='sf'?fr.ala:fr.e,xs=[];for(let x=0;x<=L-1;x+=sp)xs.push(x);xs.push(L);
+        if(xs.length<400&&w*S>=1.2)xs.forEach(x=>{const t0=Math.max(0,Math.min(T-w,h+x-w/2));
+          if(fr.k==='sf'){const A=P(t0+w,-.88),B=P(t0,-.88),Cc=P(t0,.88),D=P(t0+w,.88);ln(A,B);ln(B,Cc);ln(Cc,D);}
+          else{const A=P(t0,-.9),B=P(t0+w,-.9),Cc=P(t0+w,.9),D=P(t0,.9);ln(A,B);ln(B,Cc);ln(Cc,D);ln(D,A);ln(A,Cc);ln(B,D);}});}}
       ctx.stroke();
       if(s.m==='ho'){const r=.9*k;for(let t=0,j=0;t<T;t+=step*.7,j++){const q=P(t,j%2?.4:-.4);ctx.fillRect(q[0]-r,q[1]-r,2*r,2*r);}}
     }
@@ -2006,10 +2028,16 @@ function plReport(){
       [['e','Revestimiento de paredes exteriores'],['i','Revestimiento de paredes interiores'],['n','Revestimiento (pared sin ubicación)']].forEach(([g,tt])=>{const ks=Object.keys(st.revS[g]);if(!ks.length)return;
         rows+='<h3 class="sec" style="margin:10px 0 0">'+tt+'</h3>';ks.forEach(k=>{rows+=row(WREV[k],fmt(st.revS[g][k]/1e6,2),'m²');if(k==='os')rows+=row('Placas de OSB 1,22 × 2,44 m (con 10 % de desperdicio)',Math.ceil(st.revS[g][k]/1e6*1.1/2.9768-1e-9),'u.');});});
       if(st.open>0)rows+=row('Aberturas descontadas',fmt(st.open/1e6,2),'m²');
-      ['dm','do'].forEach(kd=>{const dq=durlockCalc(st.dl[kd],kd,{sep:PL.cfg.ds||400,bar:PL.cfg.db||2600,plate:PL.cfg.dp||2.88,waste:isFinite(PL.cfg.dwa)?PL.cfg.dwa:5,A:st.dlA[kd]});if(dq.length)rows+='<h3 class="sec" style="margin:10px 0 0">'+WREV[kd]+'</h3>'+dq.map(r=>row(r.label,fmt(r.q,r.u==='u.'?0:2),r.u,r.key?'key':'')).join('');});
+      Object.keys(st.fr||{}).forEach(k=>{const fm=WFRAME[k],e=st.fr[k],sp=PL.cfg.ds||400,H=PL.cfg.mh||2600,nst=e.L.reduce((a,L)=>a+Math.ceil(L/sp-1e-9)+1,0)+2*e.open;
+        const studs=packCuts(fm.bar,3,splitLens(H,fm.bar).length>1?Array(nst).fill(0).flatMap(()=>splitLens(H,fm.bar)):Array(nst).fill(H)).length,pl=[];e.L.forEach(L=>{splitLens(L,fm.bar).forEach(x=>{pl.push(x);pl.push(x);});});
+        const plBars=pl.length?packCuts(fm.bar,3,pl).length:0,plm=e.L.reduce((a,L)=>a+2*L,0);
+        rows+='<h3 class="sec" style="margin:10px 0 0">Estructura · '+WMAT[k]+'</h3>';
+        if(fm.k==='sf')rows+=row('Montantes '+fm.pgc+' (cada '+fmt(sp/1000,2)+' m, de '+fmt(H,0)+' mm)',nst,'u.','key')+row('Barras de PGC de '+fmt(fm.bar/1000,1)+' m',studs,'u.','key')+row('Soleras '+fm.pgu+' (arriba y abajo)',fmt(plm/1000,2),'m')+row('Barras de PGU de '+fmt(fm.bar/1000,1)+' m',plBars,'u.','key');
+        else rows+=row('Montantes de madera '+fm.n+' (cada '+fmt(sp/1000,2)+' m, de '+fmt(H,0)+' mm)',nst,'u.','key')+row('Tirantes '+fm.n+' de '+fmt(fm.bar/1000,2)+' m para montantes',studs,'u.','key')+row('Soleras '+fm.n+' (arriba y abajo)',fmt(plm/1000,2),'m')+row('Tirantes '+fm.n+' de 4,27 m para soleras',pl.length?packCuts(4270,3,pl.map(x=>Math.min(x,4270))).length:0,'u.','key');});
+      ['dm','dp','do'].forEach(kd=>{const dq=durlockCalc(st.dl[kd],kd,{sep:PL.cfg.ds||400,bar:PL.cfg.db||2600,plate:PL.cfg.dp||2.88,waste:isFinite(PL.cfg.dwa)?PL.cfg.dwa:5,A:st.dlA[kd]});if(dq.length)rows+='<h3 class="sec" style="margin:10px 0 0">'+(kd==='dp'?'Durlock sobre steel frame o madera (solo placas)':WREV[kd])+'</h3>'+dq.map(r=>row(r.label,fmt(r.q,r.u==='u.'?0:2),r.u,r.key?'key':'')).join('');});
     }
     Object.keys(op).forEach(k=>{rows+=row(k,op[k],'u.');});Object.keys(it).forEach(k=>{rows+=row(k,it[k],'u.');});
-    if(rows)h0='<h3 class="sec">Paredes, aberturas e ítems</h3>'+res(rows)+(st.len>0?'<p class="hint">Superficies con altura de '+fmt(PL.cfg.mh||2600,0)+' mm, descontando las puertas y ventanas que están sobre las paredes. Cada revestimiento se cuenta por cara; las medidas de perfiles usan el largo y la altura de cada pared completa.</p>':'');
+    if(rows)h0='<h3 class="sec">Paredes, aberturas e ítems</h3>'+res(rows)+(st.len>0?'<p class="hint">Superficies con altura de '+fmt(PL.cfg.mh||2600,0)+' mm, descontando las puertas y ventanas que están sobre las paredes. Cada revestimiento se cuenta por cara; las medidas de perfiles usan el largo y la altura de cada pared completa. En steel frame y madera se cuentan un montante en cada punta, dos más por cada puerta o ventana y las soleras arriba y abajo; no incluye cabezales, dinteles, diagonales ni tornillos. Las medidas de la madera son nominales (el tirante cepillado es algo menor).</p>':'');
   }
   const rj=PL.shapes.filter(s=>s.t==='rj'),cl=PL.shapes.filter(s=>s.t==='cl');let h='';
   const m=v=>fmt(v/1000,3);
@@ -2073,6 +2101,7 @@ function plOpLoad(){
   PL.opK=kk;
 }
 function plSync(){
+  PL.lm=PL.lm||{};['pwe','pwi'].forEach(pf=>{const m=V(pf+'M');if(PL.lm[pf]!==undefined&&PL.lm[pf]!==m&&WFRAME[m]){const e=document.getElementById(pf+'T');if(e)e.value=String(WFRAME[m].d);}PL.lm[pf]=m;});
   const c=PL.cfg;c.grid=+V('plMg')||0;c.mp=+V('plMp')||0;c.unit=V('plU')||'mm';c.lw=+V('plW')||2;c.title=V('plN');c.ve=N('plVe')||3000;c.ca=N('plCa')||8000;{const n=N('plNo');c.no=isFinite(n)?n:90;}
   c.rs=N('plRs')>0?N('plRs'):110;c.rb=N('plRb')>0?N('plRb'):12;c.rm=N('plRm')>0?N('plRm'):40;c.ro=V('plRo')==='h'?'h':'v';c.rn=N('plRn')>0?Math.round(N('plRn')):0;
   plOpSync(c);
@@ -2326,7 +2355,7 @@ function plFill(){
     else if(s.t==='c'){set('plL',+(2*s.r).toFixed(1));}
     else if(s.t==='it'){set('plL',s.w);set('plA',s.h);}
     else if(s.t==='door'||s.t==='win'){set('plL',s.wd);set('plA',s.hh>0?s.hh:(s.t==='win'?1200:2050));if(s.t==='win')set('plSs',s.sl!=null?s.sl:900);}
-    if(s.t==='w'&&!s.k){const pf=s.x==='i'?'pwi':'pwe';PL.cfg.wloc=s.x==='i'?'i':'e';set(pf+'T',s.th||150);set(pf+'M',s.m||'ot');rvSet(pf+'R',s.r);rvSet(pf+'R2',s.r2);set(pf+'L',s.lana?'1':'0');plSync();}
+    if(s.t==='w'&&!s.k){const pf=s.x==='i'?'pwi':'pwe';PL.cfg.wloc=s.x==='i'?'i':'e';set(pf+'T',s.th||150);set(pf+'M',s.m||'ot');PL.lm=PL.lm||{};PL.lm[pf]=s.m||'ot';rvSet(pf+'R',s.r);rvSet(pf+'R2',s.r2);set(pf+'L',s.lana?'1':'0');plSync();}
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
@@ -3659,10 +3688,10 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
    <h3 class="sec">Paredes: espesor, material y revestimiento</h3>
    <p class="hint">Se usan las opciones del tipo de pared que elegiste arriba: «Pared ext.» o «Pared int.». Cada una tiene sus propios materiales, siempre a la vista. Las medidas interiores van de pared terminada a pared terminada: se descuenta el espesor típico de cada acabado (placa de yeso 12,5 mm, Durlock sobre omega 28 mm, cerámico 10 mm, porcelanato 12 mm, revoque 20 mm, madera 12 mm, OSB 11 mm…).</p>
    <h3 class="sec" style="color:var(--accent)">Pared exterior</h3>
-   ${fld('pweT','Espesor','150','mm')}${sel('pweM','Material',Object.entries(WMAT),'ot')}
+   ${fld('pweT','Espesor','150','mm')}${sel('pweM','Material',WMAT_SEL,'ot')}
    ${rvBox('pweR','Cara EXTERIOR: tildá las capas que lleva (de la pared hacia afuera)',RVC_E)}${rvBox('pweR2','Cara INTERIOR: tildá las capas que lleva',RVC_I)}${sel('pweL','Aislación',[['0','Sin lana de vidrio'],['1','Con lana de vidrio dentro de la pared']],'0','','full')}
    <h3 class="sec" style="color:var(--accent)">Pared interior (tabiques)</h3>
-   ${fld('pwiT','Espesor','100','mm')}${sel('pwiM','Material',Object.entries(WMAT),'ot')}
+   ${fld('pwiT','Espesor','100','mm')}${sel('pwiM','Material',WMAT_SEL,'ot')}
    ${rvBox('pwiR','Lado 1: tildá las capas que lleva',RVC_I)}${rvBox('pwiR2','Lado 2: tildá las capas que lleva',RVC_I)}${sel('pwiL','Aislación',[['0','Sin lana de vidrio'],['1','Con lana de vidrio dentro de la pared']],'0','','full')}
    ${fld('plMh','Altura de paredes (para superficies)','2600','mm')}
    ${sel('plDs','Durlock: separación de perfiles',[['400','40 cm'],['480','48 cm'],['600','60 cm']],'400')}${fld('plDb','Durlock: largo de barra','2600','mm')}
@@ -3761,7 +3790,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 32 · 13/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 33 · 14/11/2026</p>');
   window.scrollTo(0,0);
 }
 
