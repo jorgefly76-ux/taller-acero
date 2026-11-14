@@ -538,8 +538,9 @@ function shapeBounds(s){
   if(s.t==='l'||s.t==='dim'||s.t==='r'||s.t==='rj'||s.t==='cl')return mm([s.a,s.b]);
   if(s.t==='w'){const b=mm([s.a,s.b]),h=(s.th||150)/2;return [b[0]-h,b[1]-h,b[2]+h,b[3]+h];}
   if(s.t==='c')return [s.c[0]-s.r,s.c[1]-s.r,s.c[0]+s.r,s.c[1]+s.r];
-  if(s.t==='tx')return [s.p[0],s.p[1],s.p[0]+s.s.length*.6*s.h,s.p[1]+s.h];
-  if(s.t==='an')return mm([s.a,s.p,[s.p[0]+s.s.length*.6*s.h,s.p[1]+s.h]]);
+  if(s.t==='tx'){const L=String(s.s).split('\n');return [s.p[0],s.p[1]-s.h,s.p[0]+Math.max(...L.map(x=>x.length))*.6*s.h,s.p[1]+s.h*1.2*(L.length-1)+s.h*.3];}
+  if(s.t==='mk'){const r=s.h*.9,L=String(s.x||'').split('\n');return [s.p[0]-r,s.p[1]-r,s.p[0]+r+(s.x?s.h*.5+Math.max(...L.map(x=>x.length))*.6*s.h:0),s.p[1]+r+s.h*1.2*Math.max(0,L.length-1)];}
+  if(s.t==='an'){const b=shapeBounds({t:'tx',p:s.p,s:s.s,h:s.h});return mm([s.a,[b[0],b[1]],[b[2],b[3]]]);}
   if(s.t==='nb'){const nbm=nbSize(s);return [s.p[0],s.p[1]-nbm[1],s.p[0]+nbm[0],s.p[1]];}
   if(s.t==='door'||s.t==='win'){const h=s.wd/2;return [s.p[0]-h,s.p[1]-h,s.p[0]+h,s.p[1]+h];}
   if(s.t==='it'){const h=Math.hypot(s.w,s.h)/2;return [s.p[0]-h,s.p[1]-h,s.p[0]+h,s.p[1]+h];}
@@ -564,7 +565,7 @@ function hitDist(s,p){
   if(s.t==='rj'||s.t==='cl'){const a=s.a,b=s.b,c=[[a[0],a[1]],[b[0],a[1]],[b[0],b[1]],[a[0],b[1]]],ed=Math.min(...c.map((q,i)=>segDist(p,q,c[(i+1)%4])));
     const ins=p[0]>=Math.min(a[0],b[0])&&p[0]<=Math.max(a[0],b[0])&&p[1]>=Math.min(a[1],b[1])&&p[1]<=Math.max(a[1],b[1]);return ins?Math.min(ed,2):ed;}
   if(s.t==='c')return Math.abs(pdist(p,s.c)-s.r);
-  if(s.t==='tx'||s.t==='nb'){const b=shapeBounds(s);const dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.hypot(dx,dy);}
+  if(s.t==='tx'||s.t==='nb'||s.t==='mk'){const b=shapeBounds(s);const dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.hypot(dx,dy);}
   if(s.t==='door'||s.t==='win')return Math.max(0,pdist(p,s.p)-s.wd/2);
   if(s.t==='fit')return s.hide?Infinity:Math.max(0,pdist(p,s.p)-110);
   if(s.t==='an'){const b=shapeBounds({t:'tx',p:s.p,s:s.s,h:s.h}),dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.min(Math.hypot(dx,dy),segDist(p,s.a,s.p));}
@@ -758,11 +759,12 @@ function parsePlanoJson(txt){
       if(s.t==='rj'){o.fr=+s.fr>0?+s.fr:40;o.bw=+s.bw>0?+s.bw:12;o.sp=+s.sp>0?+s.sp:110;o.dir=s.dir==='h'?'h':'v';o.n=+s.n>0?Math.round(+s.n):0;}
       else{o.ins=+s.ins>=0?+s.ins:0;o.dir=s.dir==='y'?'y':'x';o.sp=+s.sp>0?+s.sp:400;o.bar=+s.bar>0?+s.bar:2600;}}
     }else if(s.t==='c'){const c=P(s.c);if(c&&+s.r>0)o={t:'c',c,r:+s.r,w:[1,2,3].includes(+s.w)?+s.w:2};}
-    else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,120),h:+s.h>0?+s.h:150};}
+    else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,240),h:+s.h>0?+s.h:150};}
+    else if(s.t==='mk'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'mk',p,s:s.s.slice(0,3),x:typeof s.x==='string'?s.x.slice(0,300):'',h:+s.h>0?+s.h:100};}
     else if(s.t==='nb'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'nb',p,s:s.s.slice(0,400),h:+s.h>0?+s.h:100};}
     else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;if(+s.hh>0)o.hh=+s.hh;if(s.t==='win'&&s.sl!=null&&+s.sl>=0)o.sl=+s.sl;}}
     else if(s.t==='fit'){const p=P(s.p);if(p&&FITS[s.k]&&(!s.ins||INSTS.some(x=>x[0]===s.ins))){o={t:'fit',k:s.k,ins:s.ins||'',p,ang:isFinite(s.ang)?+s.ang:0};if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);if(typeof s.dia2==='string'&&s.dia2)o.dia2=s.dia2.slice(0,14);if(+s.hide)o.hide=1;if(typeof s.ov==='string'&&FITS[s.ov])o.ov=s.ov;}}
-    else if(s.t==='an'){const a=P(s.a),p=P(s.p);if(a&&p&&typeof s.s==='string'&&s.s)o={t:'an',a,p,s:s.s.slice(0,200),h:+s.h>0?+s.h:150};}
+    else if(s.t==='an'){const a=P(s.a),p=P(s.p);if(a&&p&&typeof s.s==='string'&&s.s)o={t:'an',a,p,s:s.s.slice(0,300),h:+s.h>0?+s.h:150};}
     else if(s.t==='it'){const p=P(s.p);if(p&&ITEMS[s.k]&&+s.w>0&&+s.h>0)o={t:'it',k:s.k,p,w:+s.w,h:+s.h,ang:isFinite(s.ang)?+s.ang:0};}
     if(o&&s.lk)o.lk=1;
     if(o)out.push(o);else dropped++;
@@ -1136,7 +1138,7 @@ function plRotate(s,deg){
   if(s.t==='it'){r.ang=(((s.ang||0)+deg)%360+360)%360;return r;}
   if(s.t==='door'||s.t==='win'){if(!q90)return null;r.o=(((s.o||0)+Math.round(deg/90))%4+4)%4;return r;}
   if(s.t==='fit'){r.ang=(((s.ang||0)+deg)%360+360)%360;return r;}
-  if(s.t==='c'||s.t==='tx'||s.t==='nb'||s.t==='an')return r;
+  if(s.t==='c'||s.t==='tx'||s.t==='nb'||s.t==='an'||s.t==='mk')return r;
   return null;
 }
 /* Paredes y aberturas del plano → líneas para Cantidades de obra (metros) */
@@ -1639,7 +1641,7 @@ const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el nor
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
   cfg:{ortho:true,dims:true,big:false,grid:0,mp:0,unit:'mm',th:150,lw:2,title:'',dw:900,vw:1200,ve:3000,ca:8000,no:90,cmp:true}};
-const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared ext.'],['wi','Pared int.'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['an','Anotación con flecha'],['nb','Cuadro de notas'],['door','Puerta'],['win','Ventana'],['gate','Portón'],['it','Ítem / escalera'],['fit','Pieza'],['wr','Pared rect.'],['wc','Pared círculo'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
+const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared ext.'],['wi','Pared int.'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['an','Anotación con flecha'],['mk','Marcador ① con texto'],['nb','Cuadro de notas'],['door','Puerta'],['win','Ventana'],['gate','Portón'],['it','Ítem / escalera'],['fit','Pieza'],['wr','Pared rect.'],['wc','Pared círculo'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
 const PLLINE=['l','w','dim','lm','le','vr','ca'];
 const PLHINT={an:'Tocá lo que querés señalar (ahí va la punta de la flecha) y después tocá dónde va el texto.',nb:'Tocá donde va la esquina de arriba a la izquierda del cuadro y escribí el texto (usá | para pasar a otra línea).',fit:'Elegí la pieza abajo (según la instalación) y tocá donde va. Si tocás sobre un tramo, queda alineada con él. El diámetro sale del campo «Diámetro».',ver:'Arrastrá con un dedo para mover el plano. Con dos dedos acercás o alejás.',sel:'Tocá una figura para elegirla. Arrastrala para moverla.',
   l:'Arrastrá para mover el plano. Tocá donde empieza la línea y después donde termina. Para una medida exacta usá los campos de abajo.',w:'Arrastrá para mover el plano. Tocá el inicio y el final de la pared. El espesor se define abajo.',
@@ -1834,7 +1836,7 @@ function drawScene(ctx,sh,T,o){
         if(Math.hypot(dx,dy)*S>tx.length*5.5*k)ctx.fillText(tx,0,-4*k);ctx.restore();
       }else if(s.ins){
         const I=instOf(s.ins),ic=sel.includes(i)?col:I[2];seg(s.a,s.b,ic,lw*1.3);
-        const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],tg=I[3]+(s.n||'')+(s.dia?' Ø'+s.dia:'');
+        const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],tg=I[3]+(s.n||'')+(o.rt&&s.mat?' '+s.mat:'')+(s.dia?' Ø'+s.dia:'');
         if(Math.hypot(dx,dy)*S>tg.length*6.5*k){ctx.save();let ang=Math.atan2(-dy,dx);if(ang>Math.PI/2||ang<-Math.PI/2)ang+=Math.PI;
           ctx.translate(X((s.a[0]+s.b[0])/2),Y((s.a[1]+s.b[1])/2));ctx.rotate(ang);ctx.fillStyle=ic;ctx.font='700 '+(9.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(tg,0,-4*k);ctx.restore();}
       }else seg(s.a,s.b,col,lw);
@@ -1865,11 +1867,13 @@ function drawScene(ctx,sh,T,o){
     else if(s.t==='nb'){const fs=Math.max(4,s.h*S),L=String(s.s).split('\n'),x=X(s.p[0]),y=Y(s.p[1]);ctx.font='600 '+fs+'px sans-serif';
       const w=Math.max(...L.map(l=>ctx.measureText(l).width))+fs,hh=L.length*fs*1.25+fs*.6;
       ctx.fillStyle=C.bg;ctx.fillRect(x,y,w,hh);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.strokeRect(x,y,w,hh);ctx.fillStyle=col;ctx.textAlign='left';ctx.textBaseline='top';L.forEach((l,j)=>ctx.fillText(l,x+fs*.5,y+fs*.3+j*fs*1.25));}
-    else if(s.t==='an'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),ax=X(s.a[0]),ay=Y(s.a[1]);ctx.font='600 '+fs+'px sans-serif';const tw=ctx.measureText(s.s).width,ty=y-fs*.35,Lp=[x,ty],Rp=[x+tw,ty],st=Math.hypot(ax-Lp[0],ay-Lp[1])<Math.hypot(ax-Rp[0],ay-Rp[1])?Lp:Rp;
+    else if(s.t==='an'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),ax=X(s.a[0]),ay=Y(s.a[1]);ctx.font='600 '+fs+'px sans-serif';const AL=String(s.s).split('\n'),tw=Math.max(...AL.map(z=>ctx.measureText(z).width)),ty=y-fs*.35,Lp=[x,ty],Rp=[x+tw,ty],st=Math.hypot(ax-Lp[0],ay-Lp[1])<Math.hypot(ax-Rp[0],ay-Rp[1])?Lp:Rp;
       ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=lw*.7;ctx.beginPath();ctx.moveTo(st[0],st[1]);ctx.lineTo(ax,ay);ctx.stroke();
       const an=Math.atan2(ay-st[1],ax-st[0]),hs=Math.max(5*k,fs*.55);ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax-hs*Math.cos(an-.4),ay-hs*Math.sin(an-.4));ctx.lineTo(ax-hs*Math.cos(an+.4),ay-hs*Math.sin(an+.4));ctx.closePath();ctx.fill();
-      ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText(s.s,x,y);}
-    else if(s.t==='tx'){ctx.fillStyle=col;ctx.font='600 '+Math.max(4,s.h*S)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText(s.s,X(s.p[0]),Y(s.p[1]));}
+      ctx.textAlign='left';ctx.textBaseline='alphabetic';AL.forEach((ln,j)=>ctx.fillText(ln,x,y+j*fs*1.2));}
+    else if(s.t==='tx'){ctx.fillStyle=col;ctx.font='600 '+Math.max(4,s.h*S)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';const fh=Math.max(4,s.h*S);String(s.s).split('\n').forEach((ln,j)=>ctx.fillText(ln,X(s.p[0]),Y(s.p[1])+j*fh*1.2));}
+    else if(s.t==='mk'){const r=s.h*.9*S,x=X(s.p[0]),y=Y(s.p[1]),fh=Math.max(4,s.h*S);ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=Math.max(1,lw*.8);ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.stroke();ctx.font='700 '+(fh*(String(s.s).length>1?.8:1))+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(s.s,x,y+fh*.04);
+      if(s.x){ctx.font='600 '+fh*.85+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';String(s.x).split('\n').forEach((ln,j)=>ctx.fillText(ln,x+r+fh*.5,y+j*fh*1.1));}}
   });
   autoFits(sh).forEach(f=>fitGlyph(ctx,f,X(f.p[0]),Y(f.p[1]),S,k,C,false,true));
   // cotas
@@ -2149,7 +2153,7 @@ function plDraw(){
   const list=PL.shapes.slice(),selA=PL.grp?[...PL.grp]:PL.sel>=0?[PL.sel]:[];
   if(PL.draft&&PL.draft.cur){const ds=plShapeFrom(PL.mode,PL.draft.a,PL.draft.cur);if(ds){ds.w=1;list.push(ds);selA.push(list.length-1);}}
   PL.lh=[];
-  sceneDraw(ctx,list,V0,{area:PL.cfg.area,hit:1,k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc===true,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub,rd:PL.cfg.rd!==false,ct:!!PL.cfg.ct});
+  sceneDraw(ctx,list,V0,{area:PL.cfg.area,hit:1,k:1,col:C,sel:selA,dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc===true,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub,rd:PL.cfg.rd!==false,ct:!!PL.cfg.ct,rt:PL.cfg.rt!==false});
   if(PL.draft&&PL.draft.cur&&PL.mode!=='dim'){
     const a=PL.draft.a,b=PL.draft.cur,txt=(PL.mode==='r'||PL.mode==='wr')?dimTxt(Math.abs(b[0]-a[0]),PL.cfg.unit)+' × '+dimTxt(Math.abs(b[1]-a[1]),PL.cfg.unit):(PL.mode==='c'||PL.mode==='wc')?'Ø '+dimTxt(2*pdist(a,b),PL.cfg.unit):dimTxt(pdist(a,b),PL.cfg.unit)+'  '+Math.round(((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)+360)%360)+'°';
     ctx.font='600 13px sans-serif';ctx.fillStyle=C.accent;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(txt,8,8);
@@ -2307,8 +2311,8 @@ function plUp(ev){
   if(m==='an'){
     const q=plSnap(px,ev,null);
     if(!PL.an){PL.an={a:q.p};plMsg('Bien. Ahora tocá dónde va el texto de la anotación.');plDraw();return;}
-    const a=PL.an.a;PL.an=null;const t=window.prompt('Texto de la anotación:');
-    if(t&&t.trim())plAdd({t:'an',a,p:q.p,s:t.trim().slice(0,200),h:Math.round(Math.max(40,14/PL.view.s))},q.p);else plDraw();
+    const a=PL.an.a;PL.an=null;const t=window.prompt('Texto de la anotación (| = otra línea):');
+    if(t&&t.trim())plAdd({t:'an',a,p:q.p,s:ml(t),h:Math.round(Math.max(40,14/PL.view.s))},q.p);else plDraw();
     return;
   }
   if(m==='nb'){
@@ -2316,9 +2320,15 @@ function plUp(ev){
     if(t&&t.trim()){const h=Math.round(Math.max(40,13/PL.view.s)),L=t.trim().split('|').map(x=>x.trim()).slice(0,12);plAdd({t:'nb',p:q.p,s:L.join('\n'),h},q.p);}
     return;
   }
+  if(m==='mk'){
+    const q=plSnap(px,ev,null);let n=0;PL.shapes.forEach(z=>{if(z.t==='mk'&&/^\d+$/.test(z.s)&&+z.s>n)n=+z.s;});
+    const lb=window.prompt('Número o letra del marcador:',String(n+1));if(!lb||!lb.trim())return;
+    const tx=window.prompt('Texto al lado del marcador (opcional, | = otra línea):','')||'';
+    plAdd({t:'mk',p:q.p,s:lb.trim().slice(0,3),x:ml(tx),h:Math.round(Math.max(40,14/PL.view.s))},q.p);return;
+  }
   if(m==='tx'){
-    const q=plSnap(px,ev,null),t=window.prompt('Texto:');
-    if(t&&t.trim())plAdd({t:'tx',p:q.p,s:t.trim(),h:Math.round(Math.max(40,14/PL.view.s))},q.p);
+    const q=plSnap(px,ev,null),t=window.prompt('Texto (| = otra línea):');
+    if(t&&t.trim())plAdd({t:'tx',p:q.p,s:ml(t),h:Math.round(Math.max(40,14/PL.view.s))},q.p);
     return;
   }
   if(m==='door'||m==='win'||m==='gate'){
@@ -2381,7 +2391,7 @@ function plFill(){
   {const sl=s&&s.t==='l'&&PL.mode==='sel',pc=plProjCur(),cur=sl?(s.ins||''):(pc?(pc.pj.mode==='base'?'base':(pc.pj.ins||PL.cfg.ins||'')):(PL.cfg.ins||''));document.querySelectorAll('#plIns [data-i]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.i===cur?'true':'false'));
    if(sl){const pt=String(s.mat||'').split(' + '),cv=COVERS.includes(pt[pt.length-1])||pt.length>1?pt.pop():'';set('plDi',s.dia||'');set('plMa',pt.join(' + '));set('plCv',cv);}}
   {const c=document.getElementById('plcur');if(c)c.textContent=plProjLabel();}
-  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct'],['plGm','gm']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
+  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct'],['plGm','gm']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});{const b=document.getElementById('plRtl');if(b)b.setAttribute('aria-pressed',PL.cfg.rt!==false?'true':'false');}
   {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc===true?'true':'false');{const r=document.getElementById('plRd');if(r)r.setAttribute('aria-pressed',PL.cfg.rd!==false?'true':'false');}const d=document.getElementById('plOd');if(d)d.setAttribute('aria-pressed',PL.cfg.od!==false?'true':'false');}
 }
 function plNumAdd(){
@@ -2424,6 +2434,7 @@ function plAction(a){
   else if(a==='unlockg'&&PL.ul>=0){const q=PL.shapes[PL.ul];if(q){const b=plStructBase(PL.ul),g=b>=0?wallGroup(PL.shapes,b,true):new Set([PL.ul]);plPush();let n=0;g.forEach(i=>{const z=PL.shapes[i];if(z&&z.lk===1){delete z.lk;n++;}});if(!n&&q.lk===1){delete q.lk;n=1;}PL.ul=-1;plChanged();plMsg('Estructura desbloqueada ('+n+' piezas).');}}
   else if(a==='rd'){PL.cfg.rd=!(PL.cfg.rd!==false);plSave();plFill();plDraw();}
   else if(a==='ct'){PL.cfg.ct=!PL.cfg.ct;plSave();plFill();plDraw();}
+  else if(a==='rtl'){PL.cfg.rt=PL.cfg.rt===false;plSave();plFill();plDraw();}
   else if(a==='weld'){const r=plWeld(PL.shapes,Math.max(300,(PL.cfg.th||150)*2));if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos de paredes y aberturas.');}else plMsg('No encontré paredes ni aberturas sueltas para unir.');}
   else if(a==='fitrst'){const n=PL.shapes.filter(q=>q.t==='fit'&&q.ov).length;if(n){plPush();PL.shapes=PL.shapes.filter(q=>!(q.t==='fit'&&q.ov));PL.sel=-1;plChanged();plMsg('Se restauraron '+n+' piezas automáticas.');}else plMsg('No hay piezas automáticas modificadas para restaurar.');}
   else if(a==='ftype'&&s&&s.t==='fit'){const r=PL.cv.getBoundingClientRect(),items=[['Tipo de pieza',null]].concat(fitsFor(s.ins||'').map(q=>[FITS[q].n+(q===s.k?' ✓':''),()=>{plPush();s.k=q;plChanged();}]));plMenuShow(items,r.left+16,r.top+16);}
@@ -2457,7 +2468,8 @@ function plAction(a){
   else if(a==='wc'||a==='wi'||a==='we'){if(a==='wc')PL.cfg.wc=!(PL.cfg.wc===true);else PL.cfg[a]=!PL.cfg[a];plSave();plFill();plDraw();}
   else if(a==='cflip'&&s&&s.t==='cl'){plPush();s.dir=s.dir==='x'?'y':'x';plChanged();}
   else if(a==='flip'&&s&&(s.t==='door'||s.t==='win')){plPush();s.o=((s.o||0)+1)%4;plChanged();}
-  else if(a==='edt'&&s&&(s.t==='tx'||s.t==='nb'||s.t==='an')){const t=window.prompt(s.t==='nb'?'Texto del cuadro (| = otra línea):':'Texto:',s.t==='nb'?String(s.s).split('\n').join(' | '):s.s);if(t&&t.trim()){plPush();s.s=s.t==='nb'?t.trim().split('|').map(x=>x.trim()).slice(0,12).join('\n'):t.trim();plChanged();}}
+  else if(a==='edt'&&s&&s.t==='mk'){const l=window.prompt('Número o letra:',s.s);if(l&&l.trim()){const x=window.prompt('Texto al lado (| = otra línea):',String(s.x||'').split('\n').join(' | '));plPush();s.s=l.trim().slice(0,3);s.x=ml(x);plChanged();}}
+  else if(a==='edt'&&s&&(s.t==='tx'||s.t==='nb'||s.t==='an')){const t=window.prompt('Texto (| = otra línea):',String(s.s).split('\n').join(' | '));if(t&&t.trim()){plPush();s.s=ml(t);plChanged();}}
   else if(a==='cancel'){PL.draft=null;PL.hover=null;plFill();plDraw();}
   else if(a==='trace')plTrace();else if(a==='calsheet')plCalSheet();
   else if(a==='jsout'){const t=plJson(),ta=document.querySelector('.pljs');if(ta)ta.value=t;
@@ -2565,7 +2577,7 @@ function plEditMeasures(kind){
     const t=window.prompt('Ancho × alto en mm. Ahora: '+s.w+' × '+s.h,s.w+' x '+s.h);if(t===null)return;const v=nn(t);if(!pos(v[0],v[1]))return;plPush();s.w=v[0];s.h=v[1];
   }else if(s.t==='door'||s.t==='win'){
     const t=window.prompt('Ancho × alto × espesor en mm. Ahora: '+s.wd+' × '+(s.hh||'')+' × '+(s.th||150),s.wd+' x '+(s.hh||(s.t==='win'?1200:2050))+' x '+(s.th||150));if(t===null)return;const v=nn(t);if(!pos(v[0]))return;plPush();s.wd=v[0];if(pos(v[1]))s.hh=v[1];if(pos(v[2])){s.th=v[2];s.tm=1;}
-  }else if(s.t==='tx'||s.t==='nb'||s.t==='an'){plAction('edt');return;}
+  }else if(s.t==='tx'||s.t==='nb'||s.t==='an'||s.t==='mk'){plAction('edt');return;}
   else return;
   plChanged();
 }
@@ -2577,9 +2589,10 @@ function plQuickSave(){
   if(l){const ln=document.getElementById('plLn');if(ln)ln.value=l.name;}
   plProjLayer();
 }
+function ml(t){return String(t||'').split('|').map(x=>x.trim()).filter(Boolean).slice(0,12).join('\n').slice(0,300);}
 function plAnnotate(a){
-  const t=window.prompt('Texto de la anotación:');if(!t||!t.trim())return;const d=Math.round(60/PL.view.s);
-  plAdd({t:'an',a:[a[0],a[1]],p:[a[0]+d,a[1]+d],s:t.trim().slice(0,200),h:Math.round(Math.max(40,14/PL.view.s))},[a[0],a[1]]);
+  const t=window.prompt('Texto de la anotación (| = otra línea):');if(!t||!t.trim())return;const d=Math.round(60/PL.view.s);
+  plAdd({t:'an',a:[a[0],a[1]],p:[a[0]+d,a[1]+d],s:ml(t),h:Math.round(Math.max(40,14/PL.view.s))},[a[0],a[1]]);
 }
 function plMenuClose(){const m=document.getElementById('plmenu');if(m)m.remove();}
 function plMenuOpen(px,cx,cy){
@@ -2597,9 +2610,9 @@ function plMenuOpen(px,cx,cy){
     if(s.t==='cl')add('Cambiar sentido de los montantes',()=>plAction('cflip'));
     if((s.t==='l'&&s.ins)||s.t==='fit')add('Cambiar diámetro…',()=>plAction('dia'));
     if(s.t==='l'&&s.ins)add('Cambiar material o recubrimiento…',()=>plAction('mat'));
-    if(s.t==='tx'||s.t==='nb'||s.t==='an')add('Editar texto…',()=>plAction('edt'));
+    if(s.t==='tx'||s.t==='nb'||s.t==='an'||s.t==='mk')add('Editar texto…',()=>plAction('edt'));
     if(s.t==='fit')add('Cambiar tipo de pieza…',()=>plAction('ftype'));
-    if(s.t!=='an'&&s.t!=='tx'&&s.t!=='nb')add('Agregar anotación a esto…',()=>plAnnotate(shapeCenter(s)));
+    if(s.t!=='an'&&s.t!=='tx'&&s.t!=='nb'&&s.t!=='mk')add('Agregar anotación a esto…',()=>plAnnotate(shapeCenter(s)));
     if(s.t==='l'||s.t==='r'||s.t==='c')add('Convertir en pared',()=>plAction('towall'));
     add('Duplicar',()=>plAction('dup'));add('Borrar',()=>plAction('del'));
     hd('General');
@@ -2691,7 +2704,7 @@ function plSheet(dpi,opt){
   const T={s,x0:areaX+(aw-w*s)/2-b[0]*s,y0:areaY+(ah+h*s)/2+b[1]*s};
   ctx.save();ctx.beginPath();ctx.rect(areaX-6*mm,areaY-6*mm,aw+12*mm,ah+12*mm);ctx.clip();
   if(inc)plDrawBg(ctx,PL.bg,PL.img,T,PL.bg.op);
-  sceneDraw(ctx,sh,T,{area:PL.cfg.area,k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc===true,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub,rd:PL.cfg.rd!==false,ct:!!PL.cfg.ct});ctx.restore();
+  sceneDraw(ctx,sh,T,{area:PL.cfg.area,k:dpi/96*.9,col:C,sel:[],dims:PL.cfg.dims,unit:PL.cfg.unit,wm:{c:PL.cfg.wc===true,i:!!PL.cfg.wi,e:!!PL.cfg.we},od:PL.cfg.od!==false,ub:!!PL.cfg.ub,rd:PL.cfg.rd!==false,ct:!!PL.cfg.ct,rt:PL.cfg.rt!==false});ctx.restore();
   if(PL.cfg.cmp)plCompass(ctx,(ps.pw-10-sw-14)*mm,(24)*mm,8*mm,PL.cfg.no,C,dpi/96*.9);
   if(sw>0)plSidePanel(ctx,sh,(ps.pw-10-sw+1)*mm,10*mm,(sw-1)*mm,(ps.ph-10-24-3-10)*mm,mm);
   // cuadro de datos
@@ -3685,7 +3698,7 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
   <div class="form" style="margin:6px 0 0"><label class="f full" for="plFk"><span>Pieza a colocar con la herramienta «Pieza» (según la instalación elegida)</span><div class="in"><select id="plFk">${fitsFor('').map(q=>`<option value="${q}">${FITS[q].n}</option>`).join('')}</select></div></label><label class="f" for="plDi"><span>Diámetro o sección de las líneas y piezas nuevas</span><div class="in"><input id="plDi" type="text" list="plDiL" autocomplete="off" placeholder="Ej.: 3/4 · Ø110 · 2,5 mm²"><datalist id="plDiL"></datalist></div></label><label class="f" for="plMa"><span>Material de las líneas nuevas</span><div class="in"><input id="plMa" type="text" list="plMaL" autocomplete="off" placeholder="Ej.: epoxi · termofusión · PVC · cobre"><datalist id="plMaL"></datalist></div></label><label class="f full" for="plCv"><span>Recubrimiento o protección (opcional)</span><div class="in"><input id="plCv" type="text" list="plCvL" autocomplete="off" placeholder="Ej.: Metpol · cinta anticorrosiva · coquilla"><datalist id="plCvL">${COVERS.map(x=>`<option value="${x}">`).join('')}</datalist></div></label></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
@@ -3812,7 +3825,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 35 · 14/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 36 · 14/11/2026</p>');
   window.scrollTo(0,0);
 }
 
