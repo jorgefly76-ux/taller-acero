@@ -1338,13 +1338,13 @@ function wallAttach(sh,i,tol){
   return {a:a||w.a,b:b||w.b};
 }
 /* Conjunto de paredes unidas entre sí (y las aberturas que tienen). Las «libres» (fr) quedan afuera salvo que sea la elegida */
-function wallGroup(sh,i){
-  const on=(P,o)=>segDist(P,o.a,o.b)<=(o.th||150)/2+1,W=sh.map((o,j)=>o.t==='w'&&!o.k&&(j===i||!o.fr));
+function wallGroup(sh,i,inclLk){
+  const on=(P,o)=>segDist(P,o.a,o.b)<=(o.th||150)/2+1,W=sh.map((o,j)=>o.t==='w'&&!o.k&&(j===i||(!o.fr&&(inclLk||!o.lk))));
   const g=new Set([i]),q=[i];
   while(q.length){const c=q.pop(),w=sh[c];
     sh.forEach((o,j)=>{if(!W[j]||g.has(j))return;
       if(on(o.a,w)||on(o.b,w)||on(w.a,o)||on(w.b,o)){g.add(j);q.push(j);}});}
-  sh.forEach((o,k)=>{if((o.t==='door'||o.t==='win')&&!o.fr){const ow=openingWall(sh,k);if(ow&&g.has(ow.j))g.add(k);}});
+  sh.forEach((o,k)=>{if((o.t==='door'||o.t==='win')&&!o.fr&&(inclLk||!o.lk)){const ow=openingWall(sh,k);if(ow&&g.has(ow.j))g.add(k);}});
   return g;
 }
 /* ---- Ambientes: caras cerradas que forman las paredes ---- */
@@ -2217,7 +2217,7 @@ function plDown(ev){
   if(['sel','ver'].includes(m)||!PL.draft){const h=plLblHit(px);if(h){PL.dn=null;PL.drag=null;plLpCancel();if(h.rm){plEditRoom(h.rm);return;}PL.sel=h.i;plFill();plDraw();plEditMeasures(h.k);return;}}
   if(m==='ver'){PL.drag={pan:true,px,v:Object.assign({},PL.view)};return;}
   if(m==='sel'){
-    const i=plPick(px,true);if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
+    const i=plPick(px,true);if(PL.cfg.gm&&i>=0&&plStructBase(i)>=0)PL.grp=wallGroup(PL.shapes,plStructBase(i));else if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
     if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null,grp:PL.grp&&PL.grp.has(i)?JSON.parse(JSON.stringify(PL.shapes)):null,gs:PL.grp};
     else PL.drag={pan:true,px,v:Object.assign({},PL.view)};
     plDraw();return;
@@ -2359,7 +2359,7 @@ function plFill(){
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
-  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'));q('plFt',!!s&&s.t==='fit');q('plDa',!!s&&(s.t==='fit'||(s.t==='l'&&!!s.ins)));
+  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'));q('plFt',!!s&&s.t==='fit');{const st=!!s&&((s.t==='w'&&!s.k)||s.t==='door'||s.t==='win');q('plGrp',st);q('plLkg',st);}q('plDa',!!s&&(s.t==='fit'||(s.t==='l'&&!!s.ins)));
   const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?((s.t==='r'||s.t==='it'||s.t==='door'||s.t==='win')?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
   if(lab)lab.textContent=m==='r'?'Ancho':m==='c'?'Diámetro':'Largo';
   if(lb2)lb2.textContent=m==='r'?'Alto':'Ángulo (0° = derecha, 90° = arriba)';
@@ -2369,7 +2369,7 @@ function plFill(){
   {const sl=s&&s.t==='l'&&PL.mode==='sel',pc=plProjCur(),cur=sl?(s.ins||''):(pc?(pc.pj.mode==='base'?'base':(pc.pj.ins||PL.cfg.ins||'')):(PL.cfg.ins||''));document.querySelectorAll('#plIns [data-i]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.i===cur?'true':'false'));
    if(sl){const pt=String(s.mat||'').split(' + '),cv=COVERS.includes(pt[pt.length-1])||pt.length>1?pt.pop():'';set('plDi',s.dia||'');set('plMa',pt.join(' + '));set('plCv',cv);}}
   {const c=document.getElementById('plcur');if(c)c.textContent=plProjLabel();}
-  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
+  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct'],['plGm','gm']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});
   {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc===true?'true':'false');{const r=document.getElementById('plRd');if(r)r.setAttribute('aria-pressed',PL.cfg.rd!==false?'true':'false');}const d=document.getElementById('plOd');if(d)d.setAttribute('aria-pressed',PL.cfg.od!==false?'true':'false');}
 }
 function plNumAdd(){
@@ -2405,6 +2405,10 @@ function plNudge(dx,dy,step){
 function plAction(a){
   const s=PL.shapes[PL.sel];
   if(a==='del'&&s){plPush();if(s.t==='fit'&&s.ov)s.hide=1;else PL.shapes.splice(PL.sel,1);PL.sel=-1;plChanged();}
+  else if(a==='gm'){PL.cfg.gm=!PL.cfg.gm;if(!PL.cfg.gm)PL.grp=null;plSave();plFill();plDraw();plMsg(PL.cfg.gm?'Al tocar una pared o abertura se elige toda la estructura unida: arrastrala y se mueve completa.':'Cada pieza se mueve sola.');}
+  else if(a==='grp'&&s){const b=plStructBase(PL.sel);if(b>=0){PL.grp=wallGroup(PL.shapes,b);plMsg('Arrastrá cualquier pieza de la estructura ('+PL.grp.size+' piezas) y se mueve todo junto. Tocá en un lugar vacío para terminar.');plDraw();}}
+  else if(a==='lockg'&&s){const b=plStructBase(PL.sel);if(b>=0){const g=PL.grp&&PL.grp.has(PL.sel)?PL.grp:wallGroup(PL.shapes,b);plPush();let n=0;g.forEach(i=>{if(PL.shapes[i]&&!PL.shapes[i].lk){PL.shapes[i].lk=1;n++;}});PL.grp=null;PL.sel=-1;plChanged();plMsg('Se bloqueó la estructura ('+n+' piezas): queda tenue, fija y no se elige. Para soltarla, clic derecho o mantené apretado sobre ella y elegí «Desbloquear esta estructura».');}}
+  else if(a==='unlockg'&&PL.ul>=0){const q=PL.shapes[PL.ul];if(q){const b=plStructBase(PL.ul),g=b>=0?wallGroup(PL.shapes,b,true):new Set([PL.ul]);plPush();let n=0;g.forEach(i=>{const z=PL.shapes[i];if(z&&z.lk===1){delete z.lk;n++;}});if(!n&&q.lk===1){delete q.lk;n=1;}PL.ul=-1;plChanged();plMsg('Estructura desbloqueada ('+n+' piezas).');}}
   else if(a==='rd'){PL.cfg.rd=!(PL.cfg.rd!==false);plSave();plFill();plDraw();}
   else if(a==='ct'){PL.cfg.ct=!PL.cfg.ct;plSave();plFill();plDraw();}
   else if(a==='weld'){const r=plWeld(PL.shapes,Math.max(300,(PL.cfg.th||150)*2));if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos de paredes y aberturas.');}else plMsg('No encontré paredes ni aberturas sueltas para unir.');}
@@ -2586,7 +2590,7 @@ function plMenuOpen(px,cx,cy){
     if(s.t==='l'||s.t==='r'||s.t==='c')add('Convertir en pared',()=>plAction('towall'));
     add('Duplicar',()=>plAction('dup'));add('Borrar',()=>plAction('del'));
     hd('General');
-  }else{hd('Plano');{const wq=plTW(px[0],px[1]);add('Agregar texto aquí…',()=>{const t=window.prompt('Texto:');if(t&&t.trim())plAdd({t:'tx',p:wq,s:t.trim(),h:Math.round(Math.max(40,14/PL.view.s))},wq);});add('Agregar anotación aquí…',()=>plAnnotate(wq));}}
+  }else{hd('Plano');{const lkI=plPickLocked(px);if(lkI>=0)add('Desbloquear esta estructura',()=>{PL.ul=lkI;plAction('unlockg');});}{const wq=plTW(px[0],px[1]);add('Agregar texto aquí…',()=>{const t=window.prompt('Texto:');if(t&&t.trim())plAdd({t:'tx',p:wq,s:t.trim(),h:Math.round(Math.max(40,14/PL.view.s))},wq);});add('Agregar anotación aquí…',()=>plAnnotate(wq));}}
   {const c=plProjCur();if(c){if(c.pj.mode==='base'){add('Guardar cambios de la base',plProjBase);add('Volver a una capa…',()=>plMenuOpen2(cx,cy));}else add('Editar plano base',()=>plGoIns('base',c));}}
   add('Guardar rápido',plQuickSave);
   add('Cambiar de plano…',()=>plMenuOpen2(cx,cy));
@@ -2659,6 +2663,8 @@ function plSidePanel(ctx,sh,x,y,w,h,mm){
   }
   ctx.restore();
 }
+function plStructBase(i){const q=PL.shapes[i];if(!q)return -1;if(q.t==='w'&&!q.k)return i;if(q.t==='door'||q.t==='win'){const ow=openingWall(PL.shapes,i);return ow?ow.j:-1;}return -1;}
+function plPickLocked(px){const wp=plTW(px[0],px[1]),tol=14/PL.view.s;let best=-1,bd=tol;PL.shapes.forEach((q,i)=>{if(!q.lk||q.lk!==1)return;const d=hitDist(q,wp);if(d<=bd){bd=d;best=i;}});return best;}
 function plSetMode(m){PL.grp=null;PL.an=null;plSync();if(m==='wi'){m='w';PL.cfg.wloc='i';}else if(m==='w')PL.cfg.wloc='e';PL.cal=null;PL.mode=m;plSync();plOpLoad();PL.draft=null;PL.dn=null;PL.hover=null;PL.hover=null;if(m!=='sel')PL.sel=-1;plFill();plDraw();}
 /* ---- exportar ---- */
 function plSheet(dpi,opt){
@@ -3666,12 +3672,12 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
   <div class="form" style="margin:6px 0 0"><label class="f full" for="plFk"><span>Pieza a colocar con la herramienta «Pieza» (según la instalación elegida)</span><div class="in"><select id="plFk">${fitsFor('').map(q=>`<option value="${q}">${FITS[q].n}</option>`).join('')}</select></div></label><label class="f" for="plDi"><span>Diámetro o sección de las líneas y piezas nuevas</span><div class="in"><input id="plDi" type="text" list="plDiL" autocomplete="off" placeholder="Ej.: 3/4 · Ø110 · 2,5 mm²"><datalist id="plDiL"></datalist></div></label><label class="f" for="plMa"><span>Material de las líneas nuevas</span><div class="in"><input id="plMa" type="text" list="plMaL" autocomplete="off" placeholder="Ej.: epoxi · termofusión · PVC · cobre"><datalist id="plMaL"></datalist></div></label><label class="f full" for="plCv"><span>Recubrimiento o protección (opcional)</span><div class="in"><input id="plCv" type="text" list="plCvL" autocomplete="off" placeholder="Ej.: Metpol · cinta anticorrosiva · coquilla"><datalist id="plCvL">${COVERS.map(x=>`<option value="${x}">`).join('')}</datalist></div></label></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
    <button type="button" class="pb" data-a="meas">Modificar medidas</button><button type="button" class="pb" data-a="rotg">Girar 90°</button><button type="button" class="pb" data-a="rotn">Girar…</button><button type="button" class="pb" data-a="del">Borrar</button><button type="button" class="pb" data-a="dup">Duplicar</button><span style="display:inline-flex;gap:4px;align-items:center"><button type="button" class="pb" data-a="nL" aria-label="Mover a la izquierda">◀</button><button type="button" class="pb" data-a="nR" aria-label="Mover a la derecha">▶</button><button type="button" class="pb" data-a="nU" aria-label="Mover arriba">▲</button><button type="button" class="pb" data-a="nD" aria-label="Mover abajo">▼</button><select id="plNs" aria-label="Paso de movimiento"><option value="1">de a 1 mm</option><option value="10">de a 10 mm</option><option value="100">de a 100 mm</option></select></span>
-   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button><button type="button" class="pb" id="plFt" data-a="ftype" hidden>Cambiar tipo de pieza</button><button type="button" class="pb" id="plDa" data-a="dia" hidden>Cambiar diámetro</button></div>
+   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button><button type="button" class="pb" id="plFt" data-a="ftype" hidden>Cambiar tipo de pieza</button><button type="button" class="pb" id="plGrp" data-a="grp" hidden>Mover toda la estructura</button><button type="button" class="pb" id="plLkg" data-a="lockg" hidden>Bloquear esta estructura</button><button type="button" class="pb" id="plDa" data-a="dia" hidden>Cambiar diámetro</button></div>
   <div class="form" style="margin-top:14px">
    <h3 class="sec">Espacio de trabajo</h3>
    ${sel('plAk','Qué vas a dibujar',[['t','Terreno (planta): línea municipal y límites'],['f','Vista de frente o corte: ancho × alto']],'t','','full')}
@@ -3790,7 +3796,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 33 · 14/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 34 · 14/11/2026</p>');
   window.scrollTo(0,0);
 }
 
