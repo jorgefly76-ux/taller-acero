@@ -762,7 +762,7 @@ function parsePlanoJson(txt){
     }else if(s.t==='c'){const c=P(s.c);if(c&&+s.r>0)o={t:'c',c,r:+s.r,w:[1,2,3].includes(+s.w)?+s.w:2};}
     else if(s.t==='tx'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'tx',p,s:s.s.slice(0,240),h:+s.h>0?+s.h:150};}
     else if(s.t==='mk'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'mk',p,s:s.s.slice(0,3),x:typeof s.x==='string'?s.x.slice(0,300):'',h:+s.h>0?+s.h:100};}
-    else if(s.t==='tb'){const p=P(s.p);if(p)o={t:'tb',p,ins:INSTS.some(x=>x[0]&&x[0]===s.ins)?s.ins:'',h:+s.h>0?+s.h:100};}
+    else if(s.t==='tb'){const p=P(s.p);if(p)o={t:'tb',p,ins:INSTS.some(x=>x[0]&&x[0]===s.ins)?s.ins:'',h:+s.h>0?+s.h:100,k:['m','a'].includes(s.k)?s.k:'t'};if(o.k==='a')o.s=typeof s.s==='string'?s.s.slice(0,600):'';}
     else if(s.t==='nb'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'nb',p,s:s.s.slice(0,400),h:+s.h>0?+s.h:100};}
     else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;if(+s.hh>0)o.hh=+s.hh;if(s.t==='win'&&s.sl!=null&&+s.sl>=0)o.sl=+s.sl;}}
     else if(s.t==='fit'){const p=P(s.p);if(p&&FITS[s.k]&&(!s.ins||INSTS.some(x=>x[0]===s.ins))){o={t:'fit',k:s.k,ins:s.ins||'',p,ang:isFinite(s.ang)?+s.ang:0};if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);if(typeof s.dia2==='string'&&s.dia2)o.dia2=s.dia2.slice(0,14);if(+s.hide)o.hide=1;if(typeof s.ov==='string'&&FITS[s.ov])o.ov=s.ov;}}
@@ -1643,9 +1643,9 @@ const GLPLANO=[['Brújula','La flecha marca el norte. Si tu terreno tiene el nor
 /* ---------- Planos: dibujo en pantalla y hoja de impresión ---------- */
 const PL={shapes:[],view:{s:.12,x0:24,y0:260},mode:'l',sel:-1,hist:[],redo:[],last:[0,0],draft:null,cv:null,hover:null,ptr:new Map(),gest:null,drag:null,dn:null,
   cfg:{ortho:true,dims:true,big:false,grid:0,mp:0,unit:'mm',th:150,lw:2,title:'',dw:900,vw:1200,ve:3000,ca:8000,no:90,cmp:true}};
-const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared ext.'],['wi','Pared int.'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['an','Anotación con flecha'],['mk','Marcador ① con texto'],['tb','Tabla de tramos'],['nb','Cuadro de notas'],['door','Puerta'],['win','Ventana'],['gate','Portón'],['it','Ítem / escalera'],['fit','Pieza'],['wr','Pared rect.'],['wc','Pared círculo'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
+const PLMODES=[['ver','Mover'],['sel','Elegir'],['l','Línea'],['w','Pared ext.'],['wi','Pared int.'],['r','Rectángulo'],['c','Círculo'],['dim','Cota'],['tx','Texto'],['an','Anotación con flecha'],['mk','Marcador ① con texto'],['tb','Tabla (tramos, materiales…)'],['tl','Rótulo / título'],['nb','Cuadro de notas'],['door','Puerta'],['win','Ventana'],['gate','Portón'],['it','Ítem / escalera'],['fit','Pieza'],['wr','Pared rect.'],['wc','Pared círculo'],['lm','L. municipal'],['le','L. edificación'],['vr','Vereda'],['ca','Calle'],['rj','Reja'],['cl','Cielorraso'],['cal','Calibrar foto'],['img','Mover foto']];
 const PLLINE=['l','w','dim','lm','le','vr','ca'];
-const PLHINT={an:'Tocá lo que querés señalar (ahí va la punta de la flecha) y después tocá dónde va el texto.',nb:'Tocá donde va la esquina de arriba a la izquierda del cuadro y escribí el texto (usá | para pasar a otra línea).',fit:'Elegí la pieza abajo (según la instalación) y tocá donde va. Si tocás sobre un tramo, queda alineada con él. El diámetro sale del campo «Diámetro».',ver:'Arrastrá con un dedo para mover el plano. Con dos dedos acercás o alejás.',sel:'Tocá una figura para elegirla. Arrastrala para moverla.',
+const PLHINT={mk:'Tocá donde va el círculo con número o letra; después escribís el número y un texto opcional al costado.',tb:'Tocá donde va la tabla. Tramos y Materiales se completan solos con lo que dibujes; Artefactos lo escribís vos.',tl:'Tocá donde va el rótulo con el título, la escala y la fecha.',an:'Tocá lo que querés señalar (ahí va la punta de la flecha) y después tocá dónde va el texto.',nb:'Tocá donde va la esquina de arriba a la izquierda del cuadro y escribí el texto (usá | para pasar a otra línea).',fit:'Elegí la pieza abajo (según la instalación) y tocá donde va. Si tocás sobre un tramo, queda alineada con él. El diámetro sale del campo «Diámetro».',ver:'Arrastrá con un dedo para mover el plano. Con dos dedos acercás o alejás.',sel:'Tocá una figura para elegirla. Arrastrala para moverla.',
   l:'Arrastrá para mover el plano. Tocá donde empieza la línea y después donde termina. Para una medida exacta usá los campos de abajo.',w:'Arrastrá para mover el plano. Tocá el inicio y el final de la pared. El espesor se define abajo.',
   r:'Arrastrá para mover el plano. Tocá una esquina y la esquina opuesta.',c:'Arrastrá para mover el plano. Tocá el centro y después un punto del borde.',dim:'Arrastrá para mover el plano. Tocá los dos puntos que querés medir.',tx:'Arrastrá para mover el plano. Tocá donde va el texto.',
   cal:'Arrastrá para mover el plano. Tocá dos puntos de la foto cuya distancia real conozcas y escribí esa distancia en milímetros. Los puntos quedan marcados en rojo.',img:'Arrastrá la foto para acomodarla. Con dos dedos acercás o alejás todo.',lm:'Arrastrá para mover el plano. Tocá los dos extremos de la línea municipal (límite entre el lote y la vereda).',le:'Arrastrá para mover el plano. Tocá los dos extremos de la línea de edificación (hasta dónde se puede construir).',vr:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la vereda. El ancho se define en Ajustes.',ca:'Arrastrá para mover el plano. Tocá los dos extremos del eje de la calle. El ancho se define en Ajustes.',
@@ -1866,19 +1866,22 @@ function drawScene(ctx,sh,T,o){
     else if(s.t==='c'){ctx.beginPath();ctx.arc(X(s.c[0]),Y(s.c[1]),s.r*S,0,7);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();}
     else if(s.t==='it'){plItem(ctx,s,X(s.p[0]),Y(s.p[1]),S,col,k,C);}
     else if(s.t==='fit'){if(!s.hide)fitGlyph(ctx,s,X(s.p[0]),Y(s.p[1]),S,k,C,sel.includes(i),false);}
-    else if(s.t==='tb'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),rows=tramoList(sh).filter(z=>!s.ins||z.ins===s.ins),pad=fs*.5,rh=fs*1.35;
-      ctx.font='600 '+fs+'px sans-serif';const hd=['Tramo','Ø','Material','Largo'],R=rows.map(z=>[z.id,z.dia?'Ø'+z.dia:'-',z.mat||'-',(z.len/1000).toFixed(2)+' m']),tot=rows.reduce((a,z)=>a+z.len,0);
-      R.push(['Total','','',(tot/1000).toFixed(2)+' m']);
-      const cw=hd.map((h2,c)=>Math.max(ctx.measureText(h2).width,...R.map(r=>ctx.measureText(r[c]).width))+pad*1.6),W=cw.reduce((a,b)=>a+b,0),ti=s.ins?instOf(s.ins)[1]:'Instalaciones',H=rh*(R.length+2.5)+pad*.4;
-      ctx.font='700 '+fs+'px sans-serif';const tw0=ctx.measureText('TRAMOS · '+ti).width+pad*2,WW=Math.max(W,tw0);
+    else if(s.t==='tb'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),rows=tramoList(sh).filter(z=>!s.ins||z.ins===s.ins),pad=fs*.5,rh=fs*1.35,kd=s.k||'t';
+      ctx.font='600 '+fs+'px sans-serif';let hd,R,ttl;
+      if(kd==='m'){ttl='MATERIALES';hd=['Material','Ø','Cant.'];R=planilla(sh).filter(z=>z.ins&&(!s.ins||z.ins===s.ins)).map(z=>[(z.mat||z.name),z.dia||'-',(z.len/1000).toFixed(2)+' m']);
+        fitList(sh).filter(z=>!s.ins||z.ins===s.ins).forEach(z=>R.push([z.name,z.dia||'-',z.n+' u.']));}
+      else if(kd==='a'){ttl='ARTEFACTOS Y CONSUMOS';hd=['Artefacto','Cant.','m³/h'];let tc=0;R=String(s.s||'').split('\n').map(l=>l.split(',').map(x=>x.trim())).filter(a=>a[0]).map(a=>{const n=parseFloat(a[1])||1,c=parseFloat(String(a[2]).replace(',','.'))||0;tc+=n*c;return [a[0],String(n),c?c.toFixed(2):'-'];});R.push(['Total','',tc.toFixed(2)]);}
+      else{ttl='TRAMOS';hd=['Tramo','Ø','Material','Largo'];const tot=rows.reduce((a,z)=>a+z.len,0);R=rows.map(z=>[z.id,z.dia?'Ø'+z.dia:'-',z.mat||'-',(z.len/1000).toFixed(2)+' m']);R.push(['Total','','',(tot/1000).toFixed(2)+' m']);}
+      const cw=hd.map((h2,c)=>Math.max(ctx.measureText(h2).width,...R.map(r=>ctx.measureText(r[c]).width))+pad*1.6),W=cw.reduce((a,b)=>a+b,0),ti=kd==='a'?'':s.ins?instOf(s.ins)[1]:'Instalaciones',H=rh*(R.length+2.5)+pad*.4;
+      ctx.font='700 '+fs+'px sans-serif';const tw0=ctx.measureText(ttl+(ti?' · '+ti:'')).width+pad*2,WW=Math.max(W,tw0);
       s._w=WW/S;s._h=H/S;
       ctx.fillStyle=C.bg;ctx.fillRect(x,y,WW,H);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.strokeRect(x,y,WW,H);
-      ctx.fillStyle=col;ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillText('TRAMOS · '+ti,x+pad,y+rh*.6);
+      ctx.fillStyle=col;ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillText(ttl+(ti?' · '+ti:''),x+pad,y+rh*.6);
       ctx.beginPath();ctx.moveTo(x,y+rh*1.2);ctx.lineTo(x+WW,y+rh*1.2);ctx.stroke();
       ctx.font='700 '+fs+'px sans-serif';let cx=x;hd.forEach((h2,c)=>{ctx.fillText(h2,cx+pad*.8,y+rh*1.8);cx+=cw[c];});
       ctx.beginPath();ctx.moveTo(x,y+rh*2.3);ctx.lineTo(x+WW,y+rh*2.3);ctx.stroke();
       R.forEach((r,j)=>{ctx.font=(j===R.length-1?'700 ':'600 ')+fs+'px sans-serif';let cx2=x;r.forEach((v,c)=>{ctx.fillText(v,cx2+pad*.8,y+rh*(2.8+j));cx2+=cw[c];});});
-      if(R.length>1){const ty=y+rh*(2.3+rows.length)+rh*.5;ctx.beginPath();ctx.moveTo(x,ty);ctx.lineTo(x+WW,ty);ctx.stroke();}}
+      if(R.length>1&&kd!=='m'){const ty=y+rh*(2.3+R.length-1);ctx.beginPath();ctx.moveTo(x,ty);ctx.lineTo(x+WW,ty);ctx.stroke();}}
     else if(s.t==='nb'){const fs=Math.max(4,s.h*S),L=String(s.s).split('\n'),x=X(s.p[0]),y=Y(s.p[1]);ctx.font='600 '+fs+'px sans-serif';
       const w=Math.max(...L.map(l=>ctx.measureText(l).width))+fs,hh=L.length*fs*1.25+fs*.6;
       ctx.fillStyle=C.bg;ctx.fillRect(x,y,w,hh);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.strokeRect(x,y,w,hh);ctx.fillStyle=col;ctx.textAlign='left';ctx.textBaseline='top';L.forEach((l,j)=>ctx.fillText(l,x+fs*.5,y+fs*.3+j*fs*1.25));}
@@ -2335,8 +2338,16 @@ function plUp(ev){
     if(t&&t.trim()){const h=Math.round(Math.max(40,13/PL.view.s)),L=t.trim().split('|').map(x=>x.trim()).slice(0,12);plAdd({t:'nb',p:q.p,s:L.join('\n'),h},q.p);}
     return;
   }
+  if(m==='tl'){
+    const q=plSnap(px,ev,null),a=window.prompt('Título del plano (ej: INSTALACIONES PARA GAS NATURAL):','INSTALACIONES PARA GAS NATURAL');if(!a||!a.trim())return;
+    const b=window.prompt('Escala, fecha, obra… (separá con |)','Escala 1:50 | '+new Date().toLocaleDateString('es-AR'))||'';
+    plAdd({t:'nb',p:q.p,s:ml(a.trim().toUpperCase()+'|'+b),h:Math.round(Math.max(40,14/PL.view.s))},q.p);return;
+  }
   if(m==='tb'){
-    const q=plSnap(px,ev,null);plAdd({t:'tb',p:q.p,ins:PL.cfg.ins||'',h:Math.round(Math.max(40,12/PL.view.s))},q.p);return;
+    const q=plSnap(px,ev,null),kk=window.prompt('Tipo de tabla: 1 = Tramos (se completa sola), 2 = Materiales (caños y piezas, se completa sola), 3 = Artefactos y consumos','1');if(kk===null)return;
+    const o={t:'tb',p:q.p,ins:PL.cfg.ins||'',h:Math.round(Math.max(40,12/PL.view.s)),k:kk.trim()==='2'?'m':kk.trim()==='3'?'a':'t'};
+    if(o.k==='a'){const a=window.prompt('Artefactos: nombre, cantidad, consumo en m³/h. Separá artefactos con |  (ej: Cocina,1,0.60 | Calefón,1,1.80)','');if(!a||!a.trim())return;o.s=a.split('|').map(x=>x.trim()).filter(Boolean).slice(0,12).join('\n');o.ins='';}
+    plAdd(o,q.p);return;
   }
   if(m==='mk'){
     const q=plSnap(px,ev,null);let n=0;PL.shapes.forEach(z=>{if(z.t==='mk'&&/^\d+$/.test(z.s)&&+z.s>n)n=+z.s;});
@@ -2486,6 +2497,7 @@ function plAction(a){
   else if(a==='wc'||a==='wi'||a==='we'){if(a==='wc')PL.cfg.wc=!(PL.cfg.wc===true);else PL.cfg[a]=!PL.cfg[a];plSave();plFill();plDraw();}
   else if(a==='cflip'&&s&&s.t==='cl'){plPush();s.dir=s.dir==='x'?'y':'x';plChanged();}
   else if(a==='flip'&&s&&(s.t==='door'||s.t==='win')){plPush();s.o=((s.o||0)+1)%4;plChanged();}
+  else if(a==='edt'&&s&&s.t==='tb'&&s.k==='a'){const a=window.prompt('Artefactos: nombre, cantidad, consumo m³/h (separá con | )',String(s.s||'').split('\n').join(' | '));if(a&&a.trim()){plPush();s.s=a.split('|').map(x=>x.trim()).filter(Boolean).slice(0,12).join('\n');plChanged();}}
   else if(a==='edt'&&s&&s.t==='tb'){const c=window.prompt('Instalación a listar: '+INSTS.filter(x=>x[0]).map(x=>x[0]+' ('+x[1]+')').join(', ')+'. Vacío = todas.',s.ins||'');if(c!==null){const v=c.trim();if(!v||INSTS.some(x=>x[0]===v)){plPush();s.ins=v;plChanged();}}}
   else if(a==='edt'&&s&&s.t==='mk'){const l=window.prompt('Número o letra:',s.s);if(l&&l.trim()){const x=window.prompt('Texto al lado (| = otra línea):',String(s.x||'').split('\n').join(' | '));plPush();s.s=l.trim().slice(0,3);s.x=ml(x);plChanged();}}
   else if(a==='edt'&&s&&(s.t==='tx'||s.t==='nb'||s.t==='an')){const t=window.prompt('Texto (| = otra línea):',String(s.s).split('\n').join(' | '));if(t&&t.trim()){plPush();s.s=ml(t);plChanged();}}
@@ -2629,7 +2641,7 @@ function plMenuOpen(px,cx,cy){
     if(s.t==='cl')add('Cambiar sentido de los montantes',()=>plAction('cflip'));
     if((s.t==='l'&&s.ins)||s.t==='fit')add('Cambiar diámetro…',()=>plAction('dia'));
     if(s.t==='l'&&s.ins)add('Cambiar material o recubrimiento…',()=>plAction('mat'));
-    if(s.t==='tb')add('Cambiar instalación…',()=>plAction('edt'));
+    if(s.t==='tb')add(s.k==='a'?'Editar artefactos…':'Cambiar instalación…',()=>plAction('edt'));
     if(s.t==='tx'||s.t==='nb'||s.t==='an'||s.t==='mk')add('Editar texto…',()=>plAction('edt'));
     if(s.t==='fit')add('Cambiar tipo de pieza…',()=>plAction('ftype'));
     if(s.t!=='an'&&s.t!=='tx'&&s.t!=='nb'&&s.t!=='mk'&&s.t!=='tb')add('Agregar anotación a esto…',()=>plAnnotate(shapeCenter(s)));
@@ -3845,7 +3857,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 37 · 14/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 38 · 14/11/2026</p>');
   window.scrollTo(0,0);
 }
 
