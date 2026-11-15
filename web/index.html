@@ -554,6 +554,34 @@ function sceneBounds(sh){
   return [Math.min(...b.map(x=>x[0])),Math.min(...b.map(x=>x[1])),Math.max(...b.map(x=>x[2])),Math.max(...b.map(x=>x[3]))];
 }
 function nbSize(s){const L=String(s.s).split('\n'),h=s.h||100;return [Math.max(...L.map(x=>x.length))*h*.62+h,L.length*h*1.25+h*.6];}
+function lineMoveLinked(sh,i,da,db){
+  const L=sh[i],T=30,out=sh.slice(),a0=L.a,b0=L.b;
+  const mv=P=>{if(segDist(P,a0,b0)>T)return null;const dx=b0[0]-a0[0],dy=b0[1]-a0[1],l2=dx*dx+dy*dy||1,u=Math.max(0,Math.min(1,((P[0]-a0[0])*dx+(P[1]-a0[1])*dy)/l2));return [P[0]+da[0]*(1-u)+db[0]*u,P[1]+da[1]*(1-u)+db[1]*u];};
+  sh.forEach((s,j)=>{if(j===i)return;
+    if(s.t==='l'&&s.ins===L.ins&&!s.ls){const na=mv(s.a),nb=mv(s.b);if(na||nb)out[j]=Object.assign({},s,na?{a:na}:{},nb?{b:nb}:{});}
+    else if(s.t==='fit'&&s.ins===L.ins){const n=mv(s.p);if(n)out[j]=Object.assign({},s,{p:n});}});
+  out[i]=Object.assign({},L,{a:[a0[0]+da[0],a0[1]+da[1]],b:[b0[0]+db[0],b0[1]+db[1]]});return out;
+}
+function lineConstrain(sh,i,d,force){
+  const L=sh[i];if(!L||L.t!=='l'||!force)return d;const T=30;
+  const con=sh.some((s,j)=>j!==i&&((s.t==='l'&&s.ins===L.ins&&[s.a,s.b].some(P=>segDist(P,L.a,L.b)<=T))||(s.t==='fit'&&s.ins===L.ins&&segDist(s.p,L.a,L.b)<=T)));
+  if(!con)return d;const dx=L.b[0]-L.a[0],dy=L.b[1]-L.a[1],n=Math.hypot(dx,dy)||1,nx=-dy/n,ny=dx/n,k=d[0]*nx+d[1]*ny;return [Math.round(nx*k),Math.round(ny*k)];
+}
+/* Une extremos sueltos de cañerías de una misma instalación y parte las que tienen otra cañería apoyada en el medio */
+function lineWeld(sh,tol){
+  let n=0;const out=sh.map(s=>s.t==='l'&&s.ins&&!s.ls?Object.assign({},s):s),ok=s=>s.t==='l'&&s.ins&&!s.ls;
+  out.forEach((s,j)=>{if(!ok(s))return;['a','b'].forEach(e=>{out.forEach((o,k)=>{if(k===j)return;
+    if(ok(o)&&o.ins===s.ins)['a','b'].forEach(f=>{const d=pdist(s[e],o[f]);if(d>0&&d<=tol){s[e]=o[f].slice();n++;}});
+    else if(o.t==='fit'&&FITS[o.k]&&FITS[o.k].eq&&o.ins===s.ins){const d=pdist(s[e],o.p);if(d>0&&d<=Math.max(tol,450)){s[e]=o.p.slice();n++;}}});});});
+  for(let g=0;g<300;g++){let hit=null;
+    for(let j=0;j<out.length&&!hit;j++){const s=out[j];if(!ok(s))continue;
+      for(const e of ['a','b']){for(let k=0;k<out.length;k++){const o=out[k];if(k===j||!ok(o)||o.ins!==s.ins)continue;
+        if(pdist(s[e],o.a)<=1||pdist(s[e],o.b)<=1)continue;const d=segDist(s[e],o.a,o.b);
+        if(d<=tol){hit={j,e,k};break;}}if(hit)break;}}
+    if(!hit)break;const {j,e,k}=hit,o=out[k],s=out[j],dx=o.b[0]-o.a[0],dy=o.b[1]-o.a[1],l2=dx*dx+dy*dy||1,u=Math.max(0,Math.min(1,((s[e][0]-o.a[0])*dx+(s[e][1]-o.a[1])*dy)/l2)),q=[o.a[0]+u*dx,o.a[1]+u*dy];
+    s[e]=q.slice();out.splice(k,1,Object.assign({},o,{b:q.slice()}),Object.assign({},o,{a:q.slice()}));n++;}
+  return {shapes:out,n};
+}
 const isEq=s=>!!(s&&s.t==='fit'&&FITS[s.k]&&FITS[s.k].eq);
 function eqMove(sh,i,dx,dy){
   const f=sh[i],T=30,out=sh.slice(),mv=P=>[P[0]+dx,P[1]+dy];
@@ -1110,16 +1138,17 @@ function tramoList(shapes){
   shapes.forEach((s,i)=>{if(s.t!=='l'||!s.ins)return;cnt[s.ins]=(cnt[s.ins]||0)+1;const n=s.n||cnt[s.ins],I=instOf(s.ins);
     out.push({i,id:I[3]+n,ins:s.ins,name:I[1],dia:s.dia||'',mat:s.mat||'',len:Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1])});});
   if(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.tt&&out.length){
-    const key=(ins,p)=>ins+'@'+Math.round(p[0]/2)+','+Math.round(p[1]/2),deg={},par=out.map((_,j)=>j),fd=j=>par[j]===j?j:(par[j]=fd(par[j]));
+    const NL=[],key=(ins,p)=>{for(let q=0;q<NL.length;q++){const z=NL[q];if(z[0]===ins&&Math.hypot(z[1]-p[0],z[2]-p[1])<=20)return q;}NL.push([ins,p[0],p[1]]);return NL.length-1;},deg={},par=out.map((_,j)=>j),fd=j=>par[j]===j?j:(par[j]=fd(par[j]));
     out.forEach((o,j)=>{const s=shapes[o.i];[s.a,s.b].forEach(p=>{const k=key(o.ins,p);(deg[k]=deg[k]||[]).push(j);});});
     Object.keys(deg).forEach(k=>{const L=deg[k];if(L.length===2&&L[0]!==L[1])par[fd(L[0])]=fd(L[1]);});
     const pre=(PL.cfg.tp||'A').slice(0,2),num={},best={},minI={},adj={};let n=0;
     out.forEach((o,j)=>{const r=fd(j);if(!(r in minI))minI[r]=j;adj[r]=adj[r]||new Set();});
     Object.keys(deg).forEach(k=>{const rs=[...new Set(deg[k].map(fd))];if(deg[k].length>=3)rs.forEach(a=>rs.forEach(b=>{if(a!==b)adj[a].add(b);}));});
+    out.forEach((o,j)=>{const s=shapes[o.i];[s.a,s.b].forEach(P=>{out.forEach((o2,k)=>{if(k===j||o2.ins!==o.ins)return;const s2=shapes[o2.i];if(pdist(P,s2.a)<=20||pdist(P,s2.b)<=20)return;if(segDist(P,s2.a,s2.b)<=20){const a=fd(j),b=fd(k);if(a!==b){adj[a].add(b);adj[b].add(a);}}});});});
     const ORG={gas:['nig','med','reg'],agf:['mea','nia','med','tq'],elec:['pel','mel','tab'],clo:['cc','ci'],plu:['ci']};
     INSTS.map(x=>x[0]).filter(Boolean).forEach(ins=>{
       const rs=Object.keys(minI).map(Number).filter(r=>out[r].ins===ins).sort((a,b)=>minI[a]-minI[b]);if(!rs.length)return;
-      let st=[];for(const kk of (ORG[ins]||[])){shapes.filter(q=>q.t==='fit'&&q.ins===ins&&q.k===kk&&!q.hide).forEach(q=>{out.forEach((o,j)=>{const s=shapes[o.i];if(o.ins===ins&&segDist(q.p,s.a,s.b)<=60)st.push(fd(j));});});if(st.length)break;}
+      let st=[];for(const kk of (ORG[ins]||[])){shapes.filter(q=>q.t==='fit'&&q.ins===ins&&q.k===kk&&!q.hide).forEach(q=>{const nr=[];let bj=-1,bd=800;out.forEach((o,j)=>{const s=shapes[o.i];if(o.ins!==ins)return;const d=segDist(q.p,s.a,s.b);if(d<=60)nr.push(fd(j));else if(d<bd){bd=d;bj=j;}});if(nr.length)st.push(...nr);else if(bj>=0)st.push(fd(bj));});if(st.length)break;}
       const seen=new Set(),bfs=r0=>{const qq=[r0];seen.add(r0);while(qq.length){const r=qq.shift();num[r]=++n;[...adj[r]].filter(x=>!seen.has(x)).sort((a,b)=>minI[a]-minI[b]).forEach(x=>{seen.add(x);qq.push(x);});}};
       [...new Set(st)].forEach(r0=>{if(!seen.has(r0))bfs(r0);});rs.forEach(r0=>{if(!seen.has(r0))bfs(r0);});
     });
@@ -1266,8 +1295,34 @@ const FITS={
  bd:{n:'Boca de datos / TV',g:'tri',l:'D',i:'dat'},rack:{n:'Rack',g:'sq',l:'RK',i:'dat'},
  hid:{n:'Hidrante',g:'circ',l:'H',i:'inc'},roc:{n:'Rociador',g:'circ',l:'Ro',i:'inc'},mf:{n:'Matafuego',g:'tri',l:'MF',i:'inc'},
  llg:{n:'Llave de corte general',g:'bow',l:'',i:'gas agf'},lla:{n:'Llave de artefacto',g:'bow',l:'',i:'gas'},
- crz:{n:'Cruz (cruce de 4 cañerías)',g:'circ',l:'+',i:'*'},nig:{n:'Nicho de gas',g:'big',l:'NG',i:'gas',eq:1},mea:{n:'Medidor de agua',g:'sq',l:'MA',i:'agf',eq:1},nia:{n:'Nicho de agua',g:'big',l:'NA',i:'agf',eq:1},
- pel:{n:'Pilar de electricidad',g:'big',l:'PE',i:'elec',eq:1},mel:{n:'Medidor eléctrico',g:'sq',l:'ME',i:'elec',eq:1},cc:{n:'Cámara de cloaca',g:'big',l:'CC',i:'clo',eq:1},
+ crz:{n:'Cruz (cruce de 4 cañerías)',g:'circ',l:'+',i:'*'},nig:{n:'Nicho de gas',g:'big',l:'NG',i:'gas',eq:1,w:500,h:350},mea:{n:'Medidor de agua',g:'sq',l:'MA',i:'agf',eq:1},nia:{n:'Nicho de agua',g:'big',l:'NA',i:'agf',eq:1,w:400,h:300},
+ pel:{n:'Pilar de electricidad',g:'big',l:'PE',i:'elec',eq:1,w:600,h:300},mel:{n:'Medidor eléctrico',g:'sq',l:'ME',i:'elec',eq:1},cc:{n:'Cámara de cloaca',g:'big',l:'CC',i:'clo',eq:1,w:600,h:600},
+ coc:{n:'Cocina',g:'sq',l:'CO',i:'gas',eq:1,ar:1},
+ ana:{n:'Anafe',g:'sq',l:'AN',i:'gas',eq:1,ar:1},
+ hor:{n:'Horno',g:'sq',l:'HO',i:'gas',eq:1,ar:1},
+ cfn:{n:'Calefón',g:'sq',l:'CF',i:'gas',eq:1,ar:1},
+ ttg:{n:'Termotanque a gas',g:'sq',l:'TG',i:'gas',eq:1,ar:1},
+ cag:{n:'Caldera mural a gas',g:'sq',l:'CA',i:'gas cal',eq:1,ar:1},
+ cft:{n:'Calefactor',g:'sq',l:'CT',i:'gas cal',eq:1,ar:1},
+ est:{n:'Estufa / salamandra',g:'sq',l:'ES',i:'gas',eq:1,ar:1},
+ sec:{n:'Secarropas a gas',g:'sq',l:'SE',i:'gas',eq:1,ar:1},
+ ino:{n:'Inodoro',g:'sq',l:'IN',i:'agf agc clo',eq:1,ar:1},
+ bid:{n:'Bidet',g:'sq',l:'BD',i:'agf agc clo',eq:1,ar:1},
+ lvm:{n:'Lavamanos / lavatorio',g:'sq',l:'LV',i:'agf agc clo',eq:1,ar:1},
+ van:{n:'Vanitory',g:'sq',l:'VA',i:'agf agc clo',eq:1,ar:1},
+ ban:{n:'Bañera',g:'sq',l:'BÑ',i:'agf agc clo',eq:1,ar:1},
+ duc:{n:'Ducha',g:'sq',l:'DU',i:'agf agc clo',eq:1,ar:1},
+ pco:{n:'Pileta de cocina',g:'sq',l:'PC',i:'agf agc clo',eq:1,ar:1},
+ lvr:{n:'Lavarropas',g:'sq',l:'LR',i:'agf agc clo',eq:1,ar:1},
+ lvj:{n:'Lavavajillas',g:'sq',l:'LJ',i:'agf agc clo',eq:1,ar:1},
+ tla:{n:'Toma de agua (lavamanos)',g:'tri',l:'TA',i:'agf agc',eq:1,ar:1},
+ tmd:{n:'Termotanque eléctrico',g:'sq',l:'TE',i:'agf agc elec',eq:1,ar:1},
+ llp:{n:'Llave de punto',g:'circ',l:'LP',i:'elec',eq:1,ar:1},
+ llp2:{n:'Llave de 2 puntos',g:'circ',l:'L2',i:'elec',eq:1,ar:1},
+ ptm:{n:'Llave de punto y toma',g:'circ',l:'PT',i:'elec',eq:1,ar:1},
+ tcd:{n:'Toma doble',g:'tri',l:'T2',i:'elec',eq:1,ar:1},
+ tca:{n:'Toma 20 A (aire / termo)',g:'tri',l:'T20',i:'elec',eq:1,ar:1},
+ acc:{n:'Aire acondicionado',g:'sq',l:'AA',i:'elec',eq:1,ar:1},
  rad:{n:'Radiador',g:'sq',l:'RD',i:'cal'},cal:{n:'Caldera',g:'sq',l:'CA',i:'cal'}
 };
 const fitsFor=ins=>Object.keys(FITS).filter(k=>{const t=FITS[k].i;return t==='*'?(ins&&ins!=='elec'&&ins!=='dat'):(!ins||t.split(' ').includes(ins));});
@@ -1771,7 +1826,7 @@ function fitGlyph(ctx,f,x,y,S,k,C,selected,auto){
   ctx.save();ctx.translate(x,y);ctx.rotate(-(f.ang&&!auto?f.ang:0)*Math.PI/180);ctx.lineWidth=1.6*k;ctx.strokeStyle=col;ctx.fillStyle=C.bg;
   if(F.g==='circ'){ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.stroke();}
   else if(F.g==='sq'||F.g==='sqx'){ctx.beginPath();ctx.rect(-r,-r,2*r,2*r);ctx.fill();ctx.stroke();if(F.g==='sqx'){ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(r,r);ctx.moveTo(r,-r);ctx.lineTo(-r,r);ctx.stroke();}}
-  else if(F.g==='big'){ctx.beginPath();ctx.rect(-1.5*r,-r,3*r,2*r);ctx.fill();ctx.stroke();}
+  else if(F.g==='big'){const hw=Math.max(1.5*r,(F.w||0)*S/2),hh=Math.max(r,(F.h||0)*S/2);ctx.beginPath();ctx.rect(-hw,-hh,2*hw,2*hh);ctx.fill();ctx.stroke();if(hw>8*k){ctx.lineWidth=.8*k;ctx.beginPath();ctx.rect(-hw+3*k,-hh+3*k,2*hw-6*k,2*hh-6*k);ctx.stroke();}}
   else if(F.g==='bow'){ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-r,-r*.8);ctx.lineTo(r,r*.8);ctx.lineTo(r,-r*.8);ctx.lineTo(-r,r*.8);ctx.closePath();ctx.fill();}
   else if(F.g==='tri'){ctx.beginPath();ctx.moveTo(0,-r);ctx.lineTo(r,r*.8);ctx.lineTo(-r,r*.8);ctx.closePath();ctx.fill();ctx.stroke();}
   if(F.l&&F.g!=='bow'){ctx.rotate((f.ang&&!auto?f.ang:0)*Math.PI/180);ctx.fillStyle=col;ctx.font='700 '+(r*(F.l.length>2?.72:.95))+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(F.l,0,.5*k);}
@@ -2137,9 +2192,10 @@ function plReport(){
 }
 function plChanged(){plSave();plFill();plDraw();plReport();}
 function teeSplit(shapes,s){
-  const tol=Math.max(4,10/PL.view.s),isL=z=>z.t==='l'&&z.ins===s.ins&&!z.ls,res={shapes:shapes.slice(),add:[s]};
+  const tol=Math.max(4,14/PL.view.s),isL=z=>z.t==='l'&&z.ins===s.ins&&!z.ls,res={shapes:shapes.slice(),add:[s]};
   const proj=(p,a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy||1,u=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/l2));return {u,q:[a[0]+u*dx,a[1]+u*dy]};};
   const inner=(p,L)=>{const r=proj(p,L.a,L.b);return pdist(r.q,p)<=tol&&pdist(p,L.a)>tol&&pdist(p,L.b)>tol?r.q:null;};
+  ['a','b'].forEach(e=>{let bd=tol,bp=null;shapes.forEach(L=>{const ps=isL(L)?[L.a,L.b]:(L.t==='fit'&&FITS[L.k]&&FITS[L.k].eq&&L.ins===s.ins?[L.p]:[]);ps.forEach(P=>{const d=pdist(P,s[e]);if(d<bd){bd=d;bp=P;}});});if(bp)s[e]=bp.slice();});
   ['a','b'].forEach(e=>{for(let j=0;j<res.shapes.length;j++){const L=res.shapes[j];if(!isL(L))continue;const q=inner(s[e],L);if(q){s[e]=q;const L2=Object.assign({},L,{a:q}),L1=Object.assign({},L,{b:q});if(L.n)L2.n=nextTramo(res.shapes.concat([s]),L.ins);res.shapes.splice(j,1,L1,L2);break;}}});
   const pts=[];res.shapes.forEach(L=>{if(isL(L))[L.a,L.b].forEach(p=>{const q=inner(p,s);if(q)pts.push(q);});});
   {const nx=[];res.shapes.forEach(L=>{if(!isL(L)||!s.a||!s.b){nx.push(L);return;}
@@ -2274,7 +2330,7 @@ function plFit(main){
 }
 function plPt(ev){const r=PL.cv.getBoundingClientRect();return [ev.clientX-r.left,ev.clientY-r.top];}
 function plSnap(px,ev,anchor){
-  const wp=plTW(px[0],px[1]),isW=PL.mode==='w'||PL.mode==='wr',tol=Math.max(PL.cfg.mp||0,isW?18:0)/PL.view.s,pts=tol>0?snapPoints(PL.shapes):[],g=PL.cfg.grid,ar=PL.cfg.area;
+  const wp=plTW(px[0],px[1]),isW=PL.mode==='w'||PL.mode==='wr',tol=Math.max(PL.cfg.mp||0,isW?18:(PL.mode==='l'&&PL.cfg.ins?14:0))/PL.view.s,pts=tol>0?snapPoints(PL.shapes):[],g=PL.cfg.grid,ar=PL.cfg.area;
   const cl=q=>{if(ar){q.p=[Math.max(ar.x,Math.min(ar.x+ar.w,q.p[0])),Math.max(ar.y,Math.min(ar.y+ar.h,q.p[1]))];}return q;};
   if(anchor&&PL.cfg.ortho&&(PLLINE.includes(PL.mode))){
     let q=snapTo(orthoPt(anchor,wp),pts,tol,g);
@@ -2310,7 +2366,7 @@ function plDown(ev){
   if(m==='ver'){PL.drag={pan:true,px,v:Object.assign({},PL.view)};return;}
   if(m==='sel'){
     const i=plPick(px,true);if(PL.cfg.gm&&i>=0&&plStructBase(i)>=0)PL.grp=wallGroup(PL.shapes,plStructBase(i));else if(PL.cfg.gm&&i>=0&&isEq(PL.shapes[i]))PL.grp=pipeGroup(PL.shapes,i);else if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
-    if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null,grp:PL.grp&&PL.grp.has(i)?JSON.parse(JSON.stringify(PL.shapes)):null,gs:PL.grp,eqb:isEq(PL.shapes[i])&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null};
+    if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null,grp:PL.grp&&PL.grp.has(i)?JSON.parse(JSON.stringify(PL.shapes)):null,gs:PL.grp,eqb:isEq(PL.shapes[i])&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null,lb:PL.shapes[i].t==='l'&&PL.shapes[i].ins&&!PL.shapes[i].ls&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null};
     else PL.drag={pan:true,px,v:Object.assign({},PL.view)};
     plDraw();return;
   }
@@ -2350,6 +2406,7 @@ function plMove(ev){
     }
     if(dr.base){const dd=wallConstrain(dr.base,dr.i,[dx,dy],PL.cfg.ortho);if(!dr.pushed&&(dd[0]||dd[1])){plPush();dr.pushed=true;}PL.shapes=wallMoveLinked(dr.base,dr.i,dd,dd);plDraw();return;}
     if(dr.eqb){PL.shapes=eqMove(dr.eqb,dr.i,dx,dy);plDraw();return;}
+    if(dr.lb){const dd=lineConstrain(dr.lb,dr.i,[dx,dy],PL.cfg.ortho!==false);PL.shapes=lineMoveLinked(dr.lb,dr.i,dd,dd);plDraw();return;}
     PL.shapes[dr.i]=moveShape(dr.orig,dx,dy);plDraw();return;
   }
   const dn=PL.dn;
@@ -2512,6 +2569,7 @@ function plNudge(dx,dy,step){
   }else if(s.t==='door'||s.t==='win'){
     const r=(s.ang||0)*Math.PI/180,m=dx*Math.cos(r)+dy*Math.sin(r);plPush();PL.shapes[PL.sel]=Object.assign({},s,{p:[Math.round(s.p[0]+m*Math.cos(r)),Math.round(s.p[1]+m*Math.sin(r))]});
   }else if(isEq(s)){plPush();PL.shapes=eqMove(PL.shapes,PL.sel,dx,dy);}
+  else if(s.t==='l'&&s.ins&&!s.ls){plPush();PL.shapes=lineMoveLinked(PL.shapes,PL.sel,[dx,dy],[dx,dy]);}
   else{plPush();PL.shapes[PL.sel]=moveShape(s,dx,dy);}
   plChanged();
 }
@@ -2526,12 +2584,16 @@ function plAction(a){
   else if(a==='rd'){PL.cfg.rd=!(PL.cfg.rd!==false);plSave();plFill();plDraw();}
   else if(a==='ct'){PL.cfg.ct=!PL.cfg.ct;plSave();plFill();plDraw();}
   else if(a==='eq'){const r=document.getElementById('plEq').getBoundingClientRect();
-    plMenuShow(Object.keys(FITS).filter(k=>FITS[k].eq).map(k=>[FITS[k].n+'  ('+instOf(FITS[k].i.split(' ')[0])[1]+')',()=>{const ins=FITS[k].i.split(' ')[0];PL.cfg.ins=ins;plFitSync(ins);const e=document.getElementById('plFk');if(e)e.value=k;plSetMode('fit');plMsg('Tocá en el plano donde va. Queda suelto: después trazá la cañería desde su centro y, al moverlo, las cañerías conectadas lo siguen. Con «Mover conjunto» se mueve todo el trazado junto.');}]),r.left,r.bottom);}
+    plMenuShow(Object.keys(FITS).filter(k=>FITS[k].eq&&!FITS[k].ar).map(k=>[FITS[k].n+'  ('+instOf(FITS[k].i.split(' ')[0])[1]+')',()=>{const ins=FITS[k].i.split(' ')[0];PL.cfg.ins=ins;plFitSync(ins);const e=document.getElementById('plFk');if(e)e.value=k;plSetMode('fit');plMsg('Tocá en el plano donde va. Queda suelto: después trazá la cañería desde su centro y, al moverlo, las cañerías conectadas lo siguen. Con «Mover conjunto» se mueve todo el trazado junto.');}]),r.left,r.bottom);}
+  else if(a==='ar'){const r=document.getElementById('plAr').getBoundingClientRect(),cur=PL.cfg.ins||'';
+    const ks=Object.keys(FITS).filter(k=>FITS[k].ar&&(!cur||FITS[k].i.split(' ').includes(cur)));const lst=ks.length?ks:Object.keys(FITS).filter(k=>FITS[k].ar);
+    plMenuShow(lst.map(k=>[FITS[k].n+(ks.length?'':'  ('+instOf(FITS[k].i.split(' ')[0])[1]+')'),()=>{const ii=FITS[k].i.split(' '),ins=ii.includes(cur)?cur:ii[0];PL.cfg.ins=ins;plFitSync(ins);const e=document.getElementById('plFk');if(e)e.value=k;plSetMode('fit');plMsg('Tocá en el plano donde va el artefacto. Queda suelto; trazá la cañería desde su centro y, al moverlo, las cañerías conectadas lo siguen.');}]),r.left,r.bottom);}
   else if(a==='llv'){const e=document.getElementById('plFk');if(e&&[...e.options].some(o=>o.value==='llave')){e.value='llave';plSetMode('fit');plMsg('Tocá sobre la cañería donde va la llave de paso. Para otra llave (corte general, de artefacto) cambiá la pieza en la lista de abajo.');}else plMsg('Primero elegí una instalación con llaves: Gas, Agua fría, Agua caliente o Calefacción.');}
   else if(a==='cj'||a==='ap'){PL.cfg[a]=PL.cfg[a]===false;plSave();plFill();plDraw();}
   else if(a==='tt'){if(!PL.cfg.tt){const p=window.prompt('Letra con que empiezan los tramos (ej: A). El número sube cada vez que una TEE divide la cañería.',PL.cfg.tp||'A');if(p===null)return;PL.cfg.tp=(p.trim().toUpperCase().replace(/[^A-Z]/g,'')||'A').slice(0,2);PL.cfg.tt=true;}else PL.cfg.tt=false;plSave();plFill();plDraw();}
   else if(a==='rtl'){PL.cfg.rt=PL.cfg.rt===false;plSave();plFill();plDraw();}
   else if(a==='weld'){const r=plWeld(PL.shapes,Math.max(300,(PL.cfg.th||150)*2));if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos de paredes y aberturas.');}else plMsg('No encontré paredes ni aberturas sueltas para unir.');}
+  else if(a==='weldl'){const r=lineWeld(PL.shapes,200);if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos y tees de cañerías.');}else plMsg('Las cañerías ya están unidas.');}
   else if(a==='fitrst'){const n=PL.shapes.filter(q=>q.t==='fit'&&q.ov).length;if(n){plPush();PL.shapes=PL.shapes.filter(q=>!(q.t==='fit'&&q.ov));PL.sel=-1;plChanged();plMsg('Se restauraron '+n+' piezas automáticas.');}else plMsg('No hay piezas automáticas modificadas para restaurar.');}
   else if(a==='ftype'&&s&&s.t==='fit'){const r=PL.cv.getBoundingClientRect(),items=[['Tipo de pieza',null]].concat(fitsFor(s.ins||'').map(q=>[FITS[q].n+(q===s.k?' ✓':''),()=>{plPush();s.k=q;plChanged();}]));plMenuShow(items,r.left+16,r.top+16);}
   else if(a==='nL')plNudge(-1,0);else if(a==='nR')plNudge(1,0);else if(a==='nU')plNudge(0,1);else if(a==='nD')plNudge(0,-1);
@@ -2644,7 +2706,7 @@ function plRot(deg){
   const s=PL.shapes[PL.sel];if(!s)return;const n=plRotate(s,deg);
   if(!n){plMsg('Esa figura solo gira de a 90°.');return;}
   plPush();
-  if(s.t==='w'&&!s.k&&!s.fr)PL.shapes=wallMoveLinked(PL.shapes,PL.sel,[n.a[0]-s.a[0],n.a[1]-s.a[1]],[n.b[0]-s.b[0],n.b[1]-s.b[1]]);else PL.shapes[PL.sel]=n;
+  if(s.t==='w'&&!s.k&&!s.fr)PL.shapes=wallMoveLinked(PL.shapes,PL.sel,[n.a[0]-s.a[0],n.a[1]-s.a[1]],[n.b[0]-s.b[0],n.b[1]-s.b[1]]);else if(s.t==='l'&&s.ins&&!s.ls&&n.t==='l')PL.shapes=lineMoveLinked(PL.shapes,PL.sel,[n.a[0]-s.a[0],n.a[1]-s.a[1]],[n.b[0]-s.b[0],n.b[1]-s.b[1]]);else PL.shapes[PL.sel]=n;
   plChanged();
 }
 function plLblHit(px){
@@ -2665,7 +2727,7 @@ function plEditMeasures(kind){
     const isW=s.t==='w'&&!s.k,e=isW?(kind==='int'||(!kind&&PL.cfg.rf==='int')?wallEndsF(PL.shapes,PL.sel):wallEnds(PL.shapes,PL.sel)):[0,0],rf=isW?(kind||PL.cfg.rf):'eje',ax=pdist(s.a,s.b),cur=rf==='ext'?ax+e[0]+e[1]:rf==='int'?ax-e[0]-e[1]:ax;
     const t=window.prompt('Largo en mm'+(isW?' ('+(rf==='ext'?'cota exterior':rf==='int'?'cota interior':'al eje')+', '+(kind?'la que tocaste':'según «Las medidas que escribo» en Ajustes')+')':'')+'. Si querés cambiar también el ángulo escribí «largo ; ángulo». Ahora: '+Math.round(cur)+' mm ; '+ang(s)+'°',String(Math.round(cur)));
     if(t===null)return;const v=nn(t);if(!pos(v[0]))return;plPush();const nb=polarPt(s.a,isW?axisFromRef(v[0],e[0],e[1],rf):v[0],isFinite(v[1])?v[1]:ang(s));
-    if(s.t==='w'&&!s.k)PL.shapes=wallMoveLinked(PL.shapes,PL.sel,[0,0],[nb[0]-s.b[0],nb[1]-s.b[1]]);else s.b=nb;
+    if(s.t==='w'&&!s.k)PL.shapes=wallMoveLinked(PL.shapes,PL.sel,[0,0],[nb[0]-s.b[0],nb[1]-s.b[1]]);else if(s.t==='l'&&s.ins&&!s.ls)PL.shapes=lineMoveLinked(PL.shapes,PL.sel,[0,0],[nb[0]-s.b[0],nb[1]-s.b[1]]);else s.b=nb;
   }else if(s.t==='r'||s.t==='rj'||s.t==='cl'){
     const w=Math.abs(s.b[0]-s.a[0]),h=Math.abs(s.b[1]-s.a[1]),t=window.prompt('Ancho × alto en mm. Ahora: '+Math.round(w)+' × '+Math.round(h),Math.round(w)+' x '+Math.round(h));
     if(t===null)return;const v=nn(t);if(!pos(v[0],v[1]))return;plPush();s.b=[s.a[0]+(s.b[0]>=s.a[0]?1:-1)*v[0],s.a[1]+(s.b[1]>=s.a[1]?1:-1)*v[1]];
@@ -3797,7 +3859,7 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
   <div class="form" style="margin:6px 0 0"><label class="f full" for="plFk"><span>Pieza a colocar con la herramienta «Pieza» (según la instalación elegida)</span><div class="in"><select id="plFk">${fitsFor('').map(q=>`<option value="${q}">${FITS[q].n}</option>`).join('')}</select></div></label><label class="f" for="plDi"><span>Diámetro o sección de las líneas y piezas nuevas</span><div class="in"><input id="plDi" type="text" list="plDiL" autocomplete="off" placeholder="Ej.: 3/4 · Ø110 · 2,5 mm²"><datalist id="plDiL"></datalist></div></label><label class="f" for="plMa"><span>Material de las líneas nuevas</span><div class="in"><input id="plMa" type="text" list="plMaL" autocomplete="off" placeholder="Ej.: epoxi · termofusión · PVC · cobre"><datalist id="plMaL"></datalist></div></label><label class="f full" for="plCv"><span>Recubrimiento o protección (opcional)</span><div class="in"><input id="plCv" type="text" list="plCvL" autocomplete="off" placeholder="Ej.: Metpol · cinta anticorrosiva · coquilla"><datalist id="plCvL">${COVERS.map(x=>`<option value="${x}">`).join('')}</datalist></div></label></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plEq" data-a="eq">Poner nicho / pilar / cámara</button><button type="button" class="pb" id="plLlv" data-a="llv">Poner llave de paso</button><button type="button" class="pb" id="plCj" data-a="cj" aria-pressed="true">Unir cañerías al cruzar</button><button type="button" class="pb" id="plAp" data-a="ap" aria-pressed="true">Piezas automáticas</button><button type="button" class="pb" id="plTt" data-a="tt" aria-pressed="false">Tramos por TEE (A1, A2…)</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plWl" data-a="weldl">Unir cañerías sueltas</button><button type="button" class="pb" id="plEq" data-a="eq">Poner nicho / pilar / cámara</button><button type="button" class="pb" id="plAr" data-a="ar">Poner artefacto</button><button type="button" class="pb" id="plLlv" data-a="llv">Poner llave de paso</button><button type="button" class="pb" id="plCj" data-a="cj" aria-pressed="true">Unir cañerías al cruzar</button><button type="button" class="pb" id="plAp" data-a="ap" aria-pressed="true">Piezas automáticas</button><button type="button" class="pb" id="plTt" data-a="tt" aria-pressed="false">Tramos por TEE (A1, A2…)</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
@@ -3924,7 +3986,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 42 · 14/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 44 · 15/11/2026</p>');
   window.scrollTo(0,0);
 }
 
