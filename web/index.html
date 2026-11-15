@@ -621,9 +621,14 @@ function fitOnPipe(sh,f,p,tolN,maxd){
   return {p:q,ang:Math.round(Math.atan2(dy,dx)*180/Math.PI)};
 }
 const isEq=s=>!!(s&&s.t==='fit'&&FITS[s.k]&&FITS[s.k].eq);
+function eqTouch(f,P,T){
+  if(pdist(P,f.p)<=T)return true;
+  const F=FITS[f.k],w=f.w||(F&&F.w)||0,h=f.h||(F&&F.h)||w;
+  return w>0&&Math.abs(P[0]-f.p[0])<=w/2+T&&Math.abs(P[1]-f.p[1])<=h/2+T;
+}
 function eqMove(sh,i,dx,dy){
   const f=sh[i],T=30,out=sh.slice(),mv=P=>[P[0]+dx,P[1]+dy];
-  sh.forEach((s,j)=>{if(s.t==='l'&&s.ins===f.ins){const a=pdist(s.a,f.p)<=T,b=pdist(s.b,f.p)<=T;if(a||b)out[j]=Object.assign({},s,a?{a:mv(s.a)}:{},b?{b:mv(s.b)}:{});}});
+  sh.forEach((s,j)=>{if(s.t==='l'&&s.ins===f.ins){const a=eqTouch(f,s.a,T),b=eqTouch(f,s.b,T);if(a||b)out[j]=Object.assign({},s,a?{a:mv(s.a)}:{},b?{b:mv(s.b)}:{});}});
   out[i]=moveShape(f,dx,dy);return out;
 }
 function pipeGroup(sh,i){
@@ -1240,7 +1245,7 @@ function cutsRefresh(text,shapes){
 /* Pasa al plano los largos editados en la lista de corte */
 function cutsToShapes(text,shapes){
   const tl={};tramoList(shapes).forEach(t=>{tl[t.id.toUpperCase()]=t;});const changed=[];let out=shapes.slice();
-  cutsTagged(text).forEach(c=>{const t=tl[c.id];if(!t||!(c.len>0)||Math.round(t.len)===Math.round(c.len))return;out[t.i]=tramoSetLength(out[t.i],c.len);changed.push(c.id);});
+  cutsTagged(text).forEach(c=>{const t=tl[c.id];if(!t||!(c.len>0)||Math.round(t.len)===Math.round(c.len))return;{const o=out[t.i],n=tramoSetLength(o,c.len);out=lineMoveLinked(out,t.i,[0,0],[n.b[0]-o.b[0],n.b[1]-o.b[1]]);}changed.push(c.id);});
   return {shapes:out,changed};
 }
 function shapeCenter(s){
@@ -1335,7 +1340,8 @@ const KALIAS={cft2:'tbp25',cft3:'tbp38',cft4:'tbp38',cft5:'tbp50',cft6:'tbp50',c
 const artKc=f=>f.kc>0?f.kc:(ART_KC[f.k]||0);
 /* Dimensiona los tramos de gas del plano con el método de la calculadora de gas (NAG-200): devuelve {map:{GA1:'3/4"'},rows,unc,ok,mat} */
 function planGasCalc(sh,matk){
-  const tl=tramoList(sh).filter(x=>x.ins==='gas');
+  const tt0=PL.cfg.tt;PL.cfg.tt=true;let tl0;try{tl0=tramoList(sh);}finally{PL.cfg.tt=tt0;}
+  const tl=tl0.filter(x=>x.ins==='gas');
   if(!tl.length)return {err:'No hay cañerías de gas en el plano.'};
   const G={};tl.forEach(x=>{const g=G[x.g]=G[x.g]||{r:x.g,id:x.id,len:0,pg:x.pg,q:[]};g.len+=x.len;});
   const arts=sh.filter(q=>q.t==='fit'&&q.ins==='gas'&&!q.hide&&FITS[q.k]&&FITS[q.k].ar&&artKc(q)>0),unc=[];
@@ -1351,8 +1357,9 @@ function planGasCalc(sh,matk){
   /* un tramo de aguas abajo nunca puede ser más grande que el que lo alimenta */
   const dep=r=>{let n=0,g=G[r];while(g&&g.pg!==undefined&&G[g.pg]){n++;g=G[g.pg];}return n;};
   Object.keys(best).sort((a,b)=>dep(b)-dep(a)).forEach(r=>{const pg=G[r].pg;if(pg!==undefined&&best[pg]&&best[r].di>best[pg].di)best[pg]=best[r];});
-  const map={};Object.keys(best).forEach(r=>{map[G[r].id.toUpperCase()]=best[r].lab.replace(/"/g,'”');});
-  return {map,rows:Object.keys(best).map(r=>Object.assign({id:G[r].id},best[r])).sort((a,b)=>a.id.localeCompare(b.id,'es',{numeric:true})),unc,ok,mat};
+  const map={},idx={};Object.keys(best).forEach(r=>{map[G[r].id.toUpperCase()]=best[r].lab.replace(/"/g,'”');});
+  tl.forEach(x=>{if(best[x.g])idx[x.i]=best[x.g].lab.replace(/"/g,'”');});
+  return {map,idx,rows:Object.keys(best).map(r=>Object.assign({id:G[r].id},best[r])).sort((a,b)=>a.id.localeCompare(b.id,'es',{numeric:true})),unc,ok,mat};
 }
 function diaApply(shapes,map){
   const tl=tramoList(shapes),out=shapes.slice(),ch=[];
@@ -1412,6 +1419,15 @@ const FITS={
  tme80:{n:'Termotanque eléctrico 80 L',g:'rc',l:'80L',i:'agf agc elec',eq:1,ar:1,w:450,h:450},
  tme110:{n:'Termotanque eléctrico 110 L',g:'rc',l:'110L',i:'agf agc elec',eq:1,ar:1,w:500,h:500},
  fcu:{n:'Caño flexible de cobre (conexión a artefacto)',g:'circ',l:'FC',i:'gas'},fcx:{n:'Flexible de acero inoxidable (gas)',g:'circ',l:'FX',i:'gas'},
+ chh90:{n:'Codo 90° hembra-hembra (gas)',g:'circ',l:'HH',i:'gas cal'},cmh90:{n:'Codo 90° macho-hembra (gas)',g:'circ',l:'MH',i:'gas cal'},cmh45:{n:'Codo 45° macho-hembra (gas)',g:'circ',l:'MH',i:'gas cal'},cmm90:{n:'Codo 90° macho-macho (gas)',g:'circ',l:'MM',i:'gas cal'},
+ bu1:{n:'Buje de reducción 1/2 × 3/8 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1/2',d2:'3/8'},bu2:{n:'Buje de reducción 3/4 × 1/2 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'3/4',d2:'1/2'},
+ bu3:{n:'Buje de reducción 3/4 × 3/8 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'3/4',d2:'3/8'},bu4:{n:'Buje de reducción 1 × 1/2 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1',d2:'1/2'},
+ bu5:{n:'Buje de reducción 1 × 3/4 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1',d2:'3/4'},bu6:{n:'Buje de reducción 1 1/4 × 1 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1 1/4',d2:'1'},
+ bu7:{n:'Buje de reducción 1 1/4 × 3/4 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1 1/4',d2:'3/4'},bu8:{n:'Buje de reducción 1 1/2 × 1 1/4 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1 1/2',d2:'1 1/4'},
+ bu9:{n:'Buje de reducción 1 1/2 × 1 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1 1/2',d2:'1'},bu10:{n:'Buje de reducción 2 × 1 1/2 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'2',d2:'1 1/2'},
+ fca4:{n:'Flexible semirrígido de aluminio con virolas · 1/2 · 40 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'1/2'},fca5:{n:'Flexible semirrígido de aluminio con virolas · 1/2 · 50 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'1/2'},fca6:{n:'Flexible semirrígido de aluminio con virolas · 1/2 · 60 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'1/2'},
+ fcc4:{n:'Flexible semirrígido de cobre con virolas · 1/2 · 40 cm (calefactor)',g:'circ',l:'FC',i:'gas cal',d1:'1/2'},fcc5:{n:'Flexible semirrígido de cobre con virolas · 1/2 · 50 cm (calefactor)',g:'circ',l:'FC',i:'gas cal',d1:'1/2'},fcc6:{n:'Flexible semirrígido de cobre con virolas · 1/2 · 60 cm (calefactor)',g:'circ',l:'FC',i:'gas cal',d1:'1/2'},
+ fcm:{n:'Flexible de acero inoxidable malla trenzada con tuercas · 1/2 (calefactor / cocina)',g:'circ',l:'FX',i:'gas cal',d1:'1/2'},fcv:{n:'Virola / oliva de aluminio (repuesto)',g:'circ',l:'v',i:'gas cal',d1:'1/2'},
  tbp25:{n:'Calefactor tiro balanceado 2500 kcal/h · ref. Orbis 4124MO',g:'sq',l:'2500',i:'gas cal',eq:1,ar:1,w:350,h:164,fl:'tb',so:153},
  tbp38:{n:'Calefactor tiro balanceado 3800 kcal/h · ref. Orbis 4144MO',g:'sq',l:'3800',i:'gas cal',eq:1,ar:1,w:500,h:170,fl:'tb',so:153},
  tbp50:{n:'Calefactor tiro balanceado 5000 kcal/h · ref. Orbis 4164MO',g:'sq',l:'5000',i:'gas cal',eq:1,ar:1,w:700,h:180,fl:'tb',so:175},
@@ -1650,6 +1666,10 @@ const utilRow=(label,u,detail)=>{const c=!isFinite(u)?'':u>1?'bad':u>.85?'warn':
   return `<div class="r u ${c}"><div class="top2"><span>${label}</span><b>${isFinite(u)?fmt(u*100,0)+' %':'—'}<small>${detail||''}</small></b></div><span class="util"><i class="${c}" style="width:${isFinite(u)?Math.min(100,u*100):0}%"></i></span></div>`;};
 const res=h=>`<div class="res">${h}</div>`;
 const need='<p class="msg">Completá los datos para ver el resultado.</p>';
+/* Unidad de los largos en listas y tablas (m o mm): se elige en Planos > Ajustes */
+function lenU(){const l=(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.lu)||((store('plano-d').cfg||{}).lu);return l==='mm'?'mm':'m';}
+function lenV(mm,d){return lenU()==='mm'?fmt(mm,0):fmt(mm/1000,d==null?2:d);}
+function lenT(mm,d){return lenV(mm,d)+' '+lenU();}
 const ok=(...a)=>a.every(x=>isFinite(x));
 const pos=(...a)=>a.every(x=>isFinite(x)&&x>0);
 
@@ -2080,10 +2100,10 @@ function drawScene(ctx,sh,T,o){
     else if(s.t==='fit'){if(!s.hide)fitGlyph(ctx,s,X(s.p[0]),Y(s.p[1]),S,k,C,sel.includes(i),false);}
     else if(s.t==='tb'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),rows=((a)=>{if(!(PL.cfg&&PL.cfg.tt!==false))return a;const m=new Map();a.forEach(z=>{const q=m.get(z.id);if(q)q.len+=z.len;else m.set(z.id,Object.assign({},z));});return [...m.values()];})(tramoList(sh).filter(z=>!s.ins||z.ins===s.ins)),pad=fs*.5,rh=fs*1.35,kd=s.k||'t';
       ctx.font='600 '+fs+'px '+FF(s);let hd,R,ttl;
-      if(kd==='m'){ttl='MATERIALES';hd=['Material','Ø','Cant.'];R=planilla(sh).filter(z=>z.ins&&(!s.ins||z.ins===s.ins)).map(z=>[(z.mat||z.name),z.dia||'-',(z.len/1000).toFixed(2)+' m']);
+      if(kd==='m'){ttl='MATERIALES';hd=['Material','Ø','Cant.'];R=planilla(sh).filter(z=>z.ins&&(!s.ins||z.ins===s.ins)).map(z=>[(z.mat||z.name),z.dia||'-',lenT(z.len)]);
         fitList(sh).filter(z=>!s.ins||z.ins===s.ins).forEach(z=>R.push([z.name,z.dia||'-',z.n+' u.']));}
       else if(kd==='a'){ttl='ARTEFACTOS Y CONSUMOS';hd=['Artefacto','Cant.','m³/h'];let tc=0;R=String(s.s||'').split('\n').map(l=>l.split(',').map(x=>x.trim())).filter(a=>a[0]).map(a=>{const n=parseFloat(a[1])||1,c=parseFloat(String(a[2]).replace(',','.'))||0;tc+=n*c;return [a[0],String(n),c?c.toFixed(2):'-'];});R.push(['Total','',tc.toFixed(2)]);}
-      else{ttl='TRAMOS';hd=['Tramo','Ø','Material','Largo'];const tot=rows.reduce((a,z)=>a+z.len,0);R=rows.map(z=>[z.id,z.dia?'Ø'+z.dia:'-',z.mat||'-',(z.len/1000).toFixed(2)+' m']);R.push(['Total','','',(tot/1000).toFixed(2)+' m']);}
+      else{ttl='TRAMOS';hd=['Tramo','Ø','Material','Largo'];const tot=rows.reduce((a,z)=>a+z.len,0);R=rows.map(z=>[z.id,z.dia?'Ø'+z.dia:'-',z.mat||'-',lenT(z.len)]);R.push(['Total','','',lenT(tot)]);}
       const cw=hd.map((h2,c)=>Math.max(ctx.measureText(h2).width,...R.map(r=>ctx.measureText(r[c]).width))+pad*1.6),W=cw.reduce((a,b)=>a+b,0),ti=kd==='a'?'':s.ins?instOf(s.ins)[1]:'Instalaciones',H=rh*(R.length+2.5)+pad*.4;
       ctx.font='700 '+fs+'px '+FF(s);const tw0=ctx.measureText(ttl+(ti?' · '+ti:'')).width+pad*2,WW=Math.max(W,tw0);
       s._w=WW/S;s._h=H/S;
@@ -2302,7 +2322,7 @@ function plReport(){
   }
   let hi='';
   {const pl=planilla(PL.shapes),tl=tramoList(PL.shapes);
-   if(pl.length)hi='<h3 class="sec">Instalaciones del plano</h3>'+res(pl.map((g,i)=>row(g.name+(g.dia?' Ø'+g.dia:'')+(g.mat?' · '+g.mat:''),fmt(g.len/1000,2),'m · '+g.n+(g.n===1?' tramo':' tramos'),i?'':'key')).join('')+tl.map(t=>row(t.id+(t.dia?' · Ø'+t.dia:'')+' · '+t.name,fmt(t.len/1000,3),'m')).join(''))+'<p class="hint">Cada tramo tiene un número (G1, AF2…). Si guardás el plano como capa, esos tramos aparecen en la Lista de corte con el mismo número, y si cambiás un largo allá se actualiza acá.</p>';}
+   if(pl.length)hi='<h3 class="sec">Instalaciones del plano</h3>'+res(pl.map((g,i)=>row(g.name+(g.dia?' Ø'+g.dia:'')+(g.mat?' · '+g.mat:''),lenV(g.len),lenU()+' · '+g.n+(g.n===1?' tramo':' tramos'),i?'':'key')).join('')+tl.map(t=>row(t.id+(t.dia?' · Ø'+t.dia:'')+' · '+t.name,lenV(t.len,3),lenU())).join(''))+'<p class="hint">Cada tramo tiene un número (G1, AF2…). Si guardás el plano como capa, esos tramos aparecen en la Lista de corte con el mismo número, y si cambiás un largo allá se actualiza acá.</p>';}
   {const fl=fitList(PL.shapes);if(fl.length)hi+='<h3 class="sec">Piezas y accesorios</h3>'+res(fl.map((f,i)=>row(instOf(f.ins)[1]+' · '+f.name+(f.dia?' Ø'+f.dia:''),f.n,'u.',i?'':'key')).join(''))+'<p class="hint">Incluye las piezas colocadas a mano y las que se detectan solas en las uniones de los tramos (codos, tees, reducciones). Revisá que coincidan con lo que vas a comprar.</p>';}
   o.innerHTML=hi+h0+h;
 }
@@ -2360,7 +2380,7 @@ function plOpLoad(){
 }
 function plSync(){
   PL.lm=PL.lm||{};['pwe','pwi'].forEach(pf=>{const m=V(pf+'M');if(PL.lm[pf]!==undefined&&PL.lm[pf]!==m&&WFRAME[m]){const e=document.getElementById(pf+'T');if(e)e.value=String(WFRAME[m].d);}PL.lm[pf]=m;});
-  const c=PL.cfg;c.grid=+V('plMg')||0;c.mp=+V('plMp')||0;c.unit=V('plU')||'mm';c.lw=+V('plW')||2;c.title=V('plN');c.ve=N('plVe')||3000;c.ca=N('plCa')||8000;{const n=N('plNo');c.no=isFinite(n)?n:90;}
+  const c=PL.cfg;c.grid=+V('plMg')||0;c.mp=+V('plMp')||0;c.unit=V('plU')||'mm';{const lu=V('plLu')==='mm'?'mm':'m';if(c.lu!==lu){c.lu=lu;setTimeout(plSave,0);}}c.lw=+V('plW')||2;c.title=V('plN');c.ve=N('plVe')||3000;c.ca=N('plCa')||8000;{const n=N('plNo');c.no=isFinite(n)?n:90;}
   c.rs=N('plRs')>0?N('plRs'):110;c.rb=N('plRb')>0?N('plRb'):12;c.rm=N('plRm')>0?N('plRm'):40;c.ro=V('plRo')==='h'?'h':'v';c.rn=N('plRn')>0?Math.round(N('plRn')):0;
   plOpSync(c);
   c.ds=+V('plDs')||400;c.db=N('plDb')>0?N('plDb'):2600;c.dp=+V('plDp')||2.88;c.dwa=N('plDw')>=0?N('plDw'):5;
@@ -2611,7 +2631,7 @@ function plUp(ev){
     if(best&&bd<=tol){const dx=best.b[0]-best.a[0],dy=best.b[1]-best.a[1],l2=dx*dx+dy*dy||1,t=Math.max(0,Math.min(1,((wp[0]-best.a[0])*dx+(wp[1]-best.a[1])*dy)/l2));pt=[best.a[0]+t*dx,best.a[1]+t*dy];ang=Math.round(Math.atan2(dy,dx)*180/Math.PI);ins=best.ins;}
     {let bn=null,bnd=tol;PL.shapes.forEach(z=>{if(z.t==='l'&&z.ins&&(!PL.cfg.ins||z.ins===PL.cfg.ins))[z.a,z.b].forEach(P=>{const d=pdist(wp,P);if(d<bnd){bnd=d;bn=P;}});});if(bn)pt=[bn[0],bn[1]];}
     const fk0=PL.cfg.fk&&FITS[PL.cfg.fk]?PL.cfg.fk:'c90';if(FITS[fk0].eq){pt=q.p;ang=0;const ii=FITS[fk0].i.split(' ');ins=ii.includes(PL.cfg.ins)?PL.cfg.ins:ii[0];}
-    const o={t:'fit',k:fk0,ins,p:pt,ang};if(PL.cfg.dia)o.dia=PL.cfg.dia;plAdd(o,pt);return;
+    const o={t:'fit',k:fk0,ins,p:pt,ang};if(PL.cfg.dia)o.dia=PL.cfg.dia;if(FITS[fk0].d1){o.dia=FITS[fk0].d1;if(FITS[fk0].d2)o.dia2=FITS[fk0].d2;}plAdd(o,pt);return;
   }
   if(m==='it'){
     const q=plSnap(px,ev,null);plAdd({t:'it',k:PL.cfg.ik,p:q.p,w:PL.cfg.iw,h:PL.cfg.ih,ang:0},q.p);return;
@@ -2716,7 +2736,7 @@ function plAction(a){
   else if(a==='tsz'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tamaño de la letra (altura en mm del plano). Ahora: '+Math.round(s.h)+'. Referencias: 50 chica · 100 normal · 150 grande · 250 muy grande.',String(Math.round(s.h)));const n=parseFloat(String(v||'').replace(',','.'));if(n>=10&&n<=2000){plPush();s.h=Math.round(n);plChanged();}}}
   else if(a==='tfn'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tipo de letra: 1 = Normal, 2 = Con serif (tipo libro), 3 = Máquina de escribir, 4 = Manuscrita.',({f:'2',m:'3',c:'4'})[s.fn]||'1');if(v!==null){plPush();const m=({'2':'f','3':'m','4':'c'})[v.trim()];if(m)s.fn=m;else delete s.fn;plChanged();}}}
   else if(a==='gcalc'){const mk=PL.cfg.gmat||'ac',r=planGasCalc(PL.shapes,mk);if(r.err){plMsg(r.err);return;}
-    const d=diaApply(PL.shapes,r.map);if(d.changed.length){plPush();PL.shapes=d.shapes;plChanged();}else plDraw();
+    {const out=PL.shapes.slice();let n=0;Object.keys(r.idx).forEach(i=>{if(out[i]&&out[i].dia!==r.idx[i]){out[i]=Object.assign({},out[i],{dia:r.idx[i]});n++;}});if(n){plPush();PL.shapes=out;plChanged();}else plDraw();}
     plMsg('Diámetros de gas ('+r.mat.n.split(',')[0]+'): '+r.rows.map(x=>x.id+' '+x.lab).join(' · ')+(r.ok?'':' — Ojo: con este material algún tramo no alcanza, probá otro material o revisá los consumos.')+(r.unc.length?' — Sin conectar a ninguna cañería: '+r.unc.join(', ')+'.':'')+' Consumos típicos: corregilos en cada artefacto con «Consumo del artefacto…».');}
   else if(a==='gmat'){const i=GAS_MAT.findIndex(m=>m.k===(PL.cfg.gmat||'ac')),n=GAS_MAT[(i+1)%GAS_MAT.length];PL.cfg.gmat=n.k;plSave();plMsg('Material del gas para el cálculo: '+n.n+'. Tocá «Calcular diámetros de gas».');}
   else if(a==='fkc'){const s=PL.shapes[PL.sel];if(s&&s.t==='fit'&&FITS[s.k]&&FITS[s.k].ar&&(s.ins==='gas')){const v=window.prompt('Consumo del artefacto en kcal/h. Ahora: '+artKc(s)+' (valor típico). Poné el de tu modelo (figura en su placa).',String(artKc(s)));const n=parseFloat(String(v||'').replace(',','.'));if(n>0&&n<1e6){plPush();s.kc=Math.round(n);plChanged();}}}
@@ -2966,7 +2986,7 @@ function plSidePanel(ctx,sh,x,y,w,h,mm){
   const T=(t,o)=>{o=o||{};ctx.font=(o.b?'700 ':'500 ')+(o.f||fs)+'px sans-serif';ctx.fillStyle=o.c||'#111';ctx.textBaseline='middle';
     if(o.r){ctx.textAlign='right';ctx.fillText(t,x+w-2.5*mm,cy);}else{ctx.textAlign='left';ctx.fillText(cut(t,mw-(o.rw||0)-(o.ox||0)),px+(o.ox||0),cy);}};
   const nl=k=>{cy+=(k||1)*fs*1.5;},ln=()=>{ctx.beginPath();ctx.moveTo(x,cy);ctx.lineTo(x+w,cy);ctx.lineWidth=.25*mm;ctx.strokeStyle='#111';ctx.stroke();};
-  const m2=v=>fmt(v/1000,2)+' m';
+  const m2=v=>lenT(v);
   const pl=planilla(sh),tl=tramoList(sh),fl=fitList(sh);
   const piezas=()=>{if(!fl.length||!room())return;nl(.5);T('PIEZAS',{b:1,f:3.1*mm});nl(.9);ln();nl(.7);
     fl.forEach(f=>{if(!room())return;const I=instOf(f.ins);ctx.fillStyle=I[2];ctx.fillRect(px,cy-1.2*mm,4*mm,2.4*mm);
@@ -3935,12 +3955,12 @@ Derivación a calefón ; 4000 ; 18000</textarea></div></label>
   const r=gasSize(tr,M.k,{dp:N('gl')||1,extra:isFinite(N('gx'))?N('gx'):20});
   window.GASLAST={};r.rows.forEach(x=>{GASLAST[x.name.toUpperCase()]=x.lab.replace(/"/g,'”');});
   const g={};r.rows.forEach(x=>{(g[x.lab]=g[x.lab]||{lab:x.lab,di:x.di,len:0,pieces:[]});g[x.lab].len+=x.L;g[x.lab].pieces.push(x.L*1000);});
-  const mat=Object.values(g).map(q=>row('Diámetro '+q.lab+(M.k==='ac'?' ('+q.di+' mm interior)':''),fmt(q.len,2)+' m',packCuts(M.len,3,q.pieces).length+' tubo(s) de '+fmt(M.len/1000,1)+' m')).join('');
+  const mat=Object.values(g).map(q=>row('Diámetro '+q.lab+(M.k==='ac'?' ('+q.di+' mm interior)':''),lenV(q.len*1000)+' '+lenU(),packCuts(M.len,3,q.pieces).length+' tubo(s) de '+fmt(M.len/1000,1)+' m')).join('');
   $('#out').innerHTML=res(
     row('Caída total en el recorrido',fmt(r.dpT,2),'mbar de '+fmt(r.dpMax,1)+' permitidos',r.ok?'key good':'key bad')+
     (arts.length?row('Consumo simultáneo de la vivienda',fmt(qsi*9300,0),'kcal/h ('+fmt(qsi,2)+' m³/h)'):'')+
     r.rows.map(x=>row(x.name+' → '+x.lab,fmt(x.Q,2)+' m³/h',x.ok?'':'no alcanza')).join(''))+
-   `<div class="tblw"><table><thead><tr><th>Tramo</th><th>Largo m</th><th>Le m</th><th>Caudal m³/h</th><th>Caída permitida</th><th>Diámetro</th><th>Caída real</th><th>Velocidad m/s</th></tr></thead><tbody>${r.rows.map(x=>`<tr><td>${x.name}</td><td>${fmt(x.L,2)}</td><td>${fmt(x.Le,2)}</td><td>${fmt(x.Q,2)}</td><td>${fmt(x.lim,3)}</td><td>${x.lab}${x.ok?'':' ⚠'}</td><td>${fmt(x.dp,3)}</td><td>${fmt(x.v,2)}</td></tr>`).join('')}</tbody></table></div>`+
+   `<div class="tblw"><table><thead><tr><th>Tramo</th><th>Largo ${lenU()}</th><th>Le ${lenU()}</th><th>Caudal m³/h</th><th>Caída permitida</th><th>Diámetro</th><th>Caída real</th><th>Velocidad m/s</th></tr></thead><tbody>${r.rows.map(x=>`<tr><td>${x.name}</td><td>${lenV(x.L*1000)}</td><td>${lenV(x.Le*1000)}</td><td>${fmt(x.Q,2)}</td><td>${fmt(x.lim,3)}</td><td>${x.lab}${x.ok?'':' ⚠'}</td><td>${fmt(x.dp,3)}</td><td>${fmt(x.v,2)}</td></tr>`).join('')}</tbody></table></div>`+
    '<h3 class="sec" style="margin-top:14px">Material</h3>'+res(mat)+
    (r.ok?'':'<p class="note">Con este material no alcanza: elegí un diámetro mayor, otro material o revisá los caudales.</p>')+
    (bad.length?`<p class="note">No se entendió: ${bad.join(' | ')}</p>`:'')+
@@ -4059,6 +4079,7 @@ Derivación a calefón ; 4000 ; 18000</textarea></div></label>
    ${sel('plMg','Imán a la cuadrícula',[['0','Sin imán (de a 1 mm)'],['10','10 mm'],['50','50 mm'],['100','100 mm'],['500','500 mm'],['1000','1 m']],'0')}
    ${sel('plMp','Imán a esquinas y puntos cercanos',[['0','Ninguno (de a 1 mm)'],['5','Suave (5 px)'],['12','Fuerte (12 px)']],'0')}
    ${sel('plU','Unidad de las cotas',[['mm','Milímetros'],['cm','Centímetros'],['m','Metros']],'mm')}
+   ${sel('plLu','Unidad de los largos en listas y tablas (tramos, materiales)',[['m','Metros'],['mm','Milímetros']],'m','','full')}
    ${sel('plW','Grosor de línea',[['1','Fino'],['2','Normal'],['3','Grueso']],'2')}
    ${sel('plRf','Las medidas que escribo o marco para paredes son…',[['eje','Al eje de la pared'],['ext','Cota exterior (de afuera)'],['int','Cota interior (de adentro)']],'eje','','full')}
    ${fld('plVe','Ancho de vereda','3000','mm')}${fld('plCa','Ancho de calle (calzada)','8000','mm')}
@@ -4131,7 +4152,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 58 · 15/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 62 · 15/11/2026</p>');
   window.scrollTo(0,0);
 }
 
@@ -4142,7 +4163,7 @@ function obraPiezas(){
   if(pr){sh=sh.concat(pr.plans.filter(l=>!(d.proj.lid===l.id)).flatMap(l=>l.shapes));if(Array.isArray(d.shapes))sh=sh.concat(d.shapes.filter(x=>!x.lk));}
   else if(d&&Array.isArray(d.shapes))sh=d.shapes;
   const fl=fitList(sh),tl=planilla(sh);
-  e.innerHTML=(fl.length||tl.length)?'<h3 class="sec">Instalaciones del plano abierto'+(pr?' ('+plEsc(pr.name)+', todas las capas)':'')+'</h3>'+res(tl.map((g,i)=>row(g.name+(g.dia?' Ø'+g.dia:'')+(g.mat?' · '+g.mat:''),fmt(g.len/1000,2),'m',i?'':'key')).join('')+fl.map(f=>row(instOf(f.ins)[1]+' · '+f.name+(f.dia?' Ø'+f.dia:''),f.n,'u.')).join('')):'';
+  e.innerHTML=(fl.length||tl.length)?'<h3 class="sec">Instalaciones del plano abierto'+(pr?' ('+plEsc(pr.name)+', todas las capas)':'')+'</h3>'+res(tl.map((g,i)=>row(g.name+(g.dia?' Ø'+g.dia:'')+(g.mat?' · '+g.mat:''),lenV(g.len),lenU(),i?'':'key')).join('')+fl.map(f=>row(instOf(f.ins)[1]+' · '+f.name+(f.dia?' Ø'+f.dia:''),f.n,'u.')).join('')):'';
 }
 function linkOptions(){
   let o='<option value="">— elegir plano —</option><option value="cur">Plano abierto ahora (sin proyecto)</option>';
