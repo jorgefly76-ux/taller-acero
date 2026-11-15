@@ -839,7 +839,7 @@ function parsePlanoJson(txt){
     else if(s.t==='tb'){const p=P(s.p);if(p)o={t:'tb',p,ins:INSTS.some(x=>x[0]&&x[0]===s.ins)?s.ins:'',h:+s.h>0?+s.h:100,k:['m','a'].includes(s.k)?s.k:'t'};if(o.k==='a')o.s=typeof s.s==='string'?s.s.slice(0,600):'';}
     else if(s.t==='nb'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'nb',p,s:s.s.slice(0,400),h:+s.h>0?+s.h:100};}
     else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;if(+s.hh>0)o.hh=+s.hh;if(s.t==='win'&&s.sl!=null&&+s.sl>=0)o.sl=+s.sl;}}
-    else if(s.t==='fit'){const p=P(s.p);if(p&&FITS[s.k]&&(!s.ins||INSTS.some(x=>x[0]===s.ins))){o={t:'fit',k:s.k,ins:s.ins||'',p,ang:isFinite(s.ang)?+s.ang:0};if(+s.w>0&&+s.h>0){o.w=Math.min(5000,+s.w);o.h=Math.min(5000,+s.h);}if(+s.kc>0)o.kc=Math.min(1e6,Math.round(+s.kc));if(+s.so>=20&&+s.so<=500)o.so=Math.round(+s.so);if(isFinite(s.sx)&&Math.abs(+s.sx)<=3000)o.sx=Math.round(+s.sx);if([0,1,2,3,4].includes(+s.sd)&&s.sd!==undefined&&s.sd!==null)o.sd=+s.sd;if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);if(typeof s.dia2==='string'&&s.dia2)o.dia2=s.dia2.slice(0,14);if(+s.hide)o.hide=1;if(typeof s.ov==='string'&&FITS[s.ov])o.ov=s.ov;}}
+    else if(s.t==='fit'){if(KALIAS[s.k])s.k=KALIAS[s.k];const p=P(s.p);if(p&&FITS[s.k]&&(!s.ins||INSTS.some(x=>x[0]===s.ins))){o={t:'fit',k:s.k,ins:s.ins||'',p,ang:isFinite(s.ang)?+s.ang:0};if(+s.w>0&&+s.h>0){o.w=Math.min(5000,+s.w);o.h=Math.min(5000,+s.h);}if(+s.kc>0)o.kc=Math.min(1e6,Math.round(+s.kc));if(+s.so>=20&&+s.so<=500)o.so=Math.round(+s.so);if(isFinite(s.sx)&&Math.abs(+s.sx)<=3000)o.sx=Math.round(+s.sx);if([0,1,2,3,4].includes(+s.sd)&&s.sd!==undefined&&s.sd!==null)o.sd=+s.sd;if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);if(typeof s.dia2==='string'&&s.dia2)o.dia2=s.dia2.slice(0,14);if(+s.hide)o.hide=1;if(typeof s.ov==='string'&&FITS[s.ov])o.ov=s.ov;}}
     else if(s.t==='an'){const a=P(s.a),p=P(s.p);if(a&&p&&typeof s.s==='string'&&s.s)o={t:'an',a,p,s:s.s.slice(0,300),h:+s.h>0?+s.h:150};}
     else if(s.t==='it'){const p=P(s.p);if(p&&ITEMS[s.k]&&+s.w>0&&+s.h>0)o={t:'it',k:s.k,p,w:+s.w,h:+s.h,ang:isFinite(s.ang)?+s.ang:0};}
     if(o&&s.lk)o.lk=1;
@@ -1320,7 +1320,8 @@ function gasSize(tramos,mat,o){
   return {rows,dpT,dpMax,ok:rows.every(r=>r.ok)&&dpT<=dpMax+1e-9,mat:M};
 }
 /* Consumo típico de cada artefacto de gas (kcal/h). Orientativo: se corrige con «Consumo del artefacto…» */
-const ART_KC={coc:8000,ana:5000,hor:3000,cfn:18600,ttg:5000,ttg40:4500,ttg50:5000,ttg80:7000,ttg110:9000,ttg130:10000,tt:5000,cag:24000,cft:3000,cft2:2000,cft3:3000,cft4:4000,cft5:5000,cft6:6000,ctu2:2000,ctu3:3000,ctu4:4000,ctu5:5000,ctu6:6000,ctn2:2000,ctn3:3000,ctn4:4000,ctn5:5000,est:3000,sec:3000};
+const ART_KC={coc:8000,ana:5000,hor:3000,cfn:18600,ttg:5000,ttg40:4500,ttg50:5000,ttg80:7000,ttg110:9000,ttg130:10000,tt:5000,cag:24000,cft:3000,tbp25:2500,tbp38:3800,tbp50:5000,tbe25:2500,tbe38:3800,tbe50:5000,tbu38:3800,tbu50:5000,tn35:3500,tn50:5000,tn90:9000,sv27:2700,sve27:2700,sv42:4200,sve42:4200,est:3000,sec:3000};
+const KALIAS={cft2:'tbp25',cft3:'tbp38',cft4:'tbp38',cft5:'tbp50',cft6:'tbp50',ctu2:'tbu38',ctu3:'tbu38',ctu4:'tbu38',ctu5:'tbu50',ctu6:'tbu50',ctn2:'tn35',ctn3:'tn35',ctn4:'tn50',ctn5:'tn50'};
 const artKc=f=>f.kc>0?f.kc:(ART_KC[f.k]||0);
 /* Dimensiona los tramos de gas del plano con el método de la calculadora de gas (NAG-200): devuelve {map:{GA1:'3/4"'},rows,unc,ok,mat} */
 function planGasCalc(sh,matk){
@@ -1388,11 +1389,6 @@ const FITS={
  tcd:{n:'Toma doble',g:'tri',l:'T2',i:'elec',eq:1,ar:1},
  tca:{n:'Toma 20 A (aire / termo)',g:'tri',l:'T20',i:'elec',eq:1,ar:1},
  acc:{n:'Aire acondicionado',g:'sq',l:'AA',i:'elec',eq:1,ar:1},
- cft2:{n:'Calefactor tiro balanceado 2000 kcal/h (salida por pared)',g:'sq',l:'2000',i:'gas cal',eq:1,ar:1,w:420,h:160,fl:'tb'},
- cft3:{n:'Calefactor tiro balanceado 3000 kcal/h (salida por pared)',g:'sq',l:'3000',i:'gas cal',eq:1,ar:1,w:520,h:170,fl:'tb'},
- cft4:{n:'Calefactor tiro balanceado 4000 kcal/h (salida por pared)',g:'sq',l:'4000',i:'gas cal',eq:1,ar:1,w:620,h:180,fl:'tb'},
- cft5:{n:'Calefactor tiro balanceado 5000 kcal/h (salida por pared)',g:'sq',l:'5000',i:'gas cal',eq:1,ar:1,w:700,h:190,fl:'tb'},
- cft6:{n:'Calefactor tiro balanceado 6000 kcal/h (salida por pared)',g:'sq',l:'6000',i:'gas cal',eq:1,ar:1,w:800,h:200,fl:'tb'},
  ttg40:{n:'Termotanque a gas 40 L',g:'rc',l:'40L',i:'gas',eq:1,ar:1,w:400,h:400},
  ttg50:{n:'Termotanque a gas 50 L',g:'rc',l:'50L',i:'gas',eq:1,ar:1,w:420,h:420},
  ttg80:{n:'Termotanque a gas 80 L',g:'rc',l:'80L',i:'gas',eq:1,ar:1,w:450,h:450},
@@ -1403,13 +1399,21 @@ const FITS={
  tme80:{n:'Termotanque eléctrico 80 L',g:'rc',l:'80L',i:'agf agc elec',eq:1,ar:1,w:450,h:450},
  tme110:{n:'Termotanque eléctrico 110 L',g:'rc',l:'110L',i:'agf agc elec',eq:1,ar:1,w:500,h:500},
  fcu:{n:'Caño flexible de cobre (conexión a artefacto)',g:'circ',l:'FC',i:'gas'},fcx:{n:'Flexible de acero inoxidable (gas)',g:'circ',l:'FX',i:'gas'},
- ctn2:{n:'Calefactor tiro natural 2000 kcal/h (salida a conducto)',g:'sq',l:'2000',i:'gas cal',eq:1,ar:1,w:450,h:230,fl:'tn'},ctn3:{n:'Calefactor tiro natural 3000 kcal/h (salida a conducto)',g:'sq',l:'3000',i:'gas cal',eq:1,ar:1,w:550,h:240,fl:'tn'},
- ctn4:{n:'Calefactor tiro natural 4000 kcal/h (salida a conducto)',g:'sq',l:'4000',i:'gas cal',eq:1,ar:1,w:650,h:250,fl:'tn'},ctn5:{n:'Calefactor tiro natural 5000 kcal/h (salida a conducto)',g:'sq',l:'5000',i:'gas cal',eq:1,ar:1,w:750,h:260,fl:'tn'},
- ctu2:{n:'Calefactor TBU (tiro balanceado en U) 2000 kcal/h',g:'sq',l:'2000U',i:'gas cal',eq:1,ar:1,w:460,h:170,fl:'tu'},
- ctu3:{n:'Calefactor TBU (tiro balanceado en U) 3000 kcal/h',g:'sq',l:'3000U',i:'gas cal',eq:1,ar:1,w:540,h:180,fl:'tu'},
- ctu4:{n:'Calefactor TBU (tiro balanceado en U) 4000 kcal/h',g:'sq',l:'4000U',i:'gas cal',eq:1,ar:1,w:640,h:190,fl:'tu'},
- ctu5:{n:'Calefactor TBU (tiro balanceado en U) 5000 kcal/h',g:'sq',l:'5000U',i:'gas cal',eq:1,ar:1,w:720,h:200,fl:'tu'},
- ctu6:{n:'Calefactor TBU (tiro balanceado en U) 6000 kcal/h',g:'sq',l:'6000U',i:'gas cal',eq:1,ar:1,w:820,h:210,fl:'tu'},
+ tbp25:{n:'Calefactor tiro balanceado 2500 kcal/h · ref. Orbis 4124MO',g:'sq',l:'2500',i:'gas cal',eq:1,ar:1,w:350,h:164,fl:'tb',so:153},
+ tbp38:{n:'Calefactor tiro balanceado 3800 kcal/h · ref. Orbis 4144MO',g:'sq',l:'3800',i:'gas cal',eq:1,ar:1,w:500,h:170,fl:'tb',so:153},
+ tbp50:{n:'Calefactor tiro balanceado 5000 kcal/h · ref. Orbis 4164MO',g:'sq',l:'5000',i:'gas cal',eq:1,ar:1,w:700,h:180,fl:'tb',so:175},
+ tbe25:{n:'Calefactor tiro balanceado vidrio 2500 kcal/h · ref. Orbis 4126NO',g:'sq',l:'2500',i:'gas cal',eq:1,ar:1,w:380,h:173,fl:'tb',so:165},
+ tbe38:{n:'Calefactor tiro balanceado vidrio 3800 kcal/h · ref. Orbis 4146NO',g:'sq',l:'3800',i:'gas cal',eq:1,ar:1,w:530,h:173,fl:'tb',so:165},
+ tbe50:{n:'Calefactor tiro balanceado vidrio 5000 kcal/h · ref. Orbis 4166NO',g:'sq',l:'5000',i:'gas cal',eq:1,ar:1,w:730,h:173,fl:'tb',so:185},
+ tbu38:{n:'Calefactor TBU (balanceado en U) 3800 kcal/h · ref. Orbis 4244MO',g:'sq',l:'3800U',i:'gas cal',eq:1,ar:1,w:500,h:170,fl:'tu',so:76,nd:2},
+ tbu50:{n:'Calefactor TBU (balanceado en U) 5000 kcal/h · ref. Orbis 4264MO',g:'sq',l:'5000U',i:'gas cal',eq:1,ar:1,w:700,h:180,fl:'tu',so:76,nd:2},
+ tn35:{n:'Calefactor tiro natural 3500 kcal/h · ref. Orbis 4444MO',g:'sq',l:'3500',i:'gas cal',eq:1,ar:1,w:500,h:170,fl:'tn',so:76},
+ tn50:{n:'Calefactor tiro natural 5000 kcal/h · ref. Orbis 4464MO',g:'sq',l:'5000',i:'gas cal',eq:1,ar:1,w:700,h:180,fl:'tn',so:76},
+ tn90:{n:'Calefactor tiro natural 9000 kcal/h · ref. Orbis 499000',g:'sq',l:'9000',i:'gas cal',eq:1,ar:1,w:940,h:260,fl:'tn',so:76},
+ sv27:{n:'Calefactor sin salida 2700 kcal/h · ref. Orbis 4024MO',g:'sq',l:'2700',i:'gas cal',eq:1,ar:1,w:350,h:164,sv:1},
+ sve27:{n:'Calefactor sin salida vidrio 2700 kcal/h · ref. Orbis 4024NO',g:'sq',l:'2700',i:'gas cal',eq:1,ar:1,w:380,h:173,sv:1},
+ sv42:{n:'Calefactor sin salida 4200 kcal/h · ref. Orbis 4044MO',g:'sq',l:'4200',i:'gas cal',eq:1,ar:1,w:500,h:170,sv:1},
+ sve42:{n:'Calefactor sin salida vidrio 4200 kcal/h · ref. Orbis 4044NO',g:'sq',l:'4200',i:'gas cal',eq:1,ar:1,w:530,h:173,sv:1},
  rad:{n:'Radiador',g:'sq',l:'RD',i:'cal'},cal:{n:'Caldera',g:'sq',l:'CA',i:'cal'}
 };
 const fitsFor=ins=>Object.keys(FITS).filter(k=>{const t=FITS[k].i;return t==='*'?(ins&&ins!=='elec'&&ins!=='dat'):(!ins||t.split(' ').includes(ins));});
@@ -1920,16 +1924,16 @@ function fitGlyph(ctx,f,x,y,S,k,C,selected,auto){
   else if((F.g==='sq')&&(f.w||F.w)){const hw=Math.max(r,(f.w||F.w)*S/2),hh=Math.max(r*.6,(f.h||F.h||f.w||F.w)*S/2);ctx.beginPath();ctx.rect(-hw,-hh,2*hw,2*hh);ctx.fill();ctx.stroke();ext=hh;if(F.fl){const rr=Math.max(3*k,(f.so||F.so||100)*S/2),sd=f.sd!=null?f.sd:0,sx=(f.sx||0)*S;let ox,oy,nx=0,ny=0;
     if(sd===0){ox=sx;oy=-hh;ny=-1;}else if(sd===1){ox=hw;oy=sx;nx=1;}else if(sd===2){ox=sx;oy=hh;ny=1;}else if(sd===3){ox=-hw;oy=sx;nx=-1;}else{ox=sx;oy=0;}
     if(F.fl==='tn'){const Ln=rr*1.8,cx=ox+nx*Ln/2,cy=oy+ny*Ln/2;ctx.beginPath();if(ny)ctx.rect(cx-rr*.8,cy-Ln/2,rr*1.6,Ln);else ctx.rect(cx-Ln/2,cy-rr*.8,Ln,rr*1.6);ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(ox,oy,rr*.8,0,7);ctx.stroke();}
-    else if(F.fl==='tu'){const q=rr*1.5,px=ny?q:0,py=ny?0:q;ctx.beginPath();ctx.moveTo(ox-px,oy-py);ctx.lineTo(ox+px,oy+py);ctx.stroke();[-1,1].forEach(g=>{ctx.beginPath();ctx.arc(ox+g*px,oy+g*py,rr*.7,0,7);ctx.fill();ctx.stroke();});}
+    else if(F.fl==='tu'){const q=Math.max(rr*1.5,Math.min(300,(f.w||F.w)*.4)*S/2),px=ny?q:0,py=ny?0:q;ctx.beginPath();ctx.moveTo(ox-px,oy-py);ctx.lineTo(ox+px,oy+py);ctx.stroke();[-1,1].forEach(g=>{ctx.beginPath();ctx.arc(ox+g*px,oy+g*py,rr*.7,0,7);ctx.fill();ctx.stroke();});}
     else{ctx.beginPath();ctx.arc(ox,oy,rr,0,7);ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(ox,oy,rr*.55,0,7);ctx.stroke();}}
   }
   else if(F.g==='sq'||F.g==='sqx'){ctx.beginPath();ctx.rect(-r,-r,2*r,2*r);ctx.fill();ctx.stroke();if(F.g==='sqx'){ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(r,r);ctx.moveTo(r,-r);ctx.lineTo(-r,r);ctx.stroke();}}
   else if(F.g==='big'){const hw=Math.max(1.5*r,(F.w||0)*S/2),hh=Math.max(r,(F.h||0)*S/2);ctx.beginPath();ctx.rect(-hw,-hh,2*hw,2*hh);ctx.fill();ctx.stroke();if(hw>8*k){ctx.lineWidth=.8*k;ctx.beginPath();ctx.rect(-hw+3*k,-hh+3*k,2*hw-6*k,2*hh-6*k);ctx.stroke();}}
   else if(F.g==='bow'){ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-r,-r*.8);ctx.lineTo(r,r*.8);ctx.lineTo(r,-r*.8);ctx.lineTo(-r,r*.8);ctx.closePath();ctx.fill();}
   else if(F.g==='tri'){ctx.beginPath();ctx.moveTo(0,-r);ctx.lineTo(r,r*.8);ctx.lineTo(-r,r*.8);ctx.closePath();ctx.fill();ctx.stroke();}
-  if(F.l&&F.g!=='bow'){ctx.rotate((f.ang&&!auto?f.ang:0)*Math.PI/180);ctx.fillStyle=col;ctx.font='700 '+(r*(F.l.length>2?.72:.95))+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(F.l,0,.5*k);}
+  if(F.l&&F.g!=='bow'){ctx.rotate((f.ang&&!auto?f.ang:0)*Math.PI/180);ctx.fillStyle=col;ctx.font='700 '+(r*(F.l.length>2?.72:.95))+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(F.l,0,(F.fl&&ext>r?ext*.45:0)+.5*k);}
   ctx.restore();
-  if(!auto&&(f.w||F.w)&&S>0.03&&(typeof PL==='undefined'||!PL.cfg||PL.cfg.mfit!==false)){ctx.save();ctx.fillStyle=col;ctx.font='600 '+(8.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='top';const W=f.w||F.w,H=f.h||F.h,so=F.fl?(f.so||F.so||100):0;ctx.fillText((F.g==='rc'?'Ø'+W:W+'×'+H)+(so?' · salida Ø'+so:''),x,y+ext+3*k);ctx.restore();}
+  if(!auto&&(f.w||F.w)&&S>0.03&&(typeof PL==='undefined'||!PL.cfg||PL.cfg.mfit!==false)){ctx.save();ctx.fillStyle=col;ctx.font='600 '+(8.5*k)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='top';const W=f.w||F.w,H=f.h||F.h,so=F.fl?(f.so||F.so||100):0;ctx.fillText((F.g==='rc'?'Ø'+W:W+'×'+H)+(so?' · salida '+(F.nd===2?'2×':'')+'Ø'+so:(F.sv?' · sin salida':'')),x,y+ext+3*k);ctx.restore();}
   if(f.dia&&!auto&&S>0.03){ctx.save();ctx.fillStyle=col;ctx.font='600 '+(9*k)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('Ø'+f.dia,x+r+3*k,y-r*.6);ctx.restore();}
 }
 function drawScene(ctx,sh,T,o){
@@ -4107,7 +4111,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 54 · 15/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 55 · 15/11/2026</p>');
   window.scrollTo(0,0);
 }
 
