@@ -1159,20 +1159,34 @@ function tramoList(shapes){
     out.push({i,id:I[3]+n,ins:s.ins,name:I[1],dia:s.dia||'',mat:s.mat||'',len:Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1])});});
   if(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.tt&&out.length){
     const NL=[],key=(ins,p)=>{for(let q=0;q<NL.length;q++){const z=NL[q];if(z[0]===ins&&Math.hypot(z[1]-p[0],z[2]-p[1])<=20)return q;}NL.push([ins,p[0],p[1]]);return NL.length-1;},deg={},par=out.map((_,j)=>j),fd=j=>par[j]===j?j:(par[j]=fd(par[j]));
-    out.forEach((o,j)=>{const s=shapes[o.i];[s.a,s.b].forEach(p=>{const k=key(o.ins,p);(deg[k]=deg[k]||[]).push(j);});});
+    const nd=[];out.forEach((o,j)=>{const s=shapes[o.i];nd[j]=[s.a,s.b].map(p=>{const k=key(o.ins,p);(deg[k]=deg[k]||[]).push(j);return k;});});
     Object.keys(deg).forEach(k=>{const L=deg[k];if(L.length===2&&L[0]!==L[1])par[fd(L[0])]=fd(L[1]);});
-    const pre=(PL.cfg.tp||'A').slice(0,2),num={},best={},minI={},adj={};let n=0;
+    const nameOf={},best={},minI={},adj={};
     out.forEach((o,j)=>{const r=fd(j);if(!(r in minI))minI[r]=j;adj[r]=adj[r]||new Set();});
     Object.keys(deg).forEach(k=>{const rs=[...new Set(deg[k].map(fd))];if(deg[k].length>=3)rs.forEach(a=>rs.forEach(b=>{if(a!==b)adj[a].add(b);}));});
     out.forEach((o,j)=>{const s=shapes[o.i];[s.a,s.b].forEach(P=>{out.forEach((o2,k)=>{if(k===j||o2.ins!==o.ins)return;const s2=shapes[o2.i];if(pdist(P,s2.a)<=20||pdist(P,s2.b)<=20)return;if(segDist(P,s2.a,s2.b)<=20){const a=fd(j),b=fd(k);if(a!==b){adj[a].add(b);adj[b].add(a);}}});});});
     const ORG={gas:['nig','med','reg'],agf:['mea','nia','med','tq'],elec:['pel','mel','tab'],clo:['cc','ci'],plu:['ci']};
+    const LT=q=>q<26?String.fromCharCode(65+q):String.fromCharCode(64+Math.floor(q/26))+String.fromCharCode(65+q%26);
+    const od=(j,k)=>{const s=shapes[out[j].i],fa=nd[j][0]===k,P=fa?s.a:s.b,Q=fa?s.b:s.a,d=Math.hypot(Q[0]-P[0],Q[1]-P[1])||1;return [(Q[0]-P[0])/d,(Q[1]-P[1])/d];};
+    const endsOf=r=>{const e=new Set();out.forEach((o,j)=>{if(fd(j)!==r)return;nd[j].forEach(k=>{if(deg[k].length!==2)e.add(k);});});return [...e];};
     INSTS.map(x=>x[0]).filter(Boolean).forEach(ins=>{
       const rs=Object.keys(minI).map(Number).filter(r=>out[r].ins===ins).sort((a,b)=>minI[a]-minI[b]);if(!rs.length)return;
-      let st=[];for(const kk of (ORG[ins]||[])){shapes.filter(q=>q.t==='fit'&&q.ins===ins&&q.k===kk&&!q.hide).forEach(q=>{const nr=[];let bj=-1,bd=800;out.forEach((o,j)=>{const s=shapes[o.i];if(o.ins!==ins)return;const d=segDist(q.p,s.a,s.b);if(d<=60)nr.push(fd(j));else if(d<bd){bd=d;bj=j;}});if(nr.length)st.push(...nr);else if(bj>=0)st.push(fd(bj));});if(st.length)break;}
-      const seen=new Set(),bfs=r0=>{const qq=[r0];seen.add(r0);while(qq.length){const r=qq.shift();num[r]=++n;[...adj[r]].filter(x=>!seen.has(x)).sort((a,b)=>minI[a]-minI[b]).forEach(x=>{seen.add(x);qq.push(x);});}};
-      [...new Set(st)].forEach(r0=>{if(!seen.has(r0))bfs(r0);});rs.forEach(r0=>{if(!seen.has(r0))bfs(r0);});
+      let st=[],npt=null;for(const kk of (ORG[ins]||[])){shapes.filter(q=>q.t==='fit'&&q.ins===ins&&q.k===kk&&!q.hide).forEach(q=>{const nr=[];let bj=-1,bd=800;out.forEach((o,j)=>{const s=shapes[o.i];if(o.ins!==ins)return;const d=segDist(q.p,s.a,s.b);if(d<=60)nr.push(fd(j));else if(d<bd){bd=d;bj=j;}});if(nr.length){st.push(...nr);npt=npt||q.p;}else if(bj>=0){st.push(fd(bj));npt=npt||q.p;}});if(st.length)break;}
+      let li=0;const seen=new Set(),run=(r0,entry)=>{
+        nameOf[r0]={L:LT(li++),n:1,entry};seen.add(r0);const qq=[r0];
+        while(qq.length){const g=qq.shift(),nm=nameOf[g];
+          endsOf(g).filter(m=>m!==nm.entry).forEach(m=>{
+            if(deg[m].length<3)return;const lj=deg[m].find(x=>fd(x)===g);if(lj===undefined)return;
+            const ar=od(lj,m),cont=[-ar[0],-ar[1]],nb=[...new Set(deg[m].map(fd))].filter(x=>x!==g&&!seen.has(x)).sort((a,b)=>minI[a]-minI[b]);
+            if(!nb.length)return;let ci=0,bd=-2;
+            nb.forEach((x,ix)=>{const jx=deg[m].find(y=>fd(y)===x),o2=od(jx,m),d=cont[0]*o2[0]+cont[1]*o2[1];if(d>bd+1e-9){bd=d;ci=ix;}});
+            nb.forEach((x,ix)=>{seen.add(x);nameOf[x]=ix===ci?{L:nm.L,n:nm.n+1,entry:m}:{L:LT(li++),n:1,entry:m};qq.push(x);});});}
+      };
+      const entryNear=(r,p)=>{const e=endsOf(r);if(!e.length)return null;if(!p)return e.find(k=>deg[k].length===1)??e[0];let b=e[0],bd=Infinity;e.forEach(k=>{const d=Math.hypot(NL[k][1]-p[0],NL[k][2]-p[1]);if(d<bd){bd=d;b=k;}});return b;};
+      [...new Set(st)].forEach(r0=>{if(!seen.has(r0))run(r0,entryNear(r0,npt));});
+      rs.forEach(r0=>{if(!seen.has(r0))run(r0,entryNear(r0,null));});
     });
-    out.forEach((o,j)=>{const r=fd(j);o.id=pre+num[r];o.g=r;if(!(r in best)||o.len>out[best[r]].len)best[r]=j;});
+    out.forEach((o,j)=>{const r=fd(j);const nm=nameOf[r]||{L:'A',n:1};o.id=((PL.cfg.tq||'').slice(0,2)||instOf(o.ins)[3]||'G')+nm.L+nm.n;o.g=r;if(!(r in best)||o.len>out[best[r]].len)best[r]=j;});
     out.forEach((o,j)=>{o.main=best[o.g]===j;});
   }
   const ord=INSTS.map(x=>x[0]);
@@ -1193,13 +1207,13 @@ function cutsFromTramos(shapes,ins){
   return tramoList(shapes).filter(t=>!ins||t.ins===ins).map(t=>Math.round(t.len)+' x 1 # '+t.id+' '+t.name+(t.dia?' Ø'+t.dia:'')+(t.mat?' '+t.mat:'')).join('\n');
 }
 function cutsTagged(text){
-  const o=[];String(text).split('\n').forEach((l,k)=>{const m=l.trim().match(/^([\d.,]+)\s*(?:[x×*]\s*(\d+))?\s*#\s*([A-Za-z]{1,2}\d+)\b/);if(m)o.push({k,len:parseFloat(m[1].replace(',','.')),id:m[3].toUpperCase()});});
+  const o=[];String(text).split('\n').forEach((l,k)=>{const m=l.trim().match(/^([\d.,]+)\s*(?:[x×*]\s*(\d+))?\s*#\s*([A-Za-z]{1,4}\d+)\b/);if(m)o.push({k,len:parseFloat(m[1].replace(',','.')),id:m[3].toUpperCase()});});
   return o;
 }
 /* Actualiza en el texto los largos de las líneas marcadas con el ID, tomándolos del plano */
 function cutsRefresh(text,shapes){
   const tl={};tramoList(shapes).forEach(t=>{tl[t.id.toUpperCase()]=t;});let n=0;
-  const lines=String(text).split('\n').map(l=>{const m=l.match(/^(\s*)([\d.,]+)(\s*(?:[x×*]\s*\d+)?\s*#\s*([A-Za-z]{1,2}\d+)\b.*)$/);if(!m)return l;const t=tl[m[4].toUpperCase()];if(!t)return l;
+  const lines=String(text).split('\n').map(l=>{const m=l.match(/^(\s*)([\d.,]+)(\s*(?:[x×*]\s*\d+)?\s*#\s*([A-Za-z]{1,4}\d+)\b.*)$/);if(!m)return l;const t=tl[m[4].toUpperCase()];if(!t)return l;
     const v=Math.round(t.len);if(v!==Math.round(parseFloat(m[2].replace(',','.')))){n++;return m[1]+v+m[3];}return l;});
   return {text:lines.join('\n'),n};
 }
@@ -2614,7 +2628,7 @@ function plAction(a){
   else if(a==='hz'){const v=window.prompt('Tamaño de la zona de toque, en píxeles (4 muy chica · 9 normal · 14 grande · 20 muy grande). Ahora: '+(PL.cfg.hz||9),String(PL.cfg.hz||9));const n=parseFloat(String(v||'').replace(',','.'));if(n>=3&&n<=40){PL.cfg.hz=Math.round(n);plSave();plMsg('Zona de toque: '+PL.cfg.hz+' px.');}}
   else if(a==='llv'){const e=document.getElementById('plFk');if(e&&[...e.options].some(o=>o.value==='llave')){e.value='llave';plSetMode('fit');plMsg('Tocá sobre la cañería donde va la llave de paso. Para otra llave (corte general, de artefacto) cambiá la pieza en la lista de abajo.');}else plMsg('Primero elegí una instalación con llaves: Gas, Agua fría, Agua caliente o Calefacción.');}
   else if(a==='cj'||a==='ap'){PL.cfg[a]=PL.cfg[a]===false;plSave();plFill();plDraw();}
-  else if(a==='tt'){if(!PL.cfg.tt){const p=window.prompt('Letra con que empiezan los tramos (ej: A). El número sube cada vez que una TEE divide la cañería.',PL.cfg.tp||'A');if(p===null)return;PL.cfg.tp=(p.trim().toUpperCase().replace(/[^A-Z]/g,'')||'A').slice(0,2);PL.cfg.tt=true;}else PL.cfg.tt=false;plSave();plFill();plDraw();}
+  else if(a==='tt'){if(!PL.cfg.tt){const p=window.prompt('Prefijo de los tramos (dejalo vacío para usar el de cada instalación: G en gas). Salen GA1, GA2… en la línea principal desde el nicho; al desviarse por una TEE el ramal pasa a GB1, GB2…, y así con cada desvío.',PL.cfg.tq||'');if(p===null)return;PL.cfg.tq=p.trim().toUpperCase().replace(/[^A-Z]/g,'').slice(0,2);PL.cfg.tt=true;}else PL.cfg.tt=false;plSave();plFill();plDraw();}
   else if(a==='rtl'){PL.cfg.rt=PL.cfg.rt===false;plSave();plFill();plDraw();}
   else if(a==='weld'){const r=plWeld(PL.shapes,Math.max(300,(PL.cfg.th||150)*2));if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos de paredes y aberturas.');}else plMsg('No encontré paredes ni aberturas sueltas para unir.');}
   else if(a==='weldl'){const r=lineWeld(PL.shapes,200);if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos y tees de cañerías.');}else plMsg('Las cañerías ya están unidas.');}
@@ -4011,7 +4025,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 47 · 15/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 48 · 15/11/2026</p>');
   window.scrollTo(0,0);
 }
 
@@ -4061,7 +4075,7 @@ function linkAct(k,quiet){
     const sh=linkShapes(v);if(!sh){linkMsg('Ese plano ya no existe.');return;}
     if(k==='cut-get'){
       const t=cutsFromTramos(sh);if(!t){linkMsg('Ese plano no tiene tramos de instalación. En Planos elegí una «Línea de instalación» y dibujá.');return;}
-      cp.value=cp.value.split('\n').filter(l=>l.trim()&&!/#\s*[A-Za-z]{1,2}\d+/.test(l)).concat(t.split('\n')).join('\n');
+      cp.value=cp.value.split('\n').filter(l=>l.trim()&&!/#\s*[A-Za-z]{1,4}\d+/.test(l)).concat(t.split('\n')).join('\n');
       cp.dispatchEvent(new Event('input',{bubbles:true}));linkMsg('Se trajeron '+t.split('\n').length+' tramos. Si cambiás un largo, se actualiza en el plano.');
     }else if(k==='cut-upd'){const r=cutsRefresh(cp.value,sh);cp.value=r.text;cp.dispatchEvent(new Event('input',{bubbles:true}));linkMsg(r.n?'Se actualizaron '+r.n+' medida(s) desde el plano.':'Ya coincide con el plano.');}
     else{const ch=linkWrite(v,cp.value);if(ch.length)linkMsg('Plano actualizado: '+ch.join(', ')+'. Abrí Planos para verlo.');else if(!quiet)linkMsg('No hay cambios para enviar.');}
