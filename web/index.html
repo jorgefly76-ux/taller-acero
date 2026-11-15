@@ -554,6 +554,22 @@ function sceneBounds(sh){
   return [Math.min(...b.map(x=>x[0])),Math.min(...b.map(x=>x[1])),Math.max(...b.map(x=>x[2])),Math.max(...b.map(x=>x[3]))];
 }
 function nbSize(s){const L=String(s.s).split('\n'),h=s.h||100;return [Math.max(...L.map(x=>x.length))*h*.62+h,L.length*h*1.25+h*.6];}
+const isEq=s=>!!(s&&s.t==='fit'&&FITS[s.k]&&FITS[s.k].eq);
+function eqMove(sh,i,dx,dy){
+  const f=sh[i],T=30,out=sh.slice(),mv=P=>[P[0]+dx,P[1]+dy];
+  sh.forEach((s,j)=>{if(s.t==='l'&&s.ins===f.ins){const a=pdist(s.a,f.p)<=T,b=pdist(s.b,f.p)<=T;if(a||b)out[j]=Object.assign({},s,a?{a:mv(s.a)}:{},b?{b:mv(s.b)}:{});}});
+  out[i]=moveShape(f,dx,dy);return out;
+}
+function pipeGroup(sh,i){
+  const f=sh[i],T=30,set=new Set([i]),nr=(p,q)=>pdist(p,q)<=T;let ch=true;
+  const hit=(s,m)=>{
+    if(s.t==='l'&&m.t==='l')return [s.a,s.b].some(P=>nr(P,m.a)||nr(P,m.b)||segDist(P,m.a,m.b)<=T)||[m.a,m.b].some(P=>segDist(P,s.a,s.b)<=T);
+    if(s.t==='l'&&m.t==='fit')return segDist(m.p,s.a,s.b)<=T;
+    if(s.t==='fit'&&m.t==='l')return segDist(s.p,m.a,m.b)<=T;
+    if(s.t==='fit'&&m.t==='fit')return nr(s.p,m.p);return false;};
+  while(ch){ch=false;sh.forEach((s,j)=>{if(set.has(j)||!(s.t==='l'||s.t==='fit')||s.ins!==f.ins)return;for(const k of set){if(hit(s,sh[k])){set.add(j);ch=true;break;}}});}
+  return set;
+}
 function moveShape(s,dx,dy){
   const o=JSON.parse(JSON.stringify(s));
   ['a','b','c','p'].forEach(k=>{if(o[k])o[k]=[o[k][0]+dx,o[k][1]+dy];});
@@ -579,6 +595,7 @@ function snapPoints(sh){
   sh.forEach(s=>{
     if(s.t==='l'||s.t==='w'||s.t==='dim'){o.push(s.a,s.b);}
     else if(s.t==='r'||s.t==='rj'||s.t==='cl'){o.push([s.a[0],s.a[1]],[s.b[0],s.a[1]],[s.b[0],s.b[1]],[s.a[0],s.b[1]]);}
+    else if(s.t==='fit'&&FITS[s.k]&&FITS[s.k].eq){o.push(s.p);}
     else if(s.t==='c'){o.push(s.c,[s.c[0]+s.r,s.c[1]],[s.c[0]-s.r,s.c[1]],[s.c[0],s.c[1]+s.r],[s.c[0],s.c[1]-s.r]);}
   });
   return o;
@@ -1096,8 +1113,17 @@ function tramoList(shapes){
     const key=(ins,p)=>ins+'@'+Math.round(p[0]/2)+','+Math.round(p[1]/2),deg={},par=out.map((_,j)=>j),fd=j=>par[j]===j?j:(par[j]=fd(par[j]));
     out.forEach((o,j)=>{const s=shapes[o.i];[s.a,s.b].forEach(p=>{const k=key(o.ins,p);(deg[k]=deg[k]||[]).push(j);});});
     Object.keys(deg).forEach(k=>{const L=deg[k];if(L.length===2&&L[0]!==L[1])par[fd(L[0])]=fd(L[1]);});
-    const pre=(PL.cfg.tp||'A').slice(0,2),num={},best={};let n=0;
-    out.forEach((o,j)=>{const r=fd(j);if(!num[r])num[r]=++n;o.id=pre+num[r];o.g=r;if(!(r in best)||o.len>out[best[r]].len)best[r]=j;});
+    const pre=(PL.cfg.tp||'A').slice(0,2),num={},best={},minI={},adj={};let n=0;
+    out.forEach((o,j)=>{const r=fd(j);if(!(r in minI))minI[r]=j;adj[r]=adj[r]||new Set();});
+    Object.keys(deg).forEach(k=>{const rs=[...new Set(deg[k].map(fd))];if(deg[k].length>=3)rs.forEach(a=>rs.forEach(b=>{if(a!==b)adj[a].add(b);}));});
+    const ORG={gas:['nig','med','reg'],agf:['mea','nia','med','tq'],elec:['pel','mel','tab'],clo:['cc','ci'],plu:['ci']};
+    INSTS.map(x=>x[0]).filter(Boolean).forEach(ins=>{
+      const rs=Object.keys(minI).map(Number).filter(r=>out[r].ins===ins).sort((a,b)=>minI[a]-minI[b]);if(!rs.length)return;
+      let st=[];for(const kk of (ORG[ins]||[])){shapes.filter(q=>q.t==='fit'&&q.ins===ins&&q.k===kk&&!q.hide).forEach(q=>{out.forEach((o,j)=>{const s=shapes[o.i];if(o.ins===ins&&segDist(q.p,s.a,s.b)<=60)st.push(fd(j));});});if(st.length)break;}
+      const seen=new Set(),bfs=r0=>{const qq=[r0];seen.add(r0);while(qq.length){const r=qq.shift();num[r]=++n;[...adj[r]].filter(x=>!seen.has(x)).sort((a,b)=>minI[a]-minI[b]).forEach(x=>{seen.add(x);qq.push(x);});}};
+      [...new Set(st)].forEach(r0=>{if(!seen.has(r0))bfs(r0);});rs.forEach(r0=>{if(!seen.has(r0))bfs(r0);});
+    });
+    out.forEach((o,j)=>{const r=fd(j);o.id=pre+num[r];o.g=r;if(!(r in best)||o.len>out[best[r]].len)best[r]=j;});
     out.forEach((o,j)=>{o.main=best[o.g]===j;});
   }
   const ord=INSTS.map(x=>x[0]);
@@ -1239,8 +1265,9 @@ const FITS={
  tab:{n:'Tablero',g:'sq',l:'TB',i:'elec'},tom:{n:'Tomacorriente',g:'tri',l:'',i:'elec'},itr:{n:'Interruptor',g:'circ',l:'i',i:'elec'},luz:{n:'Boca de luz',g:'circ',l:'L',i:'elec'},caj:{n:'Caja de paso',g:'sq',l:'CP',i:'elec dat'},jab:{n:'Jabalina',g:'circ',l:'PT',i:'elec'},
  bd:{n:'Boca de datos / TV',g:'tri',l:'D',i:'dat'},rack:{n:'Rack',g:'sq',l:'RK',i:'dat'},
  hid:{n:'Hidrante',g:'circ',l:'H',i:'inc'},roc:{n:'Rociador',g:'circ',l:'Ro',i:'inc'},mf:{n:'Matafuego',g:'tri',l:'MF',i:'inc'},
- crz:{n:'Cruz (cruce de 4 cañerías)',g:'circ',l:'+',i:'*'},nig:{n:'Nicho de gas',g:'big',l:'NG',i:'gas'},mea:{n:'Medidor de agua',g:'sq',l:'MA',i:'agf'},nia:{n:'Nicho de agua',g:'big',l:'NA',i:'agf'},
- pel:{n:'Pilar de electricidad',g:'big',l:'PE',i:'elec'},mel:{n:'Medidor eléctrico',g:'sq',l:'ME',i:'elec'},cc:{n:'Cámara de cloaca',g:'big',l:'CC',i:'clo'},
+ llg:{n:'Llave de corte general',g:'bow',l:'',i:'gas agf'},lla:{n:'Llave de artefacto',g:'bow',l:'',i:'gas'},
+ crz:{n:'Cruz (cruce de 4 cañerías)',g:'circ',l:'+',i:'*'},nig:{n:'Nicho de gas',g:'big',l:'NG',i:'gas',eq:1},mea:{n:'Medidor de agua',g:'sq',l:'MA',i:'agf',eq:1},nia:{n:'Nicho de agua',g:'big',l:'NA',i:'agf',eq:1},
+ pel:{n:'Pilar de electricidad',g:'big',l:'PE',i:'elec',eq:1},mel:{n:'Medidor eléctrico',g:'sq',l:'ME',i:'elec',eq:1},cc:{n:'Cámara de cloaca',g:'big',l:'CC',i:'clo',eq:1},
  rad:{n:'Radiador',g:'sq',l:'RD',i:'cal'},cal:{n:'Caldera',g:'sq',l:'CA',i:'cal'}
 };
 const fitsFor=ins=>Object.keys(FITS).filter(k=>{const t=FITS[k].i;return t==='*'?(ins&&ins!=='elec'&&ins!=='dat'):(!ins||t.split(' ').includes(ins));});
@@ -1248,6 +1275,7 @@ const fitName=(k)=>FITS[k]?FITS[k].n:k;
 /* Piezas que salen solas de los tramos: codos, tees y reducciones donde se unen las líneas de una misma instalación */
 function autoFits(sh){
   if(typeof PL!=='undefined'&&PL.cfg&&PL.cfg.ap===false)return [];
+  const TTR=typeof PL!=='undefined'&&PL.cfg&&!!PL.cfg.tt;
   const out=[],lines=sh.filter(s=>s.t==='l'&&s.ins&&!s.ls),tol=2;
   const key=(ins,p)=>ins+'|'+Math.round(p[0]/tol)+'|'+Math.round(p[1]/tol),nodes={};
   lines.forEach(L=>{[L.a,L.b].forEach((P,e)=>{const k=key(L.ins,P);(nodes[k]=nodes[k]||{ins:L.ins,p:P,ends:[]}).ends.push({L,P,o:e?L.a:L.b});});});
@@ -1259,8 +1287,8 @@ function autoFits(sh){
     const n=nd.ends.length,m=through.length;
     if(n===2&&m===0){
       let d=Math.abs(dirs[0]-dirs[1])*180/Math.PI;d=d>180?360-d:d;const turn=180-d;
-      if(turn<8){if(dset.length>1)add('red');}
-      else{add(turn>=35&&turn<=55?'c45':turn>=80&&turn<=100?'c90':'cx',{ang:Math.round(turn)});if(dset.length>1)add('red');}
+      if(turn<8){if(dset.length>1&&!TTR)add('red');}
+      else{add(turn>=35&&turn<=55?'c45':turn>=80&&turn<=100?'c90':'cx',{ang:Math.round(turn)});if(dset.length>1&&!TTR)add('red');}
     }else if(n===1&&m===1){
       const T=through[0],td=Math.atan2(T.b[1]-T.a[1],T.b[0]-T.a[0]);let d=Math.abs(dirs[0]-td)*180/Math.PI;d%=180;const br=d>90?180-d:d;
       add((nd.ins==='clo'||nd.ins==='plu')&&br>=35&&br<=55?'y45':'tee');if(dset.length>1)add('red');
@@ -2281,8 +2309,8 @@ function plDown(ev){
   if(['sel','ver'].includes(m)||!PL.draft){const h=plLblHit(px);if(h){PL.dn=null;PL.drag=null;plLpCancel();if(h.rm){plEditRoom(h.rm);return;}PL.sel=h.i;plFill();plDraw();plEditMeasures(h.k);return;}}
   if(m==='ver'){PL.drag={pan:true,px,v:Object.assign({},PL.view)};return;}
   if(m==='sel'){
-    const i=plPick(px,true);if(PL.cfg.gm&&i>=0&&plStructBase(i)>=0)PL.grp=wallGroup(PL.shapes,plStructBase(i));else if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
-    if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null,grp:PL.grp&&PL.grp.has(i)?JSON.parse(JSON.stringify(PL.shapes)):null,gs:PL.grp};
+    const i=plPick(px,true);if(PL.cfg.gm&&i>=0&&plStructBase(i)>=0)PL.grp=wallGroup(PL.shapes,plStructBase(i));else if(PL.cfg.gm&&i>=0&&isEq(PL.shapes[i]))PL.grp=pipeGroup(PL.shapes,i);else if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
+    if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null,grp:PL.grp&&PL.grp.has(i)?JSON.parse(JSON.stringify(PL.shapes)):null,gs:PL.grp,eqb:isEq(PL.shapes[i])&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null};
     else PL.drag={pan:true,px,v:Object.assign({},PL.view)};
     plDraw();return;
   }
@@ -2321,6 +2349,7 @@ function plMove(ev){
       if(ws){if(!dr.pushed){plPush();dr.pushed=true;}PL.shapes[dr.i]=Object.assign({},dr.orig,{p:ws.p,ang:ws.ang,th:dr.orig.tm?dr.orig.th:ws.th});plDraw();return;}
     }
     if(dr.base){const dd=wallConstrain(dr.base,dr.i,[dx,dy],PL.cfg.ortho);if(!dr.pushed&&(dd[0]||dd[1])){plPush();dr.pushed=true;}PL.shapes=wallMoveLinked(dr.base,dr.i,dd,dd);plDraw();return;}
+    if(dr.eqb){PL.shapes=eqMove(dr.eqb,dr.i,dx,dy);plDraw();return;}
     PL.shapes[dr.i]=moveShape(dr.orig,dx,dy);plDraw();return;
   }
   const dn=PL.dn;
@@ -2401,7 +2430,8 @@ function plUp(ev){
     let pt=q.p,ang=0,ins=PL.cfg.ins||'';
     if(best&&bd<=tol){const dx=best.b[0]-best.a[0],dy=best.b[1]-best.a[1],l2=dx*dx+dy*dy||1,t=Math.max(0,Math.min(1,((wp[0]-best.a[0])*dx+(wp[1]-best.a[1])*dy)/l2));pt=[best.a[0]+t*dx,best.a[1]+t*dy];ang=Math.round(Math.atan2(dy,dx)*180/Math.PI);ins=best.ins;}
     {let bn=null,bnd=tol;PL.shapes.forEach(z=>{if(z.t==='l'&&z.ins&&(!PL.cfg.ins||z.ins===PL.cfg.ins))[z.a,z.b].forEach(P=>{const d=pdist(wp,P);if(d<bnd){bnd=d;bn=P;}});});if(bn)pt=[bn[0],bn[1]];}
-    const o={t:'fit',k:PL.cfg.fk&&FITS[PL.cfg.fk]?PL.cfg.fk:'c90',ins,p:pt,ang};if(PL.cfg.dia)o.dia=PL.cfg.dia;plAdd(o,pt);return;
+    const fk0=PL.cfg.fk&&FITS[PL.cfg.fk]?PL.cfg.fk:'c90';if(FITS[fk0].eq){pt=q.p;ang=0;const ii=FITS[fk0].i.split(' ');ins=ii.includes(PL.cfg.ins)?PL.cfg.ins:ii[0];}
+    const o={t:'fit',k:fk0,ins,p:pt,ang};if(PL.cfg.dia)o.dia=PL.cfg.dia;plAdd(o,pt);return;
   }
   if(m==='it'){
     const q=plSnap(px,ev,null);plAdd({t:'it',k:PL.cfg.ik,p:q.p,w:PL.cfg.iw,h:PL.cfg.ih,ang:0},q.p);return;
@@ -2481,7 +2511,8 @@ function plNudge(dx,dy,step){
     plPush();PL.shapes=wallMoveLinked(PL.shapes,PL.sel,dd,dd);
   }else if(s.t==='door'||s.t==='win'){
     const r=(s.ang||0)*Math.PI/180,m=dx*Math.cos(r)+dy*Math.sin(r);plPush();PL.shapes[PL.sel]=Object.assign({},s,{p:[Math.round(s.p[0]+m*Math.cos(r)),Math.round(s.p[1]+m*Math.sin(r))]});
-  }else{plPush();PL.shapes[PL.sel]=moveShape(s,dx,dy);}
+  }else if(isEq(s)){plPush();PL.shapes=eqMove(PL.shapes,PL.sel,dx,dy);}
+  else{plPush();PL.shapes[PL.sel]=moveShape(s,dx,dy);}
   plChanged();
 }
 function plAction(a){
@@ -2494,6 +2525,9 @@ function plAction(a){
   else if(a==='unlockg'&&PL.ul>=0){const q=PL.shapes[PL.ul];if(q){const b=plStructBase(PL.ul),g=b>=0?wallGroup(PL.shapes,b,true):new Set([PL.ul]);plPush();let n=0;g.forEach(i=>{const z=PL.shapes[i];if(z&&z.lk===1){delete z.lk;n++;}});if(!n&&q.lk===1){delete q.lk;n=1;}PL.ul=-1;plChanged();plMsg('Estructura desbloqueada ('+n+' piezas).');}}
   else if(a==='rd'){PL.cfg.rd=!(PL.cfg.rd!==false);plSave();plFill();plDraw();}
   else if(a==='ct'){PL.cfg.ct=!PL.cfg.ct;plSave();plFill();plDraw();}
+  else if(a==='eq'){const r=document.getElementById('plEq').getBoundingClientRect();
+    plMenuShow(Object.keys(FITS).filter(k=>FITS[k].eq).map(k=>[FITS[k].n+'  ('+instOf(FITS[k].i.split(' ')[0])[1]+')',()=>{const ins=FITS[k].i.split(' ')[0];PL.cfg.ins=ins;plFitSync(ins);const e=document.getElementById('plFk');if(e)e.value=k;plSetMode('fit');plMsg('Tocá en el plano donde va. Queda suelto: después trazá la cañería desde su centro y, al moverlo, las cañerías conectadas lo siguen. Con «Mover conjunto» se mueve todo el trazado junto.');}]),r.left,r.bottom);}
+  else if(a==='llv'){const e=document.getElementById('plFk');if(e&&[...e.options].some(o=>o.value==='llave')){e.value='llave';plSetMode('fit');plMsg('Tocá sobre la cañería donde va la llave de paso. Para otra llave (corte general, de artefacto) cambiá la pieza en la lista de abajo.');}else plMsg('Primero elegí una instalación con llaves: Gas, Agua fría, Agua caliente o Calefacción.');}
   else if(a==='cj'||a==='ap'){PL.cfg[a]=PL.cfg[a]===false;plSave();plFill();plDraw();}
   else if(a==='tt'){if(!PL.cfg.tt){const p=window.prompt('Letra con que empiezan los tramos (ej: A). El número sube cada vez que una TEE divide la cañería.',PL.cfg.tp||'A');if(p===null)return;PL.cfg.tp=(p.trim().toUpperCase().replace(/[^A-Z]/g,'')||'A').slice(0,2);PL.cfg.tt=true;}else PL.cfg.tt=false;plSave();plFill();plDraw();}
   else if(a==='rtl'){PL.cfg.rt=PL.cfg.rt===false;plSave();plFill();plDraw();}
@@ -3763,7 +3797,7 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
   <div class="form" style="margin:6px 0 0"><label class="f full" for="plFk"><span>Pieza a colocar con la herramienta «Pieza» (según la instalación elegida)</span><div class="in"><select id="plFk">${fitsFor('').map(q=>`<option value="${q}">${FITS[q].n}</option>`).join('')}</select></div></label><label class="f" for="plDi"><span>Diámetro o sección de las líneas y piezas nuevas</span><div class="in"><input id="plDi" type="text" list="plDiL" autocomplete="off" placeholder="Ej.: 3/4 · Ø110 · 2,5 mm²"><datalist id="plDiL"></datalist></div></label><label class="f" for="plMa"><span>Material de las líneas nuevas</span><div class="in"><input id="plMa" type="text" list="plMaL" autocomplete="off" placeholder="Ej.: epoxi · termofusión · PVC · cobre"><datalist id="plMaL"></datalist></div></label><label class="f full" for="plCv"><span>Recubrimiento o protección (opcional)</span><div class="in"><input id="plCv" type="text" list="plCvL" autocomplete="off" placeholder="Ej.: Metpol · cinta anticorrosiva · coquilla"><datalist id="plCvL">${COVERS.map(x=>`<option value="${x}">`).join('')}</datalist></div></label></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plCj" data-a="cj" aria-pressed="true">Unir cañerías al cruzar</button><button type="button" class="pb" id="plAp" data-a="ap" aria-pressed="true">Piezas automáticas</button><button type="button" class="pb" id="plTt" data-a="tt" aria-pressed="false">Tramos por TEE (A1, A2…)</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plEq" data-a="eq">Poner nicho / pilar / cámara</button><button type="button" class="pb" id="plLlv" data-a="llv">Poner llave de paso</button><button type="button" class="pb" id="plCj" data-a="cj" aria-pressed="true">Unir cañerías al cruzar</button><button type="button" class="pb" id="plAp" data-a="ap" aria-pressed="true">Piezas automáticas</button><button type="button" class="pb" id="plTt" data-a="tt" aria-pressed="false">Tramos por TEE (A1, A2…)</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
@@ -3890,7 +3924,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 40 · 14/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 42 · 14/11/2026</p>');
   window.scrollTo(0,0);
 }
 
@@ -3946,13 +3980,13 @@ function linkAct(k,quiet){
     else{const ch=linkWrite(v,cp.value);if(ch.length)linkMsg('Plano actualizado: '+ch.join(', ')+'. Abrí Planos para verlo.');else if(!quiet)linkMsg('No hay cambios para enviar.');}
   }else if(k==='gas-get'){
     const v=V('gly'),gt=g('gt');if(!v||!gt){linkMsg('Elegí primero un plano.','gMsg');return;}
-    const tl=tramoList(linkShapes(v)||[]).filter(t=>t.ins==='gas');
+    const tl=(()=>{const m=new Map();tramoList(linkShapes(v)||[]).filter(t=>t.ins==='gas').forEach(z=>{const q=m.get(z.id);if(q)q.len+=z.len;else m.set(z.id,Object.assign({},z));});return [...m.values()];})();
     if(!tl.length){linkMsg('Ese plano no tiene tramos de gas. En Planos elegí la línea de instalación «Gas» y dibujá.','gMsg');return;}
     gt.value=tl.map(t=>t.id+' ; '+String(Math.round(t.len/10)/100).replace('.',',')+' ; ').join('\n');gt.dispatchEvent(new Event('input',{bubbles:true}));
     linkMsg('Se trajeron '+tl.length+' tramos. Poné el consumo de cada uno y ordenalos del medidor al artefacto más lejano.','gMsg');
   }else if(k==='gas-send'){
     const v=V('gly');if(!v||!window.GASLAST){linkMsg('Elegí un plano y calculá primero.','gMsg');return;}
-    const ch=linkSetDia(v,window.GASLAST);linkMsg(ch.length?'Diámetros enviados al plano: '+ch.join(', ')+'.':'No hay tramos del plano con esos nombres (G1, G2…).','gMsg');
+    const ch=linkSetDia(v,window.GASLAST);linkMsg(ch.length?'Diámetros enviados al plano: '+ch.join(', ')+'.':'No hay tramos del plano con esos nombres (G1, G2… o A1, A2…).','gMsg');
   }else if(k==='obra-get'){
     const v=V('oly'),os=g('os');if(!v||!os){linkMsg('Elegí primero un plano.','oMsg');return;}
     const sh=linkShapes(v)||[],d=store('plano-d'),t=surfFromShapes(sh,(d.cfg&&d.cfg.mh)||2600);
