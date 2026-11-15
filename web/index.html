@@ -607,6 +607,16 @@ function lineWeld(sh,tol){
     s[e]=q.slice();out.splice(k,1,Object.assign({},o,{b:q.slice()}),Object.assign({},o,{a:q.slice()}));n++;}
   return {shapes:out,n};
 }
+/* Extremos de cañería que no están conectados a nada: ni a otra cañería, ni a una pieza, ni a un artefacto/equipo */
+function looseEnds(sh){
+  const out=[],T=20,pipes=[];
+  sh.forEach((s,i)=>{if(s.t==='l'&&s.ins&&!s.ls)pipes.push(i);});
+  pipes.forEach(i=>{const s=sh[i];['a','b'].forEach(e=>{const P=s[e];let ok=false;
+    for(const k of pipes){if(k===i)continue;const o=sh[k];if(o.ins!==s.ins)continue;if(pdist(P,o.a)<=T||pdist(P,o.b)<=T||segDist(P,o.a,o.b)<=T){ok=true;break;}}
+    if(!ok)for(const f of sh){if(f.t!=='fit'||f.hide||(f.ins&&f.ins!==s.ins))continue;if(isEq(f)?eqDist(f,P,30)===0:pdist(P,f.p)<=40){ok=true;break;}}
+    if(!ok)out.push({p:P,ins:s.ins,i});});});
+  return out;
+}
 const FF=s=>({f:'Georgia, "Times New Roman", serif',m:'"Courier New", monospace',c:'"Segoe Print","Comic Sans MS",cursive'})[s&&s.fn]||'sans-serif';
 const isTx=s=>!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'||s.t==='mk'||s.t==='tb');
 /* Las piezas (llaves, codos, tees…) siempre quedan sobre una cañería de su instalación: busca el punto más cercano */
@@ -640,6 +650,22 @@ function eqMove(sh,i,dx,dy){
   sh.forEach((s,j)=>{if(s.t==='l'&&s.ins===f.ins&&!s.ls){const a=eqOwner(sh,s.ins,s.a,T,R)===i,b=eqOwner(sh,s.ins,s.b,T,R)===i;if(a||b)out[j]=Object.assign({},s,a?{a:mv(s.a)}:{},b?{b:mv(s.b)}:{});}});
   out[i]=moveShape(f,dx,dy);return out;
 }
+/* Piezas que van en un vértice (codos, tees, reducciones, cruces): al arrastrarlas se mueve el vértice y las cañerías se estiran con él */
+const NODAL=['c90','c45','cx','tee','y45','red','crz','cu90'];
+function nodeAt(sh,i){
+  const f=sh[i];if(!f||f.t!=='fit'||!NODAL.includes(f.k)||isEq(f))return false;
+  return sh.some(s=>s.t==='l'&&s.ins===f.ins&&!s.ls&&(pdist(s.a,f.p)<=20||pdist(s.b,f.p)<=20));
+}
+function nodeMove(sh,i,dx,dy){
+  const f=sh[i],T=20,out=sh.slice(),mv=P=>[P[0]+dx,P[1]+dy],lines=[];
+  sh.forEach((s,j)=>{if(s.t==='l'&&s.ins===f.ins&&!s.ls){const a=pdist(s.a,f.p)<=T,b=pdist(s.b,f.p)<=T;if(a||b){out[j]=Object.assign({},s,a?{a:mv(s.a)}:{},b?{b:mv(s.b)}:{});lines.push(j);}}});
+  sh.forEach((g,k)=>{if(k===i||g.t!=='fit'||isEq(g)||g.ins!==f.ins)return;
+    if(pdist(g.p,f.p)<=T){out[k]=Object.assign({},g,{p:mv(g.p)});return;}
+    for(const j of lines){const o=sh[j],n=out[j];if(segDist(g.p,o.a,o.b)>T)continue;
+      const ox=o.b[0]-o.a[0],oy=o.b[1]-o.a[1],l2=ox*ox+oy*oy||1,u=Math.max(0,Math.min(1,((g.p[0]-o.a[0])*ox+(g.p[1]-o.a[1])*oy)/l2)),ex=n.b[0]-n.a[0],ey=n.b[1]-n.a[1];
+      out[k]=Object.assign({},g,{p:[n.a[0]+ex*u,n.a[1]+ey*u],ang:Math.round(Math.atan2(ey,ex)*180/Math.PI)});break;}});
+  out[i]=moveShape(f,dx,dy);return out;
+}
 function pipeGroup(sh,i){
   const f=sh[i],T=30,set=new Set([i]),nr=(p,q)=>pdist(p,q)<=T;let ch=true;
   const hit=(s,m)=>{
@@ -664,7 +690,7 @@ function hitDist(s,p){
   if(s.t==='c')return Math.abs(pdist(p,s.c)-s.r);
   if(s.t==='tx'||s.t==='nb'||s.t==='mk'||s.t==='tb'){const b=shapeBounds(s);const dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.hypot(dx,dy);}
   if(s.t==='door'||s.t==='win')return Math.max(0,pdist(p,s.p)-s.wd/2);
-  if(s.t==='fit'){if(s.hide)return Infinity;const F=FITS[s.k],w=s.w||(F&&F.w),h=s.h||(F&&F.h),r=w?Math.max(60,Math.min(w,h||w)/2):60;return Math.max(0,pdist(p,s.p)-r);}
+  if(s.t==='fit'){if(s.hide)return Infinity;const F=FITS[s.k],w=s.w||(F&&F.w),h=s.h||(F&&F.h),sc=(typeof PL!=='undefined'&&PL.view&&PL.view.s)||.1,r=w?Math.max(60,Math.min(w,h||w)/2):Math.min(60,5/sc);return Math.max(0,pdist(p,s.p)-r);}
   if(s.t==='an'){const b=shapeBounds({t:'tx',p:s.p,s:s.s,h:s.h}),dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.min(Math.hypot(dx,dy),segDist(p,s.a,s.p));}
   if(s.t==='it'){const r=-(s.ang||0)*Math.PI/180,dx=p[0]-s.p[0],dy=p[1]-s.p[1],lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r),ex=Math.max(Math.abs(lx)-s.w/2,0),ey=Math.max(Math.abs(ly)-s.h/2,0);return ex===0&&ey===0?2:Math.hypot(ex,ey);}
   return Infinity;
@@ -1227,9 +1253,12 @@ function tramoList(shapes){
   out.sort((a,b)=>(ord.indexOf(a.ins)-ord.indexOf(b.ins))||(a.id.localeCompare(b.id,'es',{numeric:true})));
   return out;
 }
+/* Conexión flexible de artefacto: largo máximo permitido por la distribuidora (Camuzzi): 50 cm, aunque el kit traiga 1 m */
+const FLEX_MAX=500;
+const flexOver=sh=>sh.filter(s=>s.t==='l'&&s.ins==='gas'&&/flexible/i.test(s.mat||'')&&Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1])>FLEX_MAX+1);
 function planilla(shapes){
   const g={};
-  tramoList(shapes).forEach(t=>{const k=t.ins+'|'+t.dia+'|'+t.mat;(g[k]=g[k]||{ins:t.ins,name:t.name,dia:t.dia,mat:t.mat,n:0,len:0});g[k].n++;g[k].len+=t.len;});
+  tramoList(shapes).forEach(t=>{if(t.ins==='gas'&&/flexible/i.test(t.mat||'')&&t.len>FLEX_MAX+1)t={...t,mat:t.mat+' ⚠ SUPERA '+(FLEX_MAX/10)+' cm'};const k=t.ins+'|'+t.dia+'|'+t.mat;(g[k]=g[k]||{ins:t.ins,name:t.name,dia:t.dia,mat:t.mat,n:0,len:0});g[k].n++;g[k].len+=t.len;});
   return Object.keys(g).map(k=>g[k]);
 }
 function tramoSetLength(s,len){
@@ -1383,12 +1412,12 @@ function planGasCalc(sh,matk){
   const dep=r=>{let n=0,g=G[r];while(g&&g.pg!==undefined&&G[g.pg]){n++;g=G[g.pg];}return n;};
   Object.keys(best).sort((a,b)=>dep(b)-dep(a)).forEach(r=>{const pg=G[r].pg;if(pg!==undefined&&best[pg]&&best[r].di>best[pg].di)best[pg]=best[r];});
   const map={},idx={};Object.keys(best).forEach(r=>{map[G[r].id.toUpperCase()]=best[r].lab.replace(/"/g,'”');});
-  tl.forEach(x=>{if(best[x.g])idx[x.i]=best[x.g].lab.replace(/"/g,'”');});
+  tl.forEach(x=>{if(best[x.g]&&!/flexible/i.test(x.mat||''))idx[x.i]=best[x.g].lab.replace(/"/g,'”');});
   return {map,idx,rows:Object.keys(best).map(r=>Object.assign({id:G[r].id},best[r])).sort((a,b)=>a.id.localeCompare(b.id,'es',{numeric:true})),unc,ok,mat};
 }
 function diaApply(shapes,map){
   const tl=tramoList(shapes),out=shapes.slice(),ch=[];
-  tl.forEach(t=>{const v=map[t.id.toUpperCase()];if(v&&out[t.i].dia!==v){out[t.i]=Object.assign({},out[t.i],{dia:v});ch.push(t.id);}});
+  tl.forEach(t=>{const v=map[t.id.toUpperCase()];if(v&&!/flexible/i.test(out[t.i].mat||'')&&out[t.i].dia!==v){out[t.i]=Object.assign({},out[t.i],{dia:v});ch.push(t.id);}});
   return {shapes:out,changed:ch};
 }
 /* ---- Piezas de las instalaciones (tee, codos, reducciones, llaves, piletas…) ---- */
@@ -1450,9 +1479,12 @@ const FITS={
  bu5:{n:'Buje de reducción 1 × 3/4 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1',d2:'3/4'},bu6:{n:'Buje de reducción 1 1/4 × 1 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1 1/4',d2:'1'},
  bu7:{n:'Buje de reducción 1 1/4 × 3/4 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1 1/4',d2:'3/4'},bu8:{n:'Buje de reducción 1 1/2 × 1 1/4 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1 1/2',d2:'1 1/4'},
  bu9:{n:'Buje de reducción 1 1/2 × 1 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'1 1/2',d2:'1'},bu10:{n:'Buje de reducción 2 × 1 1/2 (macho-hembra)',g:'circ',l:'R',i:'gas cal',d1:'2',d2:'1 1/2'},
- fca4:{n:'Flexible semirrígido de aluminio con virolas · 1/2 · 40 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'1/2'},fca5:{n:'Flexible semirrígido de aluminio con virolas · 1/2 · 50 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'1/2'},fca6:{n:'Flexible semirrígido de aluminio con virolas · 1/2 · 60 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'1/2'},
+ fca4:{n:'Flexible semirrígido de aluminio con virolas · 3/8 · 40 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'3/8'},fca5:{n:'Flexible semirrígido de aluminio con virolas · 3/8 · 50 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'3/8'},fca6:{n:'Flexible semirrígido de aluminio con virolas · 3/8 · 60 cm (calefactor)',g:'circ',l:'FA',i:'gas cal',d1:'3/8'},
  fcc4:{n:'Flexible semirrígido de cobre con virolas · 1/2 · 40 cm (calefactor)',g:'circ',l:'FC',i:'gas cal',d1:'1/2'},fcc5:{n:'Flexible semirrígido de cobre con virolas · 1/2 · 50 cm (calefactor)',g:'circ',l:'FC',i:'gas cal',d1:'1/2'},fcc6:{n:'Flexible semirrígido de cobre con virolas · 1/2 · 60 cm (calefactor)',g:'circ',l:'FC',i:'gas cal',d1:'1/2'},
- fcm:{n:'Flexible de acero inoxidable malla trenzada con tuercas · 1/2 (calefactor / cocina)',g:'circ',l:'FX',i:'gas cal',d1:'1/2'},fcv:{n:'Virola / oliva de aluminio (repuesto)',g:'circ',l:'v',i:'gas cal',d1:'1/2'},
+ fcm:{n:'Flexible de acero inoxidable malla trenzada con tuercas · 1/2 (calefactor / cocina)',g:'circ',l:'FX',i:'gas cal',d1:'1/2'},fcv:{n:'Virola de aluminio para caño 3/8',g:'circ',l:'v',i:'gas cal',d1:'3/8'},
+ kca:{n:'Kit de conexión de artefacto (calefactor / termotanque): reducción macho 1/2 a 1/8 + 2 tuercas de bronce 1/4 + 2 virolas de aluminio p/ caño 3/8 + caño de aluminio 3/8 de 1 m',g:'circ',l:'KC',i:'gas cal',d1:'3/8'},
+ tbr:{n:'Tuerca de ajuste de bronce 1/4 para virola',g:'circ',l:'tu',i:'gas cal',d1:'1/4'},cmb:{n:'Reducción macho 1/2 a 1/8 (bronce)',g:'circ',l:'R',i:'gas cal',d1:'1/2',d2:'1/8'},
+ cal1:{n:'Caño de aluminio flexible 3/8 · 1 metro (conexión de artefacto)',g:'circ',l:'FA',i:'gas cal',d1:'3/8'},
  tbp25:{n:'Calefactor tiro balanceado 2500 kcal/h · ref. Orbis 4124MO',g:'sq',l:'2500',i:'gas cal',eq:1,ar:1,w:350,h:164,fl:'tb',so:153},
  tbp38:{n:'Calefactor tiro balanceado 3800 kcal/h · ref. Orbis 4144MO',g:'sq',l:'3800',i:'gas cal',eq:1,ar:1,w:500,h:170,fl:'tb',so:153},
  tbp50:{n:'Calefactor tiro balanceado 5000 kcal/h · ref. Orbis 4164MO',g:'sq',l:'5000',i:'gas cal',eq:1,ar:1,w:700,h:180,fl:'tb',so:175},
@@ -2457,6 +2489,9 @@ function plDraw(){
     const a=PL.draft.a,b=PL.draft.cur,txt=(PL.mode==='r'||PL.mode==='wr')?dimTxt(Math.abs(b[0]-a[0]),PL.cfg.unit)+' × '+dimTxt(Math.abs(b[1]-a[1]),PL.cfg.unit):(PL.mode==='c'||PL.mode==='wc')?'Ø '+dimTxt(2*pdist(a,b),PL.cfg.unit):dimTxt(pdist(a,b),PL.cfg.unit)+'  '+Math.round(((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)+360)%360)+'°';
     ctx.font='600 13px sans-serif';ctx.fillStyle=C.accent;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(txt,8,8);
   }
+  {const fo=flexOver(PL.shapes);if(fo.length){ctx.save();ctx.lineWidth=4;ctx.strokeStyle='#ff8c00';ctx.setLineDash([8,6]);fo.forEach(q=>{ctx.beginPath();ctx.moveTo(V0.x0+q.a[0]*V0.s,V0.y0-q.a[1]*V0.s);ctx.lineTo(V0.x0+q.b[0]*V0.s,V0.y0-q.b[1]*V0.s);ctx.stroke();});ctx.restore();}}
+  if(PL.cfg.ls){const le=looseEnds(PL.shapes);ctx.save();ctx.lineWidth=2.5;ctx.strokeStyle='#e0191b';ctx.fillStyle='rgba(224,25,27,.18)';
+    le.forEach(q=>{const x=V0.x0+q.p[0]*V0.s,y=V0.y0-q.p[1]*V0.s;ctx.beginPath();ctx.arc(x,y,13,0,7);ctx.fill();ctx.stroke();});ctx.restore();}
   if(PL.hover){const q=PL.hover;ctx.strokeStyle=C.accent;ctx.lineWidth=1.6;ctx.strokeRect(V0.x0+q.p[0]*V0.s-4,V0.y0-q.p[1]*V0.s-4,8,8);}
   if(PL.cal&&PL.cal.pts.length){ctx.strokeStyle='#d32f2f';ctx.lineWidth=2;PL.cal.pts.forEach(q=>{const x=V0.x0+q[0]*V0.s,y=V0.y0-q[1]*V0.s;ctx.beginPath();ctx.moveTo(x-9,y);ctx.lineTo(x+9,y);ctx.moveTo(x,y-9);ctx.lineTo(x,y+9);ctx.stroke();});}
   if(PL.draft&&PL.draft.cur){
@@ -2524,7 +2559,7 @@ function plPick(px,conv){
   /* Piezas (a mano o automáticas): ganan los empates y, si hay varias juntas, se alterna entre ellas. Una automática se vuelve editable al elegirla. */
   const fc=[];
   PL.shapes.forEach((s,i)=>{if(s.t==='fit'&&!s.lk&&!s.hide){const d=hitDist(s,wp);if(d<=tol)fc.push({i,d});}});
-  if(conv)autoFits(PL.shapes).forEach(f=>{const d=Math.max(0,pdist(wp,f.p)-60);if(d<=tol)fc.push({f,d});});
+  if(conv)autoFits(PL.shapes).forEach(f=>{const d=Math.max(0,pdist(wp,f.p)-Math.min(60,5/PL.view.s));if(d<=tol)fc.push({f,d});});
   if(fc.length){const m=Math.min(...fc.map(c=>c.d)),g=fc.filter(c=>c.d<=m+.5);
     if(m<=bd+.5){let c=g[0];if(g.length>1){const at=g.findIndex(x=>x.i===PL.sel);if(at>=0)c=g[(at+1)%g.length];}
       if(c.f){const f=c.f,n={t:'fit',k:f.k,ins:f.ins||'',p:[f.p[0],f.p[1]],ang:0,ov:f.k};if(f.dia)n.dia=f.dia;if(f.dia2)n.dia2=f.dia2;plPush();PL.shapes.push(n);return PL.shapes.length-1;}
@@ -2543,8 +2578,8 @@ function plDown(ev){
   if(['sel','ver'].includes(m)||!PL.draft){const h=plLblHit(px);if(h){PL.dn=null;PL.drag=null;plLpCancel();if(h.rm){plEditRoom(h.rm);return;}PL.sel=h.i;plFill();plDraw();plEditMeasures(h.k);return;}}
   if(m==='ver'){PL.drag={pan:true,px,v:Object.assign({},PL.view)};return;}
   if(m==='sel'){
-    const i=plPick(px,true);if(PL.cfg.gm&&i>=0&&plStructBase(i)>=0)PL.grp=wallGroup(PL.shapes,plStructBase(i));else if(PL.cfg.gm&&i>=0&&isEq(PL.shapes[i]))PL.grp=pipeGroup(PL.shapes,i);else if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
-    if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null,grp:PL.grp&&PL.grp.has(i)?JSON.parse(JSON.stringify(PL.shapes)):null,gs:PL.grp,eqb:isEq(PL.shapes[i])&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null,lb:PL.shapes[i].t==='l'&&PL.shapes[i].ins&&!PL.shapes[i].ls&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null};
+    const i=plPick(px,true);if(PL.cfg.gm&&i>=0&&plStructBase(i)>=0)PL.grp=wallGroup(PL.shapes,plStructBase(i));else if(i<0||!(PL.grp&&PL.grp.has(i)))PL.grp=null;PL.sel=i;plFill();
+    if(i>=0)PL.drag={move:true,i,start:plTW(px[0],px[1]),orig:JSON.parse(JSON.stringify(PL.shapes[i])),pushed:false,base:(PL.shapes[i].t==='w'&&!PL.shapes[i].k)?JSON.parse(JSON.stringify(PL.shapes)):null,grp:PL.grp&&PL.grp.has(i)?JSON.parse(JSON.stringify(PL.shapes)):null,gs:PL.grp,eqb:isEq(PL.shapes[i])&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null,nb:nodeAt(PL.shapes,i)&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null,lb:PL.shapes[i].t==='l'&&PL.shapes[i].ins&&!PL.shapes[i].ls&&!(PL.grp&&PL.grp.has(i))?JSON.parse(JSON.stringify(PL.shapes)):null};
     else PL.drag={pan:true,px,v:Object.assign({},PL.view)};
     plDraw();return;
   }
@@ -2584,6 +2619,7 @@ function plMove(ev){
     }
     if(dr.base){const dd=wallConstrain(dr.base,dr.i,[dx,dy],PL.cfg.ortho);if(!dr.pushed&&(dd[0]||dd[1])){plPush();dr.pushed=true;}PL.shapes=wallMoveLinked(dr.base,dr.i,dd,dd);plDraw();return;}
     if(dr.eqb){PL.shapes=eqMove(dr.eqb,dr.i,dx,dy);plDraw();return;}
+    if(dr.nb){PL.shapes=nodeMove(dr.nb,dr.i,dx,dy);plDraw();return;}
     if(dr.orig.t==='fit'&&!isEq(dr.orig)){const q=fitOnPipe(PL.shapes.filter((z,j)=>j!==dr.i),dr.orig,[dr.orig.p[0]+dx,dr.orig.p[1]+dy],14/PL.view.s);PL.shapes[dr.i]=q?Object.assign({},dr.orig,{p:q.p,ang:q.ang}):moveShape(dr.orig,dx,dy);plDraw();return;}
     if(dr.lb){const dd=lineConstrain(dr.lb,dr.i,[dx,dy],PL.cfg.ortho!==false);PL.shapes=lineGroupMove(dr.lb,dr.i,dd);plDraw();return;}
     PL.shapes[dr.i]=moveShape(dr.orig,dx,dy);plDraw();return;
@@ -2717,7 +2753,7 @@ function plFill(){
   {const sl=s&&s.t==='l'&&PL.mode==='sel',pc=plProjCur(),cur=sl?(s.ins||''):(pc?(pc.pj.mode==='base'?'base':(pc.pj.ins||PL.cfg.ins||'')):(PL.cfg.ins||''));document.querySelectorAll('#plIns [data-i]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.i===cur?'true':'false'));
    if(sl){const pt=String(s.mat||'').split(' + '),cv=COVERS.includes(pt[pt.length-1])||pt.length>1?pt.pop():'';set('plDi',s.dia||'');set('plMa',pt.join(' + '));set('plCv',cv);}}
   {const c=document.getElementById('plcur');if(c)c.textContent=plProjLabel();}
-  [['plOrt','ortho'],['plGv','gv'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct'],['plGm','gm']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});{const e=document.getElementById('plPa');if(e)e.setAttribute('aria-pressed',PL.cfg.pa!==false?'true':'false');}{const e=document.getElementById('plMf');if(e)e.setAttribute('aria-pressed',PL.cfg.mfit!==false?'true':'false');}{[['plCj','cj'],['plAp','ap']].forEach(([id,k])=>{const e=document.getElementById(id);if(e)e.setAttribute('aria-pressed',PL.cfg[k]!==false?'true':'false');});}{const b0=document.getElementById('plTt');if(b0)b0.setAttribute('aria-pressed',PL.cfg.tt!==false?'true':'false');}{const b=document.getElementById('plRtl');if(b)b.setAttribute('aria-pressed',PL.cfg.rt!==false?'true':'false');}
+  [['plOrt','ortho'],['plGv','gv'],['plLs','ls'],['plDms','dims'],['plCmp','cmp'],['plWi','wi'],['plWe','we'],['plUb','ub'],['plCt','ct'],['plGm','gm']].forEach(([id,k])=>{const b=document.getElementById(id);if(b)b.setAttribute('aria-pressed',PL.cfg[k]?'true':'false');});{const e=document.getElementById('plPa');if(e)e.setAttribute('aria-pressed',PL.cfg.pa!==false?'true':'false');}{const e=document.getElementById('plMf');if(e)e.setAttribute('aria-pressed',PL.cfg.mfit!==false?'true':'false');}{[['plCj','cj'],['plAp','ap']].forEach(([id,k])=>{const e=document.getElementById(id);if(e)e.setAttribute('aria-pressed',PL.cfg[k]!==false?'true':'false');});}{const b0=document.getElementById('plTt');if(b0)b0.setAttribute('aria-pressed',PL.cfg.tt!==false?'true':'false');}{const b=document.getElementById('plRtl');if(b)b.setAttribute('aria-pressed',PL.cfg.rt!==false?'true':'false');}
   {const b=document.getElementById('plWc');if(b)b.setAttribute('aria-pressed',PL.cfg.wc===true?'true':'false');{const r=document.getElementById('plRd');if(r)r.setAttribute('aria-pressed',PL.cfg.rd!==false?'true':'false');}const d=document.getElementById('plOd');if(d)d.setAttribute('aria-pressed',PL.cfg.od!==false?'true':'false');}
 }
 function plNumAdd(){
@@ -2773,7 +2809,7 @@ function plAction(a){
   else if(a==='tfn'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tipo de letra: 1 = Normal, 2 = Con serif (tipo libro), 3 = Máquina de escribir, 4 = Manuscrita.',({f:'2',m:'3',c:'4'})[s.fn]||'1');if(v!==null){plPush();const m=({'2':'f','3':'m','4':'c'})[v.trim()];if(m)s.fn=m;else delete s.fn;plChanged();}}}
   else if(a==='gcalc'){const mk=PL.cfg.gmat||'ac',pre=gasPrep(PL.shapes),r=planGasCalc(pre,mk);if(r.err){plMsg(r.err);return;}
     {const out=pre.slice();let n=0;Object.keys(r.idx).forEach(i=>{if(out[i]&&out[i].dia!==r.idx[i]){out[i]=Object.assign({},out[i],{dia:r.idx[i]});n++;}});if(n||pre!==PL.shapes){plPush();PL.shapes=out;plChanged();}else plDraw();}
-    plMsg('Diámetros de gas ('+r.mat.n.split(',')[0]+'): '+r.rows.map(x=>x.id+' '+x.lab).join(' · ')+(r.ok?'':' — Ojo: con este material algún tramo no alcanza, probá otro material o revisá los consumos.')+(r.unc.length?' — Sin conectar a ninguna cañería: '+r.unc.join(', ')+'.':'')+' Consumos típicos: corregilos en cada artefacto con «Consumo del artefacto…».');}
+    plMsg('Diámetros de gas ('+r.mat.n.split(',')[0]+'): '+r.rows.map(x=>x.id+' '+x.lab).join(' · ')+(r.ok?'':' — Ojo: con este material algún tramo no alcanza, probá otro material o revisá los consumos.')+(r.unc.length?' — Sin conectar a ninguna cañería: '+r.unc.join(', ')+'.':'')+' Consumos típicos: corregilos en cada artefacto con «Consumo del artefacto…».'+(flexOver(PL.shapes).length?' — ⚠ Hay '+flexOver(PL.shapes).length+' conexión(es) flexible(s) de más de '+(FLEX_MAX/10)+' cm (máximo permitido), marcadas en naranja.':''));}
   else if(a==='gmat'){const i=GAS_MAT.findIndex(m=>m.k===(PL.cfg.gmat||'ac')),n=GAS_MAT[(i+1)%GAS_MAT.length];PL.cfg.gmat=n.k;plSave();plMsg('Material del gas para el cálculo: '+n.n+'. Tocá «Calcular diámetros de gas».');}
   else if(a==='fkc'){const s=PL.shapes[PL.sel];if(s&&s.t==='fit'&&FITS[s.k]&&FITS[s.k].ar&&(s.ins==='gas')){const v=window.prompt('Consumo del artefacto en kcal/h. Ahora: '+artKc(s)+' (valor típico). Poné el de tu modelo (figura en su placa).',String(artKc(s)));const n=parseFloat(String(v||'').replace(',','.'));if(n>0&&n<1e6){plPush();s.kc=Math.round(n);plChanged();}}}
   else if(a==='fsal'){const s=PL.shapes[PL.sel],F=s&&FITS[s.k];if(s&&s.t==='fit'&&F&&F.fl){const sd0=s.sd!=null?s.sd:0,nm=['atrás','derecha','adelante','izquierda','arriba (centro)'];
@@ -2789,7 +2825,7 @@ function plAction(a){
   else if(a==='tt'){if(PL.cfg.tt===false){const p=window.prompt('Prefijo de los tramos (dejalo vacío para usar el de cada instalación: G en gas). Salen GA1, GA2… en la línea principal desde el nicho; al desviarse por una TEE el ramal pasa a GB1, GB2…, y así con cada desvío.',PL.cfg.tq||'');if(p===null)return;PL.cfg.tq=p.trim().toUpperCase().replace(/[^A-Z]/g,'').slice(0,2);PL.cfg.tt=true;}else PL.cfg.tt=false;plSave();plFill();plDraw();}
   else if(a==='rtl'){PL.cfg.rt=PL.cfg.rt===false;plSave();plFill();plDraw();}
   else if(a==='weld'){const r=plWeld(PL.shapes,Math.max(300,(PL.cfg.th||150)*2));if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos de paredes y aberturas.');}else plMsg('No encontré paredes ni aberturas sueltas para unir.');}
-  else if(a==='weldl'){const r=lineWeld(PL.shapes,200);if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos y tees de cañerías.');}else plMsg('Las cañerías ya están unidas.');}
+  else if(a==='weldl'){if(!window.confirm('«Unir» mueve los extremos que estén a menos de 20 cm (45 cm de un artefacto) hasta tocarse, y puede acomodar cosas que no querías. Conviene mirar antes cuáles son con «Ver cañerías sueltas». Se puede deshacer. ¿Unir ahora?'))return;const r=lineWeld(PL.shapes,200);if(r.n){plPush();PL.shapes=r.shapes;plChanged();plMsg('Se unieron '+r.n+' extremos y tees de cañerías.');}else plMsg('Las cañerías ya están unidas.');}
   else if(a==='fitrst'){const n=PL.shapes.filter(q=>q.t==='fit'&&q.ov).length;if(n){plPush();PL.shapes=PL.shapes.filter(q=>!(q.t==='fit'&&q.ov));PL.sel=-1;plChanged();plMsg('Se restauraron '+n+' piezas automáticas.');}else plMsg('No hay piezas automáticas modificadas para restaurar.');}
   else if(a==='ftype'&&s&&s.t==='fit'){const r=PL.cv.getBoundingClientRect(),items=[['Tipo de pieza',null]].concat(fitsFor(s.ins||'').map(q=>[FITS[q].n+(q===s.k?' ✓':''),()=>{plPush();s.k=q;plChanged();}]));plMenuShow(items,r.left+16,r.top+16);}
   else if(a==='nL')plNudge(-1,0);else if(a==='nR')plNudge(1,0);else if(a==='nU')plNudge(0,1);else if(a==='nD')plNudge(0,-1);
@@ -2844,6 +2880,7 @@ function plAction(a){
   }
   else if(a==='noarea'){PL.cfg.area=null;plSave();plDraw();plMsg('Sin límite de espacio.');}
   else if(a==='ort'){PL.cfg.ortho=!PL.cfg.ortho;plSave();plFill();}
+  else if(a==='lse'){PL.cfg.ls=!PL.cfg.ls;plSave();plFill();plDraw();if(PL.cfg.ls){const n=looseEnds(PL.shapes).length;plMsg(n?'Hay '+n+' extremo'+(n>1?'s':'')+' de cañería sin conectar, marcado'+(n>1?'s':'')+' con un círculo rojo. Arrastrá cada uno hasta la pieza, el artefacto o la otra cañería (o usá «Unir cañerías sueltas» y deshacé si no te gusta).':'Todas las cañerías están conectadas.');}}
   else if(a==='gv'){PL.cfg.gv=!PL.cfg.gv;plSave();plFill();plDraw();}
   else if(a==='cmp'){PL.cfg.cmp=!PL.cfg.cmp;plSave();plFill();plDraw();}
   else if(a==='dms'){PL.cfg.dims=!PL.cfg.dims;plSave();plFill();plDraw();}
@@ -2863,7 +2900,7 @@ function plAction(a){
 }
 
 const COVERS=['Metpol (tubo aislante espuma PE 17×37 mm, esp. 10)','Metpol','Cinta anticorrosiva','Cinta bituminosa','Coquilla de espuma de polietileno','Camisa de PVC / corrugado','Protección mecánica (hormigón)','Cama de arena'];
-const MATSUG={agf:['Polietileno PE 100 (enterrada)','Polietileno PE 80','Manguera de polietileno','Polipropileno PP-R termofusión','Polipropileno Hidro 3','Cobre tipo L','Acero galvanizado','PVC presión'],agc:['Polipropileno PP-R termofusión','Polipropileno Hidro 3','Cobre tipo L','PEX / multicapa','Polietileno reticulado'],clo:['PVC cloacal 3,2 mm','PVC cloacal reforzado','Polipropileno cloacal','Hierro fundido'],plu:['PVC 3,2 mm','Polipropileno','Zinc / chapa'],gas:['Epoxi','Sigas (acero-polietileno)','Cobre','Hierro negro'],elec:['Caño corrugado','Caño rígido PVC','Caño metálico'],cal:['Multicapa','Cobre','PP-R']};
+const MATSUG={agf:['Polietileno PE 100 (enterrada)','Polietileno PE 80','Manguera de polietileno','Polipropileno PP-R termofusión','Polipropileno Hidro 3','Cobre tipo L','Acero galvanizado','PVC presión'],agc:['Polipropileno PP-R termofusión','Polipropileno Hidro 3','Cobre tipo L','PEX / multicapa','Polietileno reticulado'],clo:['PVC cloacal 3,2 mm','PVC cloacal reforzado','Polipropileno cloacal','Hierro fundido'],plu:['PVC 3,2 mm','Polipropileno','Zinc / chapa'],gas:['Epoxi','Sigas (acero-polietileno)','Cobre','Hierro negro','Caño de aluminio flexible 3/8 con virolas (conexión de artefacto)','Flexible de cobre con virolas (conexión de artefacto)','Flexible de acero inoxidable (conexión de artefacto)'],elec:['Caño corrugado','Caño rígido PVC','Caño metálico'],cal:['Multicapa','Cobre','PP-R']};
 const DIASUG={agf:['1/2"','3/4"','1"','1 1/4"','1 1/2"','2"','Ø16','Ø20','Ø25','Ø32','Ø40','Ø50','Ø63','Ø75','Ø90','Ø110'],agc:['1/2"','3/4"','1"','Ø20','Ø25','Ø32'],clo:['Ø40','Ø50','Ø63','Ø110','Ø160','Ø200'],plu:['Ø63','Ø110','Ø160','Ø200'],gas:['1/2"','3/4"','1"','1 1/4"','1 1/2"','2"','Ø20','Ø25','Ø32'],elec:['1,5 mm²','2,5 mm²','4 mm²','6 mm²','10 mm²'],cal:['Ø16','Ø20','Ø25']};
 function plListSync(ins){
   if(PL.lsK===(ins||'-'))return;PL.lsK=ins||'-';
@@ -2961,6 +2998,7 @@ function plMenuOpen(px,cx,cy){
     add('Modificar medidas…',plEditMeasures);
     if((s.t==='w'&&!s.k)||s.t==='door'||s.t==='win'){add(s.fr?'Unir a la estructura':'Soltar (dejar libre)',()=>{plPush();if(s.fr)delete s.fr;else s.fr=1;plChanged();plMsg(s.fr?'Ahora esta pieza se mueve sola, sin arrastrar ni ser arrastrada por las paredes.':'Quedó unida: se mueve junto con la estructura.');});}
     if(s.t==='w'&&!s.k)add('Mover toda la estructura unida',()=>{PL.grp=wallGroup(PL.shapes,PL.sel);plMsg('Arrastrá cualquier pared del conjunto ('+PL.grp.size+' piezas) y se mueve todo junto. Tocá en un lugar vacío para terminar.');plDraw();});
+    if(isEq(s)&&s.ins)add('Mover toda la instalación conectada',()=>{PL.grp=pipeGroup(PL.shapes,PL.sel);plMsg('Arrastrá el artefacto o cualquier pieza del conjunto ('+PL.grp.size+' piezas) y se mueve toda la instalación junta. Tocá en un lugar vacío para terminar.');plDraw();});
     if(s.t==='door'||s.t==='win')add('Girar sentido',()=>plAction('flip'));
     else if(['l','w','dim','r','rj','cl','it','fit'].includes(s.t)){add('Girar 90°',()=>plRot(90));add('Girar un ángulo…',()=>plAction('rotn'));}
     if(s.t==='cl')add('Cambiar sentido de los montantes',()=>plAction('cflip'));
@@ -4060,7 +4098,7 @@ Derivación a calefón ; 4000 ; 18000</textarea></div></label>
   <div class="form" style="margin:6px 0 0"><label class="f full" for="plFk"><span>Pieza a colocar con la herramienta «Pieza» (según la instalación elegida)</span><div class="in"><select id="plFk">${fitsFor('').map(q=>`<option value="${q}">${FITS[q].n}</option>`).join('')}</select></div></label><label class="f" for="plDi"><span>Diámetro o sección de las líneas y piezas nuevas</span><div class="in"><input id="plDi" type="text" list="plDiL" autocomplete="off" placeholder="Ej.: 3/4 · Ø110 · 2,5 mm²"><datalist id="plDiL"></datalist></div></label><label class="f" for="plMa"><span>Material de las líneas nuevas</span><div class="in"><input id="plMa" type="text" list="plMaL" autocomplete="off" placeholder="Ej.: epoxi · termofusión · PVC · cobre"><datalist id="plMaL"></datalist></div></label><label class="f full" for="plCv"><span>Recubrimiento o protección (opcional)</span><div class="in"><input id="plCv" type="text" list="plCvL" autocomplete="off" placeholder="Ej.: Metpol · cinta anticorrosiva · coquilla"><datalist id="plCvL">${COVERS.map(x=>`<option value="${x}">`).join('')}</datalist></div></label></div>
   <div class="plbar sm">
    <button type="button" class="pb" data-a="undo">Deshacer</button><button type="button" class="pb" data-a="redo">Rehacer</button><button type="button" class="pb" data-a="fit">Encuadrar</button>
-   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plPa" data-a="pa" aria-pressed="true">Piezas ancladas a la cañería</button><button type="button" class="pb" id="plMf" data-a="mfit" aria-pressed="true">Ver medidas de artefactos</button><button type="button" class="pb on" id="plGc" data-a="gcalc">Calcular diámetros de gas</button><button type="button" class="pb" id="plGmt" data-a="gmat">Material del gas</button><button type="button" class="pb" id="plWl" data-a="weldl">Unir cañerías sueltas</button><button type="button" class="pb" id="plEq" data-a="eq">Poner nicho / pilar / cámara</button><button type="button" class="pb" id="plAr" data-a="ar">Poner artefacto</button><button type="button" class="pb" id="plLlv" data-a="llv">Poner llave de paso</button><button type="button" class="pb" id="plCj" data-a="cj" aria-pressed="true">Unir cañerías al cruzar</button><button type="button" class="pb" id="plAp" data-a="ap" aria-pressed="true">Piezas automáticas</button><button type="button" class="pb" id="plTt" data-a="tt" aria-pressed="false">Tramos por TEE (A1, A2…)</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
+   <button type="button" class="pb" id="plOrt" data-a="ort" aria-pressed="true">Escuadra</button><button type="button" class="pb" id="plGv" data-a="gv" aria-pressed="false">Cuadrícula</button><button type="button" class="pb" id="plDms" data-a="dms" aria-pressed="true">Cotas auto</button><button type="button" class="pb" id="plCmp" data-a="cmp" aria-pressed="true">Brújula</button><button type="button" class="pb" id="plWc" data-a="wc" aria-pressed="true">Medida de eje</button><button type="button" class="pb" id="plWi" data-a="wi" aria-pressed="false">Medida interior</button><button type="button" class="pb" id="plWe" data-a="we" aria-pressed="false">Medida exterior</button><button type="button" class="pb" id="plOd" data-a="od" aria-pressed="true">Medida de aberturas</button><button type="button" class="pb" id="plUb" data-a="ub" aria-pressed="false">Cotas de ubicación</button><button type="button" class="pb" id="plRd" data-a="rd" aria-pressed="true">Cotas de ambientes</button><button type="button" class="pb" id="plCt" data-a="ct" aria-pressed="false">Cota total</button><button type="button" class="pb" id="plPa" data-a="pa" aria-pressed="true">Piezas ancladas a la cañería</button><button type="button" class="pb" id="plMf" data-a="mfit" aria-pressed="true">Ver medidas de artefactos</button><button type="button" class="pb on" id="plGc" data-a="gcalc">Calcular diámetros de gas</button><button type="button" class="pb" id="plGmt" data-a="gmat">Material del gas</button><button type="button" class="pb" id="plLs" data-a="lse" aria-pressed="false">Ver cañerías sueltas</button><button type="button" class="pb" id="plWl" data-a="weldl">Unir cañerías sueltas</button><button type="button" class="pb" id="plEq" data-a="eq">Poner nicho / pilar / cámara</button><button type="button" class="pb" id="plAr" data-a="ar">Poner artefacto</button><button type="button" class="pb" id="plLlv" data-a="llv">Poner llave de paso</button><button type="button" class="pb" id="plCj" data-a="cj" aria-pressed="true">Unir cañerías al cruzar</button><button type="button" class="pb" id="plAp" data-a="ap" aria-pressed="true">Piezas automáticas</button><button type="button" class="pb" id="plTt" data-a="tt" aria-pressed="false">Tramos por TEE (A1, A2…)</button><button type="button" class="pb" id="plRtl" data-a="rtl" aria-pressed="true">Material en caños</button><button type="button" class="pb" id="plGm" data-a="gm" aria-pressed="false">Mover estructura completa</button><button type="button" class="pb" data-a="weld">Unir paredes</button><button type="button" class="pb" data-a="fitrst">Restaurar piezas automáticas</button><button type="button" class="pb" data-a="big">Ampliar</button>
   </div>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
@@ -4188,7 +4226,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 64 · 15/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 69 · 15/11/2026</p>');
   window.scrollTo(0,0);
 }
 
