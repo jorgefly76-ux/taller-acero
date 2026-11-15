@@ -631,7 +631,7 @@ function hitDist(s,p){
   if(s.t==='c')return Math.abs(pdist(p,s.c)-s.r);
   if(s.t==='tx'||s.t==='nb'||s.t==='mk'||s.t==='tb'){const b=shapeBounds(s);const dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.hypot(dx,dy);}
   if(s.t==='door'||s.t==='win')return Math.max(0,pdist(p,s.p)-s.wd/2);
-  if(s.t==='fit')return s.hide?Infinity:Math.max(0,pdist(p,s.p)-110);
+  if(s.t==='fit'){if(s.hide)return Infinity;const F=FITS[s.k],w=s.w||(F&&F.w),h=s.h||(F&&F.h),r=w?Math.max(60,Math.min(w,h||w)/2):60;return Math.max(0,pdist(p,s.p)-r);}
   if(s.t==='an'){const b=shapeBounds({t:'tx',p:s.p,s:s.s,h:s.h}),dx=Math.max(b[0]-p[0],0,p[0]-b[2]),dy=Math.max(b[1]-p[1],0,p[1]-b[3]);return Math.min(Math.hypot(dx,dy),segDist(p,s.a,s.p));}
   if(s.t==='it'){const r=-(s.ang||0)*Math.PI/180,dx=p[0]-s.p[0],dy=p[1]-s.p[1],lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r),ex=Math.max(Math.abs(lx)-s.w/2,0),ey=Math.max(Math.abs(ly)-s.h/2,0);return ex===0&&ey===0?2:Math.hypot(ex,ey);}
   return Infinity;
@@ -829,7 +829,7 @@ function parsePlanoJson(txt){
     else if(s.t==='tb'){const p=P(s.p);if(p)o={t:'tb',p,ins:INSTS.some(x=>x[0]&&x[0]===s.ins)?s.ins:'',h:+s.h>0?+s.h:100,k:['m','a'].includes(s.k)?s.k:'t'};if(o.k==='a')o.s=typeof s.s==='string'?s.s.slice(0,600):'';}
     else if(s.t==='nb'){const p=P(s.p);if(p&&typeof s.s==='string'&&s.s)o={t:'nb',p,s:s.s.slice(0,400),h:+s.h>0?+s.h:100};}
     else if(s.t==='door'||s.t==='win'){const p=P(s.p);if(p&&+s.wd>0){o={t:s.t,p,ang:isFinite(s.ang)?+s.ang:0,wd:+s.wd,th:+s.th>0?+s.th:150,o:(+s.o|0)&3};if((s.t==='win'?OPEN_V:Object.assign({},OPEN_D,OPEN_G))[s.k])o.k=s.k;if(+s.hh>0)o.hh=+s.hh;if(s.t==='win'&&s.sl!=null&&+s.sl>=0)o.sl=+s.sl;}}
-    else if(s.t==='fit'){const p=P(s.p);if(p&&FITS[s.k]&&(!s.ins||INSTS.some(x=>x[0]===s.ins))){o={t:'fit',k:s.k,ins:s.ins||'',p,ang:isFinite(s.ang)?+s.ang:0};if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);if(typeof s.dia2==='string'&&s.dia2)o.dia2=s.dia2.slice(0,14);if(+s.hide)o.hide=1;if(typeof s.ov==='string'&&FITS[s.ov])o.ov=s.ov;}}
+    else if(s.t==='fit'){const p=P(s.p);if(p&&FITS[s.k]&&(!s.ins||INSTS.some(x=>x[0]===s.ins))){o={t:'fit',k:s.k,ins:s.ins||'',p,ang:isFinite(s.ang)?+s.ang:0};if(+s.w>0&&+s.h>0){o.w=Math.min(5000,+s.w);o.h=Math.min(5000,+s.h);}if(typeof s.dia==='string'&&s.dia)o.dia=s.dia.slice(0,14);if(typeof s.dia2==='string'&&s.dia2)o.dia2=s.dia2.slice(0,14);if(+s.hide)o.hide=1;if(typeof s.ov==='string'&&FITS[s.ov])o.ov=s.ov;}}
     else if(s.t==='an'){const a=P(s.a),p=P(s.p);if(a&&p&&typeof s.s==='string'&&s.s)o={t:'an',a,p,s:s.s.slice(0,300),h:+s.h>0?+s.h:150};}
     else if(s.t==='it'){const p=P(s.p);if(p&&ITEMS[s.k]&&+s.w>0&&+s.h>0)o={t:'it',k:s.k,p,w:+s.w,h:+s.h,ang:isFinite(s.ang)?+s.ang:0};}
     if(o&&s.lk)o.lk=1;
@@ -1357,6 +1357,20 @@ const FITS={
  tcd:{n:'Toma doble',g:'tri',l:'T2',i:'elec',eq:1,ar:1},
  tca:{n:'Toma 20 A (aire / termo)',g:'tri',l:'T20',i:'elec',eq:1,ar:1},
  acc:{n:'Aire acondicionado',g:'sq',l:'AA',i:'elec',eq:1,ar:1},
+ cft2:{n:'Calefactor tiro balanceado 2000 kcal/h',g:'sq',l:'2000',i:'gas cal',eq:1,ar:1,w:420,h:160},
+ cft3:{n:'Calefactor tiro balanceado 3000 kcal/h',g:'sq',l:'3000',i:'gas cal',eq:1,ar:1,w:520,h:170},
+ cft4:{n:'Calefactor tiro balanceado 4000 kcal/h',g:'sq',l:'4000',i:'gas cal',eq:1,ar:1,w:620,h:180},
+ cft5:{n:'Calefactor tiro balanceado 5000 kcal/h',g:'sq',l:'5000',i:'gas cal',eq:1,ar:1,w:700,h:190},
+ cft6:{n:'Calefactor tiro balanceado 6000 kcal/h',g:'sq',l:'6000',i:'gas cal',eq:1,ar:1,w:800,h:200},
+ ttg40:{n:'Termotanque a gas 40 L',g:'rc',l:'40L',i:'gas',eq:1,ar:1,w:400,h:400},
+ ttg50:{n:'Termotanque a gas 50 L',g:'rc',l:'50L',i:'gas',eq:1,ar:1,w:420,h:420},
+ ttg80:{n:'Termotanque a gas 80 L',g:'rc',l:'80L',i:'gas',eq:1,ar:1,w:450,h:450},
+ ttg110:{n:'Termotanque a gas 110 L',g:'rc',l:'110L',i:'gas',eq:1,ar:1,w:500,h:500},
+ ttg130:{n:'Termotanque a gas 130 L',g:'rc',l:'130L',i:'gas',eq:1,ar:1,w:520,h:520},
+ tme40:{n:'Termotanque eléctrico 40 L',g:'rc',l:'40L',i:'agf agc elec',eq:1,ar:1,w:380,h:380},
+ tme55:{n:'Termotanque eléctrico 55 L',g:'rc',l:'55L',i:'agf agc elec',eq:1,ar:1,w:400,h:400},
+ tme80:{n:'Termotanque eléctrico 80 L',g:'rc',l:'80L',i:'agf agc elec',eq:1,ar:1,w:450,h:450},
+ tme110:{n:'Termotanque eléctrico 110 L',g:'rc',l:'110L',i:'agf agc elec',eq:1,ar:1,w:500,h:500},
  rad:{n:'Radiador',g:'sq',l:'RD',i:'cal'},cal:{n:'Caldera',g:'sq',l:'CA',i:'cal'}
 };
 const fitsFor=ins=>Object.keys(FITS).filter(k=>{const t=FITS[k].i;return t==='*'?(ins&&ins!=='elec'&&ins!=='dat'):(!ins||t.split(' ').includes(ins));});
@@ -1859,6 +1873,8 @@ function fitGlyph(ctx,f,x,y,S,k,C,selected,auto){
   const F=FITS[f.k]||{g:'circ',l:'?'},col=selected?C.accent:instOf(f.ins)[2],r=(auto?.72:1)*Math.max(5*k,Math.min(9*k,110*S));
   ctx.save();ctx.translate(x,y);ctx.rotate(-(f.ang&&!auto?f.ang:0)*Math.PI/180);ctx.lineWidth=1.6*k;ctx.strokeStyle=col;ctx.fillStyle=C.bg;
   if(F.g==='circ'){ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.stroke();}
+  else if(F.g==='rc'){const rr=Math.max(r,(f.w||F.w||0)*S/2);ctx.beginPath();ctx.arc(0,0,rr,0,7);ctx.fill();ctx.stroke();}
+  else if((F.g==='sq')&&(f.w||F.w)){const hw=Math.max(r,(f.w||F.w)*S/2),hh=Math.max(r*.6,(f.h||F.h||f.w||F.w)*S/2);ctx.beginPath();ctx.rect(-hw,-hh,2*hw,2*hh);ctx.fill();ctx.stroke();}
   else if(F.g==='sq'||F.g==='sqx'){ctx.beginPath();ctx.rect(-r,-r,2*r,2*r);ctx.fill();ctx.stroke();if(F.g==='sqx'){ctx.beginPath();ctx.moveTo(-r,-r);ctx.lineTo(r,r);ctx.moveTo(r,-r);ctx.lineTo(-r,r);ctx.stroke();}}
   else if(F.g==='big'){const hw=Math.max(1.5*r,(F.w||0)*S/2),hh=Math.max(r,(F.h||0)*S/2);ctx.beginPath();ctx.rect(-hw,-hh,2*hw,2*hh);ctx.fill();ctx.stroke();if(hw>8*k){ctx.lineWidth=.8*k;ctx.beginPath();ctx.rect(-hw+3*k,-hh+3*k,2*hw-6*k,2*hh-6*k);ctx.stroke();}}
   else if(F.g==='bow'){ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-r,-r*.8);ctx.lineTo(r,r*.8);ctx.lineTo(r,-r*.8);ctx.lineTo(-r,r*.8);ctx.closePath();ctx.fill();}
@@ -2380,7 +2396,7 @@ function plPick(px,conv){
   /* Piezas (a mano o automáticas): ganan los empates y, si hay varias juntas, se alterna entre ellas. Una automática se vuelve editable al elegirla. */
   const fc=[];
   PL.shapes.forEach((s,i)=>{if(s.t==='fit'&&!s.lk&&!s.hide){const d=hitDist(s,wp);if(d<=tol)fc.push({i,d});}});
-  if(conv)autoFits(PL.shapes).forEach(f=>{const d=Math.max(0,pdist(wp,f.p)-110);if(d<=tol)fc.push({f,d});});
+  if(conv)autoFits(PL.shapes).forEach(f=>{const d=Math.max(0,pdist(wp,f.p)-60);if(d<=tol)fc.push({f,d});});
   if(fc.length){const m=Math.min(...fc.map(c=>c.d)),g=fc.filter(c=>c.d<=m+.5);
     if(m<=bd+.5){let c=g[0];if(g.length>1){const at=g.findIndex(x=>x.i===PL.sel);if(at>=0)c=g[(at+1)%g.length];}
       if(c.f){const f=c.f,n={t:'fit',k:f.k,ins:f.ins||'',p:[f.p[0],f.p[1]],ang:0,ov:f.k};if(f.dia)n.dia=f.dia;if(f.dia2)n.dia2=f.dia2;plPush();PL.shapes.push(n);return PL.shapes.length-1;}
@@ -2625,6 +2641,7 @@ function plAction(a){
   else if(a==='tbig'||a==='tsm'){const s=PL.shapes[PL.sel];if(isTx(s)){plPush();s.h=Math.max(20,Math.round(s.h*(a==='tbig'?1.25:.8)));plChanged();}}
   else if(a==='tsz'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tamaño de la letra (altura en mm del plano). Ahora: '+Math.round(s.h)+'. Referencias: 50 chica · 100 normal · 150 grande · 250 muy grande.',String(Math.round(s.h)));const n=parseFloat(String(v||'').replace(',','.'));if(n>=10&&n<=2000){plPush();s.h=Math.round(n);plChanged();}}}
   else if(a==='tfn'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tipo de letra: 1 = Normal, 2 = Con serif (tipo libro), 3 = Máquina de escribir, 4 = Manuscrita.',({f:'2',m:'3',c:'4'})[s.fn]||'1');if(v!==null){plPush();const m=({'2':'f','3':'m','4':'c'})[v.trim()];if(m)s.fn=m;else delete s.fn;plChanged();}}}
+  else if(a==='fdim'){const s=PL.shapes[PL.sel];if(s&&s.t==='fit'&&FITS[s.k]&&FITS[s.k].w){const F=FITS[s.k],w0=s.w||F.w,h0=s.h||F.h;const v=window.prompt('Medidas del artefacto en mm (ancho x profundidad). Ahora: '+w0+' x '+h0+'. Son medidas orientativas: poné las de tu modelo.',w0+' x '+h0);if(v){const m=v.match(/(\d+(?:[.,]\d+)?)\D+(\d+(?:[.,]\d+)?)/),one=v.match(/^\s*(\d+(?:[.,]\d+)?)\s*$/);let w=0,h=0;if(m){w=parseFloat(m[1].replace(',','.'));h=parseFloat(m[2].replace(',','.'));}else if(one){w=h=parseFloat(one[1].replace(',','.'));}if(w>=20&&h>=20){plPush();s.w=Math.round(w);s.h=Math.round(h);plChanged();}}}}
   else if(a==='hz'){const v=window.prompt('Tamaño de la zona de toque, en píxeles (4 muy chica · 9 normal · 14 grande · 20 muy grande). Ahora: '+(PL.cfg.hz||9),String(PL.cfg.hz||9));const n=parseFloat(String(v||'').replace(',','.'));if(n>=3&&n<=40){PL.cfg.hz=Math.round(n);plSave();plMsg('Zona de toque: '+PL.cfg.hz+' px.');}}
   else if(a==='llv'){const e=document.getElementById('plFk');if(e&&[...e.options].some(o=>o.value==='llave')){e.value='llave';plSetMode('fit');plMsg('Tocá sobre la cañería donde va la llave de paso. Para otra llave (corte general, de artefacto) cambiá la pieza en la lista de abajo.');}else plMsg('Primero elegí una instalación con llaves: Gas, Agua fría, Agua caliente o Calefacción.');}
   else if(a==='cj'||a==='ap'){PL.cfg[a]=PL.cfg[a]===false;plSave();plFill();plDraw();}
@@ -2810,6 +2827,7 @@ function plMenuOpen(px,cx,cy){
     if(s.t==='l'&&s.ins)add('Cambiar material o recubrimiento…',()=>plAction('mat'));
     if(s.t==='tb')add(s.k==='a'?'Editar artefactos…':'Cambiar instalación…',()=>plAction('edt'));
     if(s.t==='tx'||s.t==='nb'||s.t==='an'||s.t==='mk')add('Editar texto…',()=>plAction('edt'));
+    if(s.t==='fit'&&FITS[s.k]&&FITS[s.k].w)add('Medidas del artefacto…',()=>plAction('fdim'));
     if(isTx(s)){add('Tamaño de letra…',()=>plAction('tsz'));add('Tipo de letra…',()=>plAction('tfn'));}
     if(s.t==='fit')add('Cambiar tipo de pieza…',()=>plAction('ftype'));
     if(s.t!=='an'&&s.t!=='tx'&&s.t!=='nb'&&s.t!=='mk'&&s.t!=='tb')add('Agregar anotación a esto…',()=>plAnnotate(shapeCenter(s)));
@@ -4025,7 +4043,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 48 · 15/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 50 · 15/11/2026</p>');
   window.scrollTo(0,0);
 }
 
