@@ -599,6 +599,8 @@ function lineWeld(sh,tol){
     s[e]=q.slice();out.splice(k,1,Object.assign({},o,{b:q.slice()}),Object.assign({},o,{a:q.slice()}));n++;}
   return {shapes:out,n};
 }
+const FF=s=>({f:'Georgia, "Times New Roman", serif',m:'"Courier New", monospace',c:'"Segoe Print","Comic Sans MS",cursive'})[s&&s.fn]||'sans-serif';
+const isTx=s=>!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'||s.t==='mk'||s.t==='tb');
 const isEq=s=>!!(s&&s.t==='fit'&&FITS[s.k]&&FITS[s.k].eq);
 function eqMove(sh,i,dx,dy){
   const f=sh[i],T=30,out=sh.slice(),mv=P=>[P[0]+dx,P[1]+dy];
@@ -831,6 +833,7 @@ function parsePlanoJson(txt){
     else if(s.t==='an'){const a=P(s.a),p=P(s.p);if(a&&p&&typeof s.s==='string'&&s.s)o={t:'an',a,p,s:s.s.slice(0,300),h:+s.h>0?+s.h:150};}
     else if(s.t==='it'){const p=P(s.p);if(p&&ITEMS[s.k]&&+s.w>0&&+s.h>0)o={t:'it',k:s.k,p,w:+s.w,h:+s.h,ang:isFinite(s.ang)?+s.ang:0};}
     if(o&&s.lk)o.lk=1;
+    if(o&&['f','m','c'].includes(s.fn))o.fn=s.fn;
     if(o)out.push(o);else dropped++;
   });
   return {shapes:out,dropped,title:j&&typeof j.title==='string'?j.title.slice(0,60):'',no:j&&isFinite(j.north)?+j.north:null};
@@ -1980,31 +1983,31 @@ function drawScene(ctx,sh,T,o){
     else if(s.t==='it'){plItem(ctx,s,X(s.p[0]),Y(s.p[1]),S,col,k,C);}
     else if(s.t==='fit'){if(!s.hide)fitGlyph(ctx,s,X(s.p[0]),Y(s.p[1]),S,k,C,sel.includes(i),false);}
     else if(s.t==='tb'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),rows=((a)=>{if(!(PL.cfg&&PL.cfg.tt))return a;const m=new Map();a.forEach(z=>{const q=m.get(z.id);if(q)q.len+=z.len;else m.set(z.id,Object.assign({},z));});return [...m.values()];})(tramoList(sh).filter(z=>!s.ins||z.ins===s.ins)),pad=fs*.5,rh=fs*1.35,kd=s.k||'t';
-      ctx.font='600 '+fs+'px sans-serif';let hd,R,ttl;
+      ctx.font='600 '+fs+'px '+FF(s);let hd,R,ttl;
       if(kd==='m'){ttl='MATERIALES';hd=['Material','Ø','Cant.'];R=planilla(sh).filter(z=>z.ins&&(!s.ins||z.ins===s.ins)).map(z=>[(z.mat||z.name),z.dia||'-',(z.len/1000).toFixed(2)+' m']);
         fitList(sh).filter(z=>!s.ins||z.ins===s.ins).forEach(z=>R.push([z.name,z.dia||'-',z.n+' u.']));}
       else if(kd==='a'){ttl='ARTEFACTOS Y CONSUMOS';hd=['Artefacto','Cant.','m³/h'];let tc=0;R=String(s.s||'').split('\n').map(l=>l.split(',').map(x=>x.trim())).filter(a=>a[0]).map(a=>{const n=parseFloat(a[1])||1,c=parseFloat(String(a[2]).replace(',','.'))||0;tc+=n*c;return [a[0],String(n),c?c.toFixed(2):'-'];});R.push(['Total','',tc.toFixed(2)]);}
       else{ttl='TRAMOS';hd=['Tramo','Ø','Material','Largo'];const tot=rows.reduce((a,z)=>a+z.len,0);R=rows.map(z=>[z.id,z.dia?'Ø'+z.dia:'-',z.mat||'-',(z.len/1000).toFixed(2)+' m']);R.push(['Total','','',(tot/1000).toFixed(2)+' m']);}
       const cw=hd.map((h2,c)=>Math.max(ctx.measureText(h2).width,...R.map(r=>ctx.measureText(r[c]).width))+pad*1.6),W=cw.reduce((a,b)=>a+b,0),ti=kd==='a'?'':s.ins?instOf(s.ins)[1]:'Instalaciones',H=rh*(R.length+2.5)+pad*.4;
-      ctx.font='700 '+fs+'px sans-serif';const tw0=ctx.measureText(ttl+(ti?' · '+ti:'')).width+pad*2,WW=Math.max(W,tw0);
+      ctx.font='700 '+fs+'px '+FF(s);const tw0=ctx.measureText(ttl+(ti?' · '+ti:'')).width+pad*2,WW=Math.max(W,tw0);
       s._w=WW/S;s._h=H/S;
       ctx.fillStyle=C.bg;ctx.fillRect(x,y,WW,H);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.strokeRect(x,y,WW,H);
       ctx.fillStyle=col;ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillText(ttl+(ti?' · '+ti:''),x+pad,y+rh*.6);
       ctx.beginPath();ctx.moveTo(x,y+rh*1.2);ctx.lineTo(x+WW,y+rh*1.2);ctx.stroke();
-      ctx.font='700 '+fs+'px sans-serif';let cx=x;hd.forEach((h2,c)=>{ctx.fillText(h2,cx+pad*.8,y+rh*1.8);cx+=cw[c];});
+      ctx.font='700 '+fs+'px '+FF(s);let cx=x;hd.forEach((h2,c)=>{ctx.fillText(h2,cx+pad*.8,y+rh*1.8);cx+=cw[c];});
       ctx.beginPath();ctx.moveTo(x,y+rh*2.3);ctx.lineTo(x+WW,y+rh*2.3);ctx.stroke();
-      R.forEach((r,j)=>{ctx.font=(j===R.length-1?'700 ':'600 ')+fs+'px sans-serif';let cx2=x;r.forEach((v,c)=>{ctx.fillText(v,cx2+pad*.8,y+rh*(2.8+j));cx2+=cw[c];});});
+      R.forEach((r,j)=>{ctx.font=(j===R.length-1?'700 ':'600 ')+fs+'px '+FF(s);let cx2=x;r.forEach((v,c)=>{ctx.fillText(v,cx2+pad*.8,y+rh*(2.8+j));cx2+=cw[c];});});
       if(R.length>1&&kd!=='m'){const ty=y+rh*(2.3+R.length-1);ctx.beginPath();ctx.moveTo(x,ty);ctx.lineTo(x+WW,ty);ctx.stroke();}}
-    else if(s.t==='nb'){const fs=Math.max(4,s.h*S),L=String(s.s).split('\n'),x=X(s.p[0]),y=Y(s.p[1]);ctx.font='600 '+fs+'px sans-serif';
+    else if(s.t==='nb'){const fs=Math.max(4,s.h*S),L=String(s.s).split('\n'),x=X(s.p[0]),y=Y(s.p[1]);ctx.font='600 '+fs+'px '+FF(s);
       const w=Math.max(...L.map(l=>ctx.measureText(l).width))+fs,hh=L.length*fs*1.25+fs*.6;
       ctx.fillStyle=C.bg;ctx.fillRect(x,y,w,hh);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.strokeRect(x,y,w,hh);ctx.fillStyle=col;ctx.textAlign='left';ctx.textBaseline='top';L.forEach((l,j)=>ctx.fillText(l,x+fs*.5,y+fs*.3+j*fs*1.25));}
-    else if(s.t==='an'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),ax=X(s.a[0]),ay=Y(s.a[1]);ctx.font='600 '+fs+'px sans-serif';const AL=String(s.s).split('\n'),tw=Math.max(...AL.map(z=>ctx.measureText(z).width)),ty=y-fs*.35,Lp=[x,ty],Rp=[x+tw,ty],st=Math.hypot(ax-Lp[0],ay-Lp[1])<Math.hypot(ax-Rp[0],ay-Rp[1])?Lp:Rp;
+    else if(s.t==='an'){const fs=Math.max(4,s.h*S),x=X(s.p[0]),y=Y(s.p[1]),ax=X(s.a[0]),ay=Y(s.a[1]);ctx.font='600 '+fs+'px '+FF(s);const AL=String(s.s).split('\n'),tw=Math.max(...AL.map(z=>ctx.measureText(z).width)),ty=y-fs*.35,Lp=[x,ty],Rp=[x+tw,ty],st=Math.hypot(ax-Lp[0],ay-Lp[1])<Math.hypot(ax-Rp[0],ay-Rp[1])?Lp:Rp;
       ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=lw*.7;ctx.beginPath();ctx.moveTo(st[0],st[1]);ctx.lineTo(ax,ay);ctx.stroke();
       const an=Math.atan2(ay-st[1],ax-st[0]),hs=Math.max(5*k,fs*.55);ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax-hs*Math.cos(an-.4),ay-hs*Math.sin(an-.4));ctx.lineTo(ax-hs*Math.cos(an+.4),ay-hs*Math.sin(an+.4));ctx.closePath();ctx.fill();
       ctx.textAlign='left';ctx.textBaseline='alphabetic';AL.forEach((ln,j)=>ctx.fillText(ln,x,y+j*fs*1.2));}
-    else if(s.t==='tx'){ctx.fillStyle=col;ctx.font='600 '+Math.max(4,s.h*S)+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';const fh=Math.max(4,s.h*S);String(s.s).split('\n').forEach((ln,j)=>ctx.fillText(ln,X(s.p[0]),Y(s.p[1])+j*fh*1.2));}
-    else if(s.t==='mk'){const r=s.h*.9*S,x=X(s.p[0]),y=Y(s.p[1]),fh=Math.max(4,s.h*S);ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=Math.max(1,lw*.8);ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.stroke();ctx.font='700 '+(fh*(String(s.s).length>1?.8:1))+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(s.s,x,y+fh*.04);
-      if(s.x){ctx.font='600 '+fh*.85+'px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';String(s.x).split('\n').forEach((ln,j)=>ctx.fillText(ln,x+r+fh*.5,y+j*fh*1.1));}}
+    else if(s.t==='tx'){ctx.fillStyle=col;ctx.font='600 '+Math.max(4,s.h*S)+'px '+FF(s);ctx.textAlign='left';ctx.textBaseline='alphabetic';const fh=Math.max(4,s.h*S);String(s.s).split('\n').forEach((ln,j)=>ctx.fillText(ln,X(s.p[0]),Y(s.p[1])+j*fh*1.2));}
+    else if(s.t==='mk'){const r=s.h*.9*S,x=X(s.p[0]),y=Y(s.p[1]),fh=Math.max(4,s.h*S);ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=Math.max(1,lw*.8);ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.stroke();ctx.font='700 '+(fh*(String(s.s).length>1?.8:1))+'px '+FF(s);ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(s.s,x,y+fh*.04);
+      if(s.x){ctx.font='600 '+fh*.85+'px '+FF(s);ctx.textAlign='left';ctx.textBaseline='middle';String(s.x).split('\n').forEach((ln,j)=>ctx.fillText(ln,x+r+fh*.5,y+j*fh*1.1));}}
   });
   autoFits(sh).forEach(f=>fitGlyph(ctx,f,X(f.p[0]),Y(f.p[1]),S,k,C,false,true));
   // cotas
@@ -2358,7 +2361,7 @@ function plSnap(px,ev,anchor){
   {let q=snapTo(wp,pts,tol,g);if(isW&&q.kind!=='pt'){const r=plAxisSnap(PL.shapes,q.p,null,tol);if(r)q={p:r,kind:'pt'};}return cl(q);}
 }
 function plPick(px,conv){
-  const wp=plTW(px[0],px[1]),tol=14/PL.view.s;let best=-1,bd=tol;
+  const wp=plTW(px[0],px[1]),tol=(PL.cfg.hz||9)/PL.view.s;let best=-1,bd=tol;
   PL.shapes.forEach((s,i)=>{if(s.lk)return;const d=hitDist(s,wp);if(d<=bd){bd=d;best=i;}});
   /* Piezas (a mano o automáticas): ganan los empates y, si hay varias juntas, se alterna entre ellas. Una automática se vuelve editable al elegirla. */
   const fc=[];
@@ -2545,7 +2548,7 @@ function plFill(){
   }
   set('plX',+PL.last[0].toFixed(1));set('plY',+PL.last[1].toFixed(1));
   const q=(id,on)=>{const e=document.getElementById(id);if(e)e.hidden=!on;};
-  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'));q('plFt',!!s&&s.t==='fit');{const st=!!s&&((s.t==='w'&&!s.k)||s.t==='door'||s.t==='win');q('plGrp',st);q('plLkg',st);q('plMt',!!s&&s.t==='w'&&!s.k&&!!WFRAME[s.m]);}q('plDa',!!s&&(s.t==='fit'||(s.t==='l'&&!!s.ins)));
+  q('plAct',!!s);q('plCancel',!!PL.draft);q('plFlip',!!s&&(s.t==='door'||s.t==='win'));{const e=document.getElementById('plSs');if(e&&e.closest('.f'))e.closest('.f').hidden=!(s&&s.t==='win');}q('plRt',!!s&&s.t==='it');q('plTq',!!s&&(s.t==='l'||s.t==='r'||s.t==='c'));q('plWa',!!s&&s.t==='w'&&!s.k);q('plWb',!!s&&s.t==='w'&&!s.k);q('plCf',!!s&&s.t==='cl');q('plEdt',!!s&&(s.t==='tx'||s.t==='nb'||s.t==='an'));['plTp','plTm','plTsz','plTf'].forEach(id=>q(id,isTx(s)));q('plFt',!!s&&s.t==='fit');{const st=!!s&&((s.t==='w'&&!s.k)||s.t==='door'||s.t==='win');q('plGrp',st);q('plLkg',st);q('plMt',!!s&&s.t==='w'&&!s.k&&!!WFRAME[s.m]);}q('plDa',!!s&&(s.t==='fit'||(s.t==='l'&&!!s.ins)));
   const lab=document.getElementById('lab-plL'),lb2=document.getElementById('lab-plA'),m=s?((s.t==='r'||s.t==='it'||s.t==='door'||s.t==='win')?'r':s.t==='c'?'c':'l'):(PL.mode==='r'?'r':PL.mode==='c'?'c':'l');
   if(lab)lab.textContent=m==='r'?'Ancho':m==='c'?'Diámetro':'Largo';
   if(lb2)lb2.textContent=m==='r'?'Alto':'Ángulo (0° = derecha, 90° = arriba)';
@@ -2605,6 +2608,10 @@ function plAction(a){
   else if(a==='ar'){const r=document.getElementById('plAr').getBoundingClientRect(),cur=PL.cfg.ins||'';
     const ks=Object.keys(FITS).filter(k=>FITS[k].ar&&(!cur||FITS[k].i.split(' ').includes(cur)));const lst=ks.length?ks:Object.keys(FITS).filter(k=>FITS[k].ar);
     plMenuShow(lst.map(k=>[FITS[k].n+(ks.length?'':'  ('+instOf(FITS[k].i.split(' ')[0])[1]+')'),()=>{const ii=FITS[k].i.split(' '),ins=ii.includes(cur)?cur:ii[0];PL.cfg.ins=ins;plFitSync(ins);const e=document.getElementById('plFk');if(e)e.value=k;plSetMode('fit');plMsg('Tocá en el plano donde va el artefacto. Queda suelto; trazá la cañería desde su centro y, al moverlo, las cañerías conectadas lo siguen.');}]),r.left,r.bottom);}
+  else if(a==='tbig'||a==='tsm'){const s=PL.shapes[PL.sel];if(isTx(s)){plPush();s.h=Math.max(20,Math.round(s.h*(a==='tbig'?1.25:.8)));plChanged();}}
+  else if(a==='tsz'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tamaño de la letra (altura en mm del plano). Ahora: '+Math.round(s.h)+'. Referencias: 50 chica · 100 normal · 150 grande · 250 muy grande.',String(Math.round(s.h)));const n=parseFloat(String(v||'').replace(',','.'));if(n>=10&&n<=2000){plPush();s.h=Math.round(n);plChanged();}}}
+  else if(a==='tfn'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tipo de letra: 1 = Normal, 2 = Con serif (tipo libro), 3 = Máquina de escribir, 4 = Manuscrita.',({f:'2',m:'3',c:'4'})[s.fn]||'1');if(v!==null){plPush();const m=({'2':'f','3':'m','4':'c'})[v.trim()];if(m)s.fn=m;else delete s.fn;plChanged();}}}
+  else if(a==='hz'){const v=window.prompt('Tamaño de la zona de toque, en píxeles (4 muy chica · 9 normal · 14 grande · 20 muy grande). Ahora: '+(PL.cfg.hz||9),String(PL.cfg.hz||9));const n=parseFloat(String(v||'').replace(',','.'));if(n>=3&&n<=40){PL.cfg.hz=Math.round(n);plSave();plMsg('Zona de toque: '+PL.cfg.hz+' px.');}}
   else if(a==='llv'){const e=document.getElementById('plFk');if(e&&[...e.options].some(o=>o.value==='llave')){e.value='llave';plSetMode('fit');plMsg('Tocá sobre la cañería donde va la llave de paso. Para otra llave (corte general, de artefacto) cambiá la pieza en la lista de abajo.');}else plMsg('Primero elegí una instalación con llaves: Gas, Agua fría, Agua caliente o Calefacción.');}
   else if(a==='cj'||a==='ap'){PL.cfg[a]=PL.cfg[a]===false;plSave();plFill();plDraw();}
   else if(a==='tt'){if(!PL.cfg.tt){const p=window.prompt('Letra con que empiezan los tramos (ej: A). El número sube cada vez que una TEE divide la cañería.',PL.cfg.tp||'A');if(p===null)return;PL.cfg.tp=(p.trim().toUpperCase().replace(/[^A-Z]/g,'')||'A').slice(0,2);PL.cfg.tt=true;}else PL.cfg.tt=false;plSave();plFill();plDraw();}
@@ -2729,7 +2736,7 @@ function plRot(deg){
 function plLblHit(px){
   const L=PL.lh||[];let best=null,bd=Infinity;
   for(let n=0;n<L.length;n++){const q=L[n],c=Math.cos(q.ang),sn=Math.sin(q.ang),dx=px[0]-q.c[0],dy=px[1]-q.c[1],u=dx*c+dy*sn,v=-dx*sn+dy*c;
-    if(Math.abs(u)<=q.w+12&&v<=10&&v>=-28){const d=Math.hypot(u*.4,v+8);if(d<bd&&(q.tag.rm||q.tag.i<PL.shapes.length)){bd=d;best=q.tag;}}}
+    if(Math.abs(u)<=q.w+7&&v<=8&&v>=-20){const d=Math.hypot(u*.4,v+8);if(d<bd&&(q.tag.rm||q.tag.i<PL.shapes.length)){bd=d;best=q.tag;}}}
   return best;
 }
 function plEditRoom(r){
@@ -2789,6 +2796,7 @@ function plMenuOpen(px,cx,cy){
     if(s.t==='l'&&s.ins)add('Cambiar material o recubrimiento…',()=>plAction('mat'));
     if(s.t==='tb')add(s.k==='a'?'Editar artefactos…':'Cambiar instalación…',()=>plAction('edt'));
     if(s.t==='tx'||s.t==='nb'||s.t==='an'||s.t==='mk')add('Editar texto…',()=>plAction('edt'));
+    if(isTx(s)){add('Tamaño de letra…',()=>plAction('tsz'));add('Tipo de letra…',()=>plAction('tfn'));}
     if(s.t==='fit')add('Cambiar tipo de pieza…',()=>plAction('ftype'));
     if(s.t!=='an'&&s.t!=='tx'&&s.t!=='nb'&&s.t!=='mk'&&s.t!=='tb')add('Agregar anotación a esto…',()=>plAnnotate(shapeCenter(s)));
     if(s.t==='l'||s.t==='r'||s.t==='c')add('Convertir en pared',()=>plAction('towall'));
@@ -2868,7 +2876,7 @@ function plSidePanel(ctx,sh,x,y,w,h,mm){
   ctx.restore();
 }
 function plStructBase(i){const q=PL.shapes[i];if(!q)return -1;if(q.t==='w'&&!q.k)return i;if(q.t==='door'||q.t==='win'){const ow=openingWall(PL.shapes,i);return ow?ow.j:-1;}return -1;}
-function plPickLocked(px){const wp=plTW(px[0],px[1]),tol=14/PL.view.s;let best=-1,bd=tol;PL.shapes.forEach((q,i)=>{if(!q.lk||q.lk!==1)return;const d=hitDist(q,wp);if(d<=bd){bd=d;best=i;}});return best;}
+function plPickLocked(px){const wp=plTW(px[0],px[1]),tol=(PL.cfg.hz||9)/PL.view.s;let best=-1,bd=tol;PL.shapes.forEach((q,i)=>{if(!q.lk||q.lk!==1)return;const d=hitDist(q,wp);if(d<=bd){bd=d;best=i;}});return best;}
 function plSetMode(m){PL.grp=null;PL.an=null;plSync();if(m==='wi'){m='w';PL.cfg.wloc='i';}else if(m==='w')PL.cfg.wloc='e';PL.cal=null;PL.mode=m;plSync();plOpLoad();PL.draft=null;PL.dn=null;PL.hover=null;PL.hover=null;if(m!=='sel')PL.sel=-1;plFill();plDraw();}
 /* ---- exportar ---- */
 function plSheet(dpi,opt){
@@ -3881,7 +3889,7 @@ Derivación a calefón ; 4 ; 18000</textarea></div></label>
   <div class="plbar sel" id="plCancel" hidden><span>Punto inicial puesto. Tocá el final.</span><button type="button" class="pb" data-a="cancel">Cancelar</button></div>
   <div class="plbar sel" id="plAct" hidden><span>Elegido:</span>
    <button type="button" class="pb" data-a="meas">Modificar medidas</button><button type="button" class="pb" data-a="rotg">Girar 90°</button><button type="button" class="pb" data-a="rotn">Girar…</button><button type="button" class="pb" data-a="del">Borrar</button><button type="button" class="pb" data-a="dup">Duplicar</button><span style="display:inline-flex;gap:4px;align-items:center"><button type="button" class="pb" data-a="nL" aria-label="Mover a la izquierda">◀</button><button type="button" class="pb" data-a="nR" aria-label="Mover a la derecha">▶</button><button type="button" class="pb" data-a="nU" aria-label="Mover arriba">▲</button><button type="button" class="pb" data-a="nD" aria-label="Mover abajo">▼</button><select id="plNs" aria-label="Paso de movimiento"><option value="1">de a 1 mm</option><option value="10">de a 10 mm</option><option value="100">de a 100 mm</option></select></span>
-   <button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button><button type="button" class="pb" id="plFt" data-a="ftype" hidden>Cambiar tipo de pieza</button><button type="button" class="pb" id="plMt" data-a="mont" hidden>Montantes y medidas</button><button type="button" class="pb" id="plGrp" data-a="grp" hidden>Mover toda la estructura</button><button type="button" class="pb" id="plLkg" data-a="lockg" hidden>Bloquear esta estructura</button><button type="button" class="pb" id="plDa" data-a="dia" hidden>Cambiar diámetro</button></div>
+   <button type="button" class="pb" id="plTp" data-a="tbig" hidden>Letra +</button><button type="button" class="pb" id="plTm" data-a="tsm" hidden>Letra −</button><button type="button" class="pb" id="plTsz" data-a="tsz" hidden>Tamaño de letra…</button><button type="button" class="pb" id="plTf" data-a="tfn" hidden>Tipo de letra…</button><button type="button" class="pb" id="plHz" data-a="hz">Zona de toque…</button><button type="button" class="pb" id="plFlip" data-a="flip" hidden>Girar sentido</button><button type="button" class="pb" id="plCf" data-a="cflip" hidden>Cambiar sentido</button><button type="button" class="pb" id="plTq" data-a="towall" hidden>Convertir en pared</button><button type="button" class="pb" id="plWa" data-a="wapp" hidden>Aplicar espesor y material a esta pared</button><button type="button" class="pb" id="plWb" data-a="wappall" hidden>Aplicar a todas las paredes</button><button type="button" class="pb" id="plEdt" data-a="edt" hidden>Editar texto</button><button type="button" class="pb" id="plFt" data-a="ftype" hidden>Cambiar tipo de pieza</button><button type="button" class="pb" id="plMt" data-a="mont" hidden>Montantes y medidas</button><button type="button" class="pb" id="plGrp" data-a="grp" hidden>Mover toda la estructura</button><button type="button" class="pb" id="plLkg" data-a="lockg" hidden>Bloquear esta estructura</button><button type="button" class="pb" id="plDa" data-a="dia" hidden>Cambiar diámetro</button></div>
   <div class="form" style="margin-top:14px">
    <h3 class="sec">Espacio de trabajo</h3>
    ${sel('plAk','Qué vas a dibujar',[['t','Terreno (planta): línea municipal y límites'],['f','Vista de frente o corte: ancho × alto']],'t','','full')}
@@ -4003,7 +4011,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 45 · 15/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 47 · 15/11/2026</p>');
   window.scrollTo(0,0);
 }
 
