@@ -1338,6 +1338,21 @@ function gasSize(tramos,mat,o){
 const ART_KC={coc:8000,ana:5000,hor:3000,cfn:18600,ttg:5000,ttg40:4500,ttg50:5000,ttg80:7000,ttg110:9000,ttg130:10000,tt:5000,cag:24000,cft:3000,tbp25:2500,tbp38:3800,tbp50:5000,tbe25:2500,tbe38:3800,tbe50:5000,tbu38:3800,tbu50:5000,tn35:3500,tn50:5000,tn90:9000,sv27:2700,sve27:2700,sv42:4200,sve42:4200,est:3000,sec:3000};
 const KALIAS={cft2:'tbp25',cft3:'tbp38',cft4:'tbp38',cft5:'tbp50',cft6:'tbp50',ctu2:'tbu38',ctu3:'tbu38',ctu4:'tbu38',ctu5:'tbu50',ctu6:'tbu50',ctn2:'tn35',ctn3:'tn35',ctn4:'tn50',ctn5:'tn50'};
 const artKc=f=>f.kc>0?f.kc:(ART_KC[f.k]||0);
+/* Artefactos apoyados en el medio de una cañería (sin ramal): se parte la cañería en ese punto con una tee, así cada tramo se dimensiona con el consumo que realmente lleva */
+function gasPrep(sh){
+  let out=sh,n=0;
+  const arts=sh.filter(q=>q.t==='fit'&&q.ins==='gas'&&!q.hide&&FITS[q.k]&&FITS[q.k].ar&&artKc(q)>0);
+  arts.forEach(q=>{
+    let bj=-1,bd=800;out.forEach((L,j)=>{if(L.t!=='l'||L.ins!=='gas'||L.ls)return;const d=segDist(q.p,L.a,L.b);if(d<bd){bd=d;bj=j;}});
+    if(bj<0)return;const L=out[bj];
+    if(out.some(o=>o!==L&&o.t==='l'&&o.ins==='gas'&&!o.ls&&[o.a,o.b].some(P=>pdist(P,q.p)<=Math.max(bd,0)+150)))return; /* ya tiene su ramal */
+    const dx=L.b[0]-L.a[0],dy=L.b[1]-L.a[1],l2=dx*dx+dy*dy||1,u=Math.max(0,Math.min(1,((q.p[0]-L.a[0])*dx+(q.p[1]-L.a[1])*dy)/l2)),pt=[L.a[0]+u*dx,L.a[1]+u*dy];
+    if(pdist(pt,L.a)<=150||pdist(pt,L.b)<=150)return; /* en un extremo: no hay nada que partir */
+    const r=splitAtPoint(out,pt,'gas',2,false);if(!r)return;
+    r.push({t:'fit',k:'tee',ins:'gas',p:pt,ang:Math.round(Math.atan2(dy,dx)*180/Math.PI),auto:0});out=r;n++;
+  });
+  return out;
+}
 /* Dimensiona los tramos de gas del plano con el método de la calculadora de gas (NAG-200): devuelve {map:{GA1:'3/4"'},rows,unc,ok,mat} */
 function planGasCalc(sh,matk){
   const tt0=PL.cfg.tt;PL.cfg.tt=true;let tl0;try{tl0=tramoList(sh);}finally{PL.cfg.tt=tt0;}
@@ -1346,7 +1361,8 @@ function planGasCalc(sh,matk){
   const G={};tl.forEach(x=>{const g=G[x.g]=G[x.g]||{r:x.g,id:x.id,len:0,pg:x.pg,q:[]};g.len+=x.len;});
   const arts=sh.filter(q=>q.t==='fit'&&q.ins==='gas'&&!q.hide&&FITS[q.k]&&FITS[q.k].ar&&artKc(q)>0),unc=[];
   if(!arts.length)return {err:'No hay artefactos de gas. Ponelos con «Poner artefacto» cerca del final de cada cañería.'};
-  arts.forEach(q=>{let bd=800,bg=null;tl.forEach(x=>{const s=sh[x.i],d=segDist(q.p,s.a,s.b);if(d<bd){bd=d;bg=x.g;}});if(bg===null)unc.push(FITS[q.k].n);else G[bg].q.push(artKc(q)/9300);});
+  const dep0=r=>{let n=0,g=G[r];while(g&&g.pg!==undefined&&G[g.pg]&&n<99){n++;g=G[g.pg];}return n;};
+  arts.forEach(q=>{let bd=800,bg=null;tl.forEach(x=>{const s=sh[x.i],d=segDist(q.p,s.a,s.b);if(d<bd-1||(Math.abs(d-bd)<=1&&bg!==null&&dep0(x.g)<dep0(bg))){bd=Math.min(bd,d);bg=x.g;}});if(bg===null)unc.push(FITS[q.k].n);else G[bg].q.push(artKc(q)/9300);});
   const kids={};Object.values(G).forEach(g=>{if(g.pg!==undefined&&G[g.pg])(kids[g.pg]=kids[g.pg]||[]).push(g.r);});
   const sub=r=>G[r].q.concat(...(kids[r]||[]).map(sub)),best={};let ok=true,mat=null;
   const walk=(r,path)=>{const p=path.concat([r]);
@@ -2735,8 +2751,8 @@ function plAction(a){
   else if(a==='tbig'||a==='tsm'){const s=PL.shapes[PL.sel];if(isTx(s)){plPush();s.h=Math.max(20,Math.round(s.h*(a==='tbig'?1.25:.8)));plChanged();}}
   else if(a==='tsz'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tamaño de la letra (altura en mm del plano). Ahora: '+Math.round(s.h)+'. Referencias: 50 chica · 100 normal · 150 grande · 250 muy grande.',String(Math.round(s.h)));const n=parseFloat(String(v||'').replace(',','.'));if(n>=10&&n<=2000){plPush();s.h=Math.round(n);plChanged();}}}
   else if(a==='tfn'){const s=PL.shapes[PL.sel];if(isTx(s)){const v=window.prompt('Tipo de letra: 1 = Normal, 2 = Con serif (tipo libro), 3 = Máquina de escribir, 4 = Manuscrita.',({f:'2',m:'3',c:'4'})[s.fn]||'1');if(v!==null){plPush();const m=({'2':'f','3':'m','4':'c'})[v.trim()];if(m)s.fn=m;else delete s.fn;plChanged();}}}
-  else if(a==='gcalc'){const mk=PL.cfg.gmat||'ac',r=planGasCalc(PL.shapes,mk);if(r.err){plMsg(r.err);return;}
-    {const out=PL.shapes.slice();let n=0;Object.keys(r.idx).forEach(i=>{if(out[i]&&out[i].dia!==r.idx[i]){out[i]=Object.assign({},out[i],{dia:r.idx[i]});n++;}});if(n){plPush();PL.shapes=out;plChanged();}else plDraw();}
+  else if(a==='gcalc'){const mk=PL.cfg.gmat||'ac',pre=gasPrep(PL.shapes),r=planGasCalc(pre,mk);if(r.err){plMsg(r.err);return;}
+    {const out=pre.slice();let n=0;Object.keys(r.idx).forEach(i=>{if(out[i]&&out[i].dia!==r.idx[i]){out[i]=Object.assign({},out[i],{dia:r.idx[i]});n++;}});if(n||pre!==PL.shapes){plPush();PL.shapes=out;plChanged();}else plDraw();}
     plMsg('Diámetros de gas ('+r.mat.n.split(',')[0]+'): '+r.rows.map(x=>x.id+' '+x.lab).join(' · ')+(r.ok?'':' — Ojo: con este material algún tramo no alcanza, probá otro material o revisá los consumos.')+(r.unc.length?' — Sin conectar a ninguna cañería: '+r.unc.join(', ')+'.':'')+' Consumos típicos: corregilos en cada artefacto con «Consumo del artefacto…».');}
   else if(a==='gmat'){const i=GAS_MAT.findIndex(m=>m.k===(PL.cfg.gmat||'ac')),n=GAS_MAT[(i+1)%GAS_MAT.length];PL.cfg.gmat=n.k;plSave();plMsg('Material del gas para el cálculo: '+n.n+'. Tocá «Calcular diámetros de gas».');}
   else if(a==='fkc'){const s=PL.shapes[PL.sel];if(s&&s.t==='fit'&&FITS[s.k]&&FITS[s.k].ar&&(s.ins==='gas')){const v=window.prompt('Consumo del artefacto en kcal/h. Ahora: '+artKc(s)+' (valor típico). Poné el de tu modelo (figura en su placa).',String(artKc(s)));const n=parseFloat(String(v||'').replace(',','.'));if(n>0&&n<1e6){plPush();s.kc=Math.round(n);plChanged();}}}
@@ -4152,7 +4168,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 62 · 15/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 63 · 15/11/2026</p>');
   window.scrollTo(0,0);
 }
 
