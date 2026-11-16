@@ -132,6 +132,7 @@ th:first-child,td:first-child{text-align:left}
 .pb{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;min-height:40px;padding:0 12px;font:600 14.5px var(--font-body);cursor:pointer;white-space:nowrap;flex:none}
 .pb[aria-pressed=true],.pb.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .pb:active{opacity:.8}
+.mdcv{width:100%;height:auto;display:block;touch-action:none;border:1px solid var(--line);border-radius:10px;background:var(--field);margin-bottom:12px}
 .plbar{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch}
 .plbar.sel{align-items:center;flex-wrap:wrap}.plbar.sel span{font-size:13px;color:var(--muted);font-weight:600}
 .plwrap{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;height:56vh;min-height:300px;max-height:640px}
@@ -1402,18 +1403,18 @@ function planGasCalc(sh,matk){
   const dep0=r=>{let n=0,g=G[r];while(g&&g.pg!==undefined&&G[g.pg]&&n<99){n++;g=G[g.pg];}return n;};
   arts.forEach(q=>{let bd=800,bg=null;tl.forEach(x=>{const s=sh[x.i],d=segDist(q.p,s.a,s.b);if(d<bd-1||(Math.abs(d-bd)<=1&&bg!==null&&dep0(x.g)<dep0(bg))){bd=Math.min(bd,d);bg=x.g;}});if(bg===null)unc.push(FITS[q.k].n);else G[bg].q.push(artKc(q)/9300);});
   const kids={};Object.values(G).forEach(g=>{if(g.pg!==undefined&&G[g.pg])(kids[g.pg]=kids[g.pg]||[]).push(g.r);});
-  const sub=r=>G[r].q.concat(...(kids[r]||[]).map(sub)),best={};let ok=true,mat=null;
+  const sub=r=>G[r].q.concat(...(kids[r]||[]).map(sub)),best={};let ok=true,mat=null,mx=0;
   const walk=(r,path)=>{const p=path.concat([r]);
     if((kids[r]||[]).length)return kids[r].forEach(k=>walk(k,p));
     const tr=p.map(g=>({name:G[g].id,L:Math.max(.01,G[g].len/1000),Q:Math.max(.001,gasQsi(sub(g)))})),res=gasSize(tr,matk,{dp:1,extra:20});
-    mat=res.mat;if(!res.ok)ok=false;res.rows.forEach((x,i)=>{const b=best[p[i]];if(!b||x.di>b.di)best[p[i]]=x;});};
+    mat=res.mat;if(!res.ok)ok=false;if(res.dpT>mx)mx=res.dpT;res.rows.forEach((x,i)=>{const b=best[p[i]];if(!b||x.di>b.di)best[p[i]]=x;});};
   Object.values(G).filter(g=>g.pg===undefined||!G[g.pg]).forEach(g=>walk(g.r,[]));
   /* un tramo de aguas abajo nunca puede ser más grande que el que lo alimenta */
   const dep=r=>{let n=0,g=G[r];while(g&&g.pg!==undefined&&G[g.pg]){n++;g=G[g.pg];}return n;};
   Object.keys(best).sort((a,b)=>dep(b)-dep(a)).forEach(r=>{const pg=G[r].pg;if(pg!==undefined&&best[pg]&&best[r].di>best[pg].di)best[pg]=best[r];});
   const map={},idx={};Object.keys(best).forEach(r=>{map[G[r].id.toUpperCase()]=best[r].lab.replace(/"/g,'”');});
   tl.forEach(x=>{if(best[x.g]&&!/flexible/i.test(x.mat||''))idx[x.i]=best[x.g].lab.replace(/"/g,'”');});
-  return {map,idx,rows:Object.keys(best).map(r=>Object.assign({id:G[r].id},best[r])).sort((a,b)=>a.id.localeCompare(b.id,'es',{numeric:true})),unc,ok,mat};
+  return {map,idx,rows:Object.keys(best).map(r=>Object.assign({id:G[r].id},best[r])).sort((a,b)=>a.id.localeCompare(b.id,'es',{numeric:true})),unc,ok,mat,dpT:mx};
 }
 function diaApply(shapes,map){
   const tl=tramoList(shapes),out=shapes.slice(),ch=[];
@@ -1739,6 +1740,7 @@ const ICON={
   offset:'<path d="M3 18h6l6-12h6"/>',
   pcd:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="4" r=".9"/><circle cx="20" cy="12" r=".9"/><circle cx="12" cy="20" r=".9"/><circle cx="4" cy="12" r=".9"/>',
   angulo:'<path d="M4 20h16M4 20L17 5"/><path d="M11 20a7 7 0 0 0-2-5"/>',
+  medidor:'<rect x="10" y="1.5" width="7" height="13" rx="1.5" transform="rotate(30 13.5 8)"/><path d="M3 21h18M14 21a7 7 0 0 0-1.2-3.600"/>',
   tanque:'<path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6"/><ellipse cx="12" cy="6" rx="7" ry="3"/>',
   corte:'<path d="M3 7h18v4H3zM3 14h11v4H3z"/>',
   gas:'<path d="M12 3c3 4 5 6 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 .5 2 1.500 2.500 2 2.500C11.500 9 12 6 12 3z"/><path d="M4 21h16"/>',
@@ -1850,7 +1852,10 @@ const FIG={
   return svg(`<circle class="g" cx="140" cy="75" r="58"/><path class="g" d="M134 75H146M140 69V81"/>${pts.map(p=>`<circle class="sh" cx="${p[0]}" cy="${p[1]}" r="7"/>`).join('')}${dh(82,198,75,'PCD')}<text x="212" y="79">Agujero 1</text>`,'Círculo de agujeros visto de frente, con 6 agujeros como ejemplo. El agujero 1 queda a la derecha con ángulo inicial 0°; los ángulos se miden en sentido antihorario.');
  },
  angulo(){
-  return svg(`<path class="sh" d="M50 118H240V32Z"/><path class="o" style="stroke-width:1.4" d="M226 118V104H240"/><path class="d" d="M80 118A30 30 0 0 0 77.3 105.6"/><text x="145" y="138" text-anchor="middle">Cateto b</text><text x="252" y="80">Cateto a</text><text x="140" y="60" text-anchor="end">Hipotenusa c</text><text x="86" y="110">Ángulo A</text>`,'a es el cateto opuesto al ángulo A y b es el adyacente. El ángulo recto está en el vértice de los dos catetos.');
+  return svg(`<path class="sh" d="M50 118H240V32Z"/><path class="o" style="stroke-width:1.4" d="M226 118V104H240"/><path class="d" d="M80 118A30 30 0 0 0 77.3 105.6"/><text x="145" y="138" text-anchor="middle">Cateto b</text><text x="252" y="80">Cateto a</text><text x="140" y="60" text-anchor="end">Hipotenusa c</text><text x="86" y="110">Ángulo A</text>`,'a es el cateto opuesto al ángulo A y b es el adyacente. El ángulo recto está en el vértice de los dos catetos.')+svg(`<path class="sh" d="M40 122H260L170 28Z"/><text x="150" y="141" text-anchor="middle">Lado c</text><text x="86" y="68" text-anchor="end">Lado b</text><text x="232" y="68">Lado a</text><text x="62" y="116">A</text><text x="238" y="116" text-anchor="end">B</text><text x="170" y="52" text-anchor="middle">C</text>`,'Con tres lados cualquiera se calculan los tres ángulos. Cada ángulo está enfrente del lado que tiene su misma letra: A frente al lado a, B frente al b y C frente al c.');
+ },
+ medidor(){
+  return svg(`<path class="g" d="M30 122H290"/><g transform="rotate(-25 60 122)"><rect class="sh" x="60" y="110" width="210" height="12"/><rect class="o" x="110" y="84" width="46" height="26" rx="4"/>${lbl(133,101,'Celular','middle')}</g><path class="d" d="M135 122A75 75 0 0 0 128 90.300"/>${lbl(142,112,'Ángulo')}${lbl(200,140,'horizontal','middle')}${lbl(256,70,'Pieza')}${lead(258,60,232,50)}`,'El celular se apoya con su borde sobre la pieza y marca el ángulo respecto de la horizontal. Para medirlo desde la vertical se usa el complemento (90° menos el valor).');
  },
  tanque(t){
   if(t==='h')return svg(`<defs><clipPath id="clt"><rect x="40" y="35" width="200" height="70" rx="30"/></clipPath></defs><rect class="wt" x="40" y="70" width="200" height="35" clip-path="url(#clt)"/><rect class="o" x="40" y="35" width="200" height="70" rx="30"/>${dv(120,70,105,'Nivel')}${dh(40,240,128,'Largo del cilindro')}${dv(254,35,105,'Diámetro')}`,'Vista lateral del cilindro acostado. El nivel se mide desde el fondo.');
@@ -3343,6 +3348,229 @@ function tabiqueTool(){
   '<p class="note">Cuenta de perfiles para el pedido. Las placas, tornillos y masilla de este mismo tabique los calculás en Cantidades de obra. Verificá largos de barra y separaciones con el sistema que uses.</p>';
 }
 
+/* ---------- Medidor de ángulo: sensor del celular y foto ---------- */
+const MED={g:[0,0,9.8],has:false,want:false,on:false,hold:false,zero:null,zk:'',ios:false,calStep:0,cp:[],raf:0,last:0,wl:null,tm:0,img:null,pts:[],drag:-1,blob:''};
+function medCal(){const c=store('medidor-cal');return {p:+c.p||0,r:+c.r||0,ok:c.p!=null};}
+function medRaw(){
+  const [x,y,z]=MED.g,g=Math.hypot(x,y,z);if(g<4)return null;
+  const D=180/Math.PI;
+  return {p:Math.atan2(y,Math.hypot(x,z))*D,r:Math.atan2(x,Math.hypot(y,z))*D};
+}
+/* Ángulo medido respecto de la horizontal, con la calibración aplicada */
+function medH(){
+  const a=medRaw();if(!a)return null;
+  const c=medCal(),m=V('mdref'),R=Math.PI/180,D=180/Math.PI,p=a.p-c.p,r=a.r-c.r;
+  if(m==='long')return p;
+  if(m==='short')return r;
+  const sp=Math.sin(p*R),sr=Math.sin(r*R);
+  return Math.acos(Math.sqrt(Math.max(0,1-sp*sp-sr*sr)))*D;
+}
+function medDial(th,fromV){
+  const cx=160,cy=100,R=84,t=Math.max(-90,Math.min(90,th)),a=t*Math.PI/180,ar=48;
+  const x1=cx-R*Math.cos(a),y1=cy+R*Math.sin(a),x2=cx+R*Math.cos(a),y2=cy-R*Math.sin(a);
+  const ax=cx+ar*Math.cos(a),ay=cy-ar*Math.sin(a);
+  const arc=Math.abs(t)<.3?'':`<path class="d" style="stroke-width:3" d="M${cx+ar} ${cy}A${ar} ${ar} 0 0 ${t>0?0:1} ${ax.toFixed(1)} ${ay.toFixed(1)}"/>`;
+  return svgH(`<path class="g" d="M${cx-110} ${cy}H${cx+110}"/>${fromV?`<path class="g" d="M${cx} ${cy-92}V${cy+92}"/>`:''}${arc}<path d="M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}" style="stroke:var(--ink);stroke-width:9;stroke-linecap:round"/><circle cx="${cx}" cy="${cy}" r="5" style="fill:var(--accent);stroke:none"/>${lbl(cx-104,cy+16,'horizontal')}`,'',200);
+}
+function medRender(){
+  const root=document.getElementById('mdval');if(!root)return;
+  const h=medH(),st=document.getElementById('mdst');
+  if(h==null){root.textContent='—';root.className='cres muted';document.getElementById('mddial').innerHTML=medDial(0,false);$('#out').innerHTML=MED.has?'<p class="msg">El celular está en caída o se mueve demasiado.</p>':need;return;}
+  const fromV=V('mdfrom')==='v',sg=h<0?-1:1,hv=sg*(90-Math.abs(h));
+  const base=fromV?hv:h;
+  const key=V('mdref')+'|'+V('mdfrom');if(MED.zk!==key){MED.zk=key;MED.zero=null;}
+  const zb=document.querySelector('[data-m="zero"]');if(zb)zb.textContent=MED.zero==null?'Poner en cero':'Quitar el cero';
+  const val=base-(MED.zero||0);
+  root.textContent=(val>0.05?'+':val<-0.05?'−':'')+fmt(Math.abs(val),1)+'°';root.className='cres'+(MED.hold?' muted':'');
+  document.getElementById('mddial').innerHTML=medDial(MED.zero==null?(fromV?(h<0?-1:1)*(90-Math.abs(h)):h):val,fromV&&MED.zero==null);
+  const lb={long:'Borde largo del celular',short:'Borde corto del celular',surf:'Superficie sobre la que está apoyado'}[V('mdref')];
+  document.getElementById('mdlab').textContent=lb+' · '+(fromV?'respecto de la vertical':'respecto de la horizontal')+(MED.zero!=null?' · relativo al cero':'')+(MED.hold?' · valor congelado':'');
+  const ah=Math.abs(h),t=Math.tan(ah*Math.PI/180),c=medCal();
+  $('#out').innerHTML=res(
+    (MED.zero!=null?row('Relativo al cero',fmt(val,1),'°','key'):'')+
+    row('Respecto de la horizontal',fmt(ah,1),'°',MED.zero==null&&!fromV?'key':'')+
+    row('Respecto de la vertical',fmt(90-ah,1),'°',MED.zero==null&&fromV?'key':'')+
+    (ah<89?row('Pendiente',fmt(t*100,2),'%'):'')+
+    (ah<89?row('Milímetros por metro',fmt(t*1000,1),'mm/m'):'')+
+    (ah>0.3&&ah<89?row('Relación',`1 : ${fmt(1/t,2)}`,''):'')+
+    row('Calibración',c.ok?'guardada':'sin calibrar','',c.ok?'':'warn')
+  )+(ah>80&&V('mdref')!=='surf'?'<p class="note">Cerca de la vertical el sensor pierde precisión: conviene medir desde la horizontal y restar de 90°.</p>':'');
+  if(st&&MED.has&&!st.dataset.err)st.textContent='Sensor activo. Dejá el celular quieto un instante para que el valor se estabilice.';
+}
+function medSched(){
+  if(MED.raf||MED.hold)return;
+  MED.raf=requestAnimationFrame(()=>{MED.raf=0;const n=performance.now();if(n-MED.last<90){medSched();return;}MED.last=n;medRender();});
+}
+function medMotion(e){
+  const a=e.accelerationIncludingGravity;if(!a||a.x==null||a.y==null||a.z==null)return;
+  let x=a.x,y=a.y,z=a.z;if(MED.ios){x=-x;y=-y;z=-z;}
+  if(!MED.has){MED.g=[x,y,z];MED.has=true;}
+  else MED.g=[MED.g[0]*.82+x*.18,MED.g[1]*.82+y*.18,MED.g[2]*.82+z*.18];
+  if(!document.getElementById('mdval')){medStop();return;}
+  medSched();
+}
+function medIOS(){return /iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+async function medStart(){
+  const st=document.getElementById('mdst');if(MED.on)return;
+  try{
+    if(typeof DeviceMotionEvent==='undefined'){if(st){st.textContent='Este navegador no tiene acceso al sensor de movimiento. Probá abrir la app con Chrome.';st.dataset.err=1;}return;}
+    MED.ios=medIOS();
+    if(typeof DeviceMotionEvent.requestPermission==='function'){
+      let r='granted';
+      try{r=await DeviceMotionEvent.requestPermission();}catch(e){if(MED.ios)throw e;}
+      if(r==='denied'||(MED.ios&&r!=='granted')){if(st){st.textContent='Permiso denegado. Habilitá el acceso a movimiento y orientación del navegador y volvé a probar.';st.dataset.err=1;}return;}
+    }
+  }catch(e){if(st){st.textContent='No se pudo pedir permiso al sensor.';st.dataset.err=1;}return;}
+  if(!document.getElementById('mdval'))return;
+  MED.want=true;MED.on=true;MED.has=false;delete (st||{dataset:{}}).dataset.err;
+  window.addEventListener('devicemotion',medMotion);
+  try{if(navigator.wakeLock)navigator.wakeLock.request('screen').then(w=>{MED.wl=w;}).catch(()=>{});}catch(e){}
+  if(st)st.textContent='Activando el sensor…';
+  clearTimeout(MED.tm);MED.tm=setTimeout(()=>{const s=document.getElementById('mdst');if(s&&!MED.has){s.textContent='No llegan datos del sensor. Revisá que la app esté abierta en Chrome con conexión segura (https) y que el navegador tenga permitido el acceso a sensores.';s.dataset.err=1;}},2000);
+}
+function medStop(){
+  window.removeEventListener('devicemotion',medMotion);MED.on=false;clearTimeout(MED.tm);
+  if(MED.raf){cancelAnimationFrame(MED.raf);MED.raf=0;}
+  try{if(MED.wl){MED.wl.release();MED.wl=null;}}catch(e){}
+}
+window.MEDCLEAN=function(){medStop();MED.want=false;MED.hold=false;MED.zero=null;MED.calStep=0;MED.cp=[];MED.img=null;MED.pts=[];MED.drag=-1;if(MED.blob){try{URL.revokeObjectURL(MED.blob);}catch(e){}MED.blob='';}};
+function medAction(k){
+  const msg=document.getElementById('mdcal'),cb=document.querySelector('[data-m="cal"]');
+  if(k==='start'){MED.want=true;medStart();return;}
+  if(k==='hold'){MED.hold=!MED.hold;const b=document.querySelector('[data-m="hold"]');if(b)b.textContent=MED.hold?'Seguir midiendo':'Congelar valor';medRender();if(!MED.hold)medSched();return;}
+  if(k==='zero'){if(MED.zero!=null){MED.zero=null;}else{const h=medH();if(h==null)return;const fromV=V('mdfrom')==='v';MED.zero=fromV?(h<0?-1:1)*(90-Math.abs(h)):h;}medRender();return;}
+  if(k==='calclr'){persist('medidor-cal',{});MED.calStep=0;if(cb)cb.textContent='Calibrar';medCalMsg();medRender();return;}
+  if(k==='cal'){
+    if(!MED.has){msg.textContent='Primero activá el sensor.';return;}
+    const a=medRaw();
+    if(MED.calStep===0){MED.calStep=1;MED.cp=[];msg.textContent='Paso 1: apoyá el celular acostado, con la pantalla hacia arriba, sobre una superficie lo más plana y firme posible (mesa, piso) y tocá «Tomar punto 1».';cb.textContent='Tomar punto 1';return;}
+    if(!a||Math.abs(a.p)>12||Math.abs(a.r)>12){msg.textContent='El celular está muy inclinado para calibrar. Apoyalo acostado sobre una superficie plana y volvé a tocar el botón.';return;}
+    if(MED.calStep===1){MED.cp=[a];MED.calStep=2;msg.textContent='Paso 2: sin mover la superficie, girá el celular media vuelta (180°) sobre sí mismo, como una aguja de reloj, y tocá «Tomar punto 2».';cb.textContent='Tomar punto 2';return;}
+    if(MED.calStep===2){
+      const a1=MED.cp[0],op=(a1.p+a.p)/2,or=(a1.r+a.r)/2;
+      MED.calStep=0;cb.textContent='Calibrar';
+      if(Math.abs(a1.p+a.p)>8||Math.abs(a1.r+a.r)>8){msg.textContent='Las dos lecturas no coinciden: la superficie no estaba bien plana o el celular se movió. Repetí la calibración sobre otra superficie.';return;}
+      persist('medidor-cal',{p:op,r:or});medCalMsg();medRender();return;
+    }
+  }
+}
+function medCalMsg(){
+  const m=document.getElementById('mdcal');if(!m)return;const c=medCal();
+  m.textContent=c.ok?`Calibración guardada: corrección de ${fmt(Math.abs(c.p)<.005?0:-c.p,2)}° en el borde largo y ${fmt(Math.abs(c.r)<.005?0:-c.r,2)}° en el borde corto. Para comprobarla, apoyá el celular acostado: debe marcar 0,0°.`:'Sin calibrar. Para más precisión calibrá una vez con una superficie plana: el sensor de cada celular tiene un pequeño error de fábrica.';
+}
+/* ---- Desde una foto ---- */
+function medPhotoLoad(file){
+  if(!file)return;
+  if(MED.blob){try{URL.revokeObjectURL(MED.blob);}catch(e){}}
+  MED.blob=URL.createObjectURL(file);
+  const im=new Image();
+  im.onload=()=>{
+    MED.img=im;MED.pts=[];MED.drag=-1;
+    const cv=document.getElementById('mdcv');if(!cv)return;
+    const cssW=cv.parentElement.clientWidth||320;
+    cv.width=Math.min(im.naturalWidth,Math.round(cssW*(window.devicePixelRatio||1)));
+    cv.height=Math.round(cv.width*im.naturalHeight/im.naturalWidth);
+    cv.hidden=false;document.getElementById('mdph').hidden=true;
+    medPhotoDraw();medPhotoOut();
+  };
+  im.onerror=()=>{const p=document.getElementById('mdph');if(p){p.hidden=false;p.textContent='No se pudo abrir esa imagen.';}};
+  im.src=MED.blob;
+}
+function medAngleFromPts(){
+  const mode=V('mdpm'),P=MED.pts,D=180/Math.PI;
+  if(mode==='h'){
+    if(P.length<2)return null;
+    let a=Math.atan2(-(P[1][1]-P[0][1]),P[1][0]-P[0][0])*D;
+    if(a>90)a-=180;if(a<-90)a+=180;
+    return {h:Math.abs(a)};
+  }
+  if(P.length<3)return null;
+  const u=[P[0][0]-P[1][0],P[0][1]-P[1][1]],v=[P[2][0]-P[1][0],P[2][1]-P[1][1]],lu=Math.hypot(...u),lv=Math.hypot(...v);
+  if(!lu||!lv)return null;
+  return {a:Math.acos(Math.max(-1,Math.min(1,(u[0]*v[0]+u[1]*v[1])/(lu*lv))))*D};
+}
+function medPhotoOut(){
+  const o=$('#out');if(!o)return;
+  const need3=V('mdpm')==='h'?2:3;
+  if(!MED.img){o.innerHTML='<p class="msg">Sacá o elegí una foto para empezar.</p>';return;}
+  const r=medAngleFromPts();
+  if(!r){o.innerHTML='<p class="msg">Tocá la foto para marcar el punto '+(MED.pts.length+1)+' de '+need3+'. Podés arrastrar cada punto para ajustarlo.</p>';return;}
+  if(r.h!=null){const t=Math.tan(r.h*Math.PI/180);o.innerHTML=res(row('Respecto de la horizontal',fmt(r.h,1),'°','key')+row('Respecto de la vertical',fmt(90-r.h,1),'°')+(r.h<89?row('Pendiente',fmt(t*100,2),'%'):''));}
+  else o.innerHTML=res(row('Ángulo entre las dos líneas',fmt(r.a,1),'°','key')+row('Complemento (90° − ángulo)',fmt(90-r.a,1),'°')+row('Suplemento (180° − ángulo)',fmt(180-r.a,1),'°')+row('Corte a inglete de cada pieza',fmt(r.a/2,1),'°'));
+  o.insertAdjacentHTML('beforeend','<p class="note">En una foto el error típico es de 1° a 2°. Sacala de frente, con el celular paralelo a la pieza, y a cierta distancia para evitar la deformación del lente.</p>');
+}
+function medPhotoDraw(){
+  const cv=document.getElementById('mdcv');if(!cv||!MED.img)return;
+  const ctx=cv.getContext('2d'),W=cv.width,H=cv.height,s=W/MED.img.naturalWidth,im=MED.img,P=MED.pts.map(p=>[p[0]*s,p[1]*s]);
+  const h=V('mdpm')==='h',lw=Math.max(2,W/260),pr=Math.max(7,W/70);
+  ctx.clearRect(0,0,W,H);ctx.drawImage(im,0,0,W,H);
+  ctx.lineWidth=lw;ctx.lineCap='round';
+  const line=(a,b,col,dash)=>{ctx.strokeStyle=col;ctx.setLineDash(dash||[]);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();ctx.setLineDash([]);};
+  if(h){
+    if(P.length>=1){line([0,P[0][1]],[W,P[0][1]],'rgba(255,255,255,.85)',[10,8]);}
+    if(P.length>=2)line(P[0],P[1],'#ffd400');
+  }else{
+    if(P.length>=2)line(P[0],P[1],'#ffd400');
+    if(P.length>=3)line(P[1],P[2],'#ffd400');
+    if(P.length>=3){
+      const a0=Math.atan2(P[0][1]-P[1][1],P[0][0]-P[1][0]),a1=Math.atan2(P[2][1]-P[1][1],P[2][0]-P[1][0]);
+      let d=a1-a0;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;
+      ctx.strokeStyle='#00e0ff';ctx.beginPath();ctx.arc(P[1][0],P[1][1],pr*3,a0,a0+d,d<0);ctx.stroke();
+    }
+  }
+  P.forEach((p,i)=>{ctx.fillStyle=i===MED.drag?'#ff3b30':'#ffd400';ctx.strokeStyle='#000';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p[0],p[1],pr,0,7);ctx.fill();ctx.stroke();});
+  if(MED.drag>=0&&P[MED.drag]){
+    const p=P[MED.drag],LR=Math.max(48,W*.1),lx=p[0]<W/2?W-LR-8:LR+8,ly=LR+8,sr=LR/3/s;
+    ctx.save();ctx.beginPath();ctx.arc(lx,ly,LR,0,7);ctx.clip();
+    ctx.drawImage(im,MED.pts[MED.drag][0]-sr,MED.pts[MED.drag][1]-sr,2*sr,2*sr,lx-LR,ly-LR,2*LR,2*LR);
+    ctx.restore();
+    ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(lx,ly,LR,0,7);ctx.stroke();
+    ctx.lineWidth=1.5;ctx.strokeStyle='#ff3b30';ctx.beginPath();ctx.moveTo(lx-LR*.35,ly);ctx.lineTo(lx+LR*.35,ly);ctx.moveTo(lx,ly-LR*.35);ctx.lineTo(lx,ly+LR*.35);ctx.stroke();
+  }
+}
+function medPhotoBind(){
+  const cv=document.getElementById('mdcv');if(!cv||cv.dataset.k)return;cv.dataset.k=1;
+  const pos2=e=>{const r=cv.getBoundingClientRect(),k=cv.width/r.width,s=cv.width/MED.img.naturalWidth;return [(e.clientX-r.left)*k/s,(e.clientY-r.top)*k/s,k/s];};
+  cv.addEventListener('pointerdown',e=>{
+    if(!MED.img)return;e.preventDefault();
+    const [x,y,k]=pos2(e),n=V('mdpm')==='h'?2:3,hit=28*k;let best=-1,bd=hit;
+    MED.pts.forEach((p,i)=>{const d=Math.hypot(p[0]-x,p[1]-y);if(d<bd){bd=d;best=i;}});
+    if(best<0&&MED.pts.length<n){MED.pts.push([x,y]);best=MED.pts.length-1;}
+    MED.drag=best;if(best>=0){try{cv.setPointerCapture(e.pointerId);}catch(_){}}
+    medPhotoDraw();medPhotoOut();
+  });
+  cv.addEventListener('pointermove',e=>{
+    if(MED.drag<0||!MED.img)return;e.preventDefault();
+    const [x,y]=pos2(e),W=MED.img.naturalWidth,H=MED.img.naturalHeight;
+    MED.pts[MED.drag]=[Math.max(0,Math.min(W,x)),Math.max(0,Math.min(H,y))];
+    medPhotoDraw();medPhotoOut();
+  });
+  const up=()=>{if(MED.drag>=0){MED.drag=-1;medPhotoDraw();medPhotoOut();}};
+  cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+}
+function medInit(){
+  const root=document.getElementById('mdroot');if(!root||root.dataset.k)return;root.dataset.k=1;
+  MED.hold=false;MED.zero=null;MED.zk='';MED.calStep=0;MED.has=false;MED.on=false;MED.img=null;MED.pts=[];MED.drag=-1;
+  root.addEventListener('click',e=>{
+    const b=e.target.closest('[data-m]');if(!b)return;
+    const k=b.dataset.m;
+    if(k==='shot')root.querySelector('.mdf-c').click();
+    else if(k==='pick')root.querySelector('.mdf-g').click();
+    else if(k==='clr'){MED.pts=[];MED.drag=-1;medPhotoDraw();medPhotoOut();}
+    else medAction(k);
+  });
+  root.querySelectorAll('input[type=file]').forEach(f=>f.addEventListener('change',()=>{if(f.files&&f.files[0])medPhotoLoad(f.files[0]);f.value='';}));
+  medPhotoBind();medCalMsg();
+}
+function medMode(){
+  const m=V('mdmode'),sen=m==='sen';
+  document.getElementById('mdsen').hidden=!sen;document.getElementById('mdfoto').hidden=sen;
+  if(sen){
+    if(!MED.on&&(MED.want||!medIOS()))medStart();
+    medRender();
+  }else{medStop();medPhotoDraw();medPhotoOut();}
+}
+
 const TOOLS=[
 {id:'cientifica',name:'Calculadora científica',desc:'Funciones, potencias, grados y radianes',
  html:()=>{
@@ -3839,6 +4067,10 @@ const TOOLS=[
   ${fld('tc','Hipotenusa c','','')}${fld('tA','Ángulo A','','°')}
   <p class="hint">Cargá dos datos: dos lados, o un lado y el ángulo A.</p>
   <div id="tout" class="full" style="grid-column:1/-1"></div>
+  <h3 class="sec">Triángulo con tres lados</h3>
+  ${fld('s1','Lado a','','')}${fld('s2','Lado b','','')}${fld('s3','Lado c','','')}
+  <p class="hint">Sirve para sacar un ángulo midiendo solo con la cinta: cargá los tres lados de un triángulo cualquiera. Para medir un ángulo directamente con el celular usá el <a href="#medidor">Medidor de ángulo</a>.</p>
+  <div id="s3out" style="grid-column:1/-1"></div>
   <h3 class="sec">Pendiente</h3>
   ${sel('sk','Tengo el dato en',[['deg','Grados'],['pct','Porcentaje (%)'],['mm','mm por metro'],['ratio','Relación 1 : x']],'deg')}${fld('sv','Valor','5','')}
   <div id="sout" style="grid-column:1/-1"></div>
@@ -3848,6 +4080,13 @@ const TOOLS=[
  calc(){
   const r=tri(N('ta'),N('tb'),N('tc'),N('tA'));
   $('#tout').innerHTML=r?res(row('Cateto a',fmt(r.a,3))+row('Cateto b',fmt(r.b,3))+row('Hipotenusa c',fmt(r.c,3))+row('Ángulo A',fmt(r.A,3),'°')+row('Ángulo B',fmt(r.B,3),'°')):'';
+  {const a=N('s1'),b=N('s2'),c=N('s3'),D=180/Math.PI;let h='';
+   if(pos(a,b,c)){
+     if(a+b<=c||a+c<=b||b+c<=a)h='<p class="msg">Con esos tres lados no se puede armar un triángulo: el lado más largo tiene que ser menor que la suma de los otros dos.</p>';
+     else{const A=Math.acos((b*b+c*c-a*a)/(2*b*c))*D,B=Math.acos((a*a+c*c-b*b)/(2*a*c))*D,C=180-A-B,q=(a+b+c)/2;
+       h=res(row('Ángulo A (frente al lado a)',fmt(A,2),'°')+row('Ángulo B (frente al lado b)',fmt(B,2),'°')+row('Ángulo C (frente al lado c)',fmt(C,2),'°')+row('Perímetro',fmt(a+b+c,3),'')+row('Área',fmt(Math.sqrt(q*(q-a)*(q-b)*(q-c)),3),'(unidad²)'));}
+   }
+   $('#s3out').innerHTML=h;}
   const sv=N('sv'),k=V('sk');let deg=NaN;
   if(isFinite(sv)){const R=Math.PI/180;deg=k==='deg'?sv:k==='pct'?Math.atan(sv/100)/R:k==='mm'?Math.atan(sv/1000)/R:sv>0?Math.atan(1/sv)/R:NaN;}
   if(isFinite(deg)&&deg>=0&&deg<90){const t=Math.tan(deg*Math.PI/180);
@@ -3858,6 +4097,40 @@ const TOOLS=[
   if(ja>0&&ja<180)h+=row('Corte de cada pieza, desde el eje',fmt(ja/2,3),'°')+row('Corte de cada pieza, desde escuadra',fmt(90-ja/2,3),'°');
   $('#iout').innerHTML=h?res(h):'';
  }},
+
+{id:'medidor',name:'Medidor de ángulo',desc:'Con el sensor del celular o con una foto',
+ fig:()=>FIG.medidor(),
+ html:()=>`<div id="mdroot"><div class="form">
+  ${sel('mdmode','Cómo medir',[['sen','Con el sensor (apoyar el celular)'],['foto','Desde una foto (marcar puntos)']],'sen','','full')}</div>
+  <div id="mdsen">
+   <div class="cdisp"><div class="cres muted" id="mdval" aria-live="polite">—</div><p class="hint" id="mdlab" style="text-align:right;margin:2px 0 0"></p></div>
+   <figure class="fig" id="mddial" aria-hidden="true"></figure>
+   <div class="form">
+    ${sel('mdref','Qué se mide',[['long','Borde largo (celular de canto)'],['short','Borde corto (celular de costado)'],['surf','Superficie (celular acostado)']],'long','','full')}
+    ${sel('mdfrom','Ángulo respecto de la',[['h','Horizontal'],['v','Vertical']],'h','','full')}
+   </div>
+   <div class="btns" style="margin:0 0 12px"><button type="button" class="pb on" data-m="start">Activar sensor</button><button type="button" class="pb" data-m="hold">Congelar valor</button><button type="button" class="pb" data-m="zero">Poner en cero</button></div>
+   <div class="btns" style="margin:0 0 6px"><button type="button" class="pb" data-m="cal">Calibrar</button><button type="button" class="pb" data-m="calclr">Borrar calibración</button></div>
+   <p class="hint" id="mdcal"></p>
+   <p class="hint" id="mdst" style="margin-top:6px">Activá el sensor y apoyá el celular sobre la pieza.</p>
+  </div>
+  <div id="mdfoto" hidden>
+   <div class="form">${sel('mdpm','Qué querés medir',[['3','Entre dos líneas (3 puntos)'],['h','Inclinación de una línea (2 puntos)']],'3','','full')}</div>
+   <div class="btns" style="margin:0 0 12px"><button type="button" class="pb on" data-m="shot">Sacar foto</button><button type="button" class="pb" data-m="pick">Elegir de la galería</button><button type="button" class="pb" data-m="clr">Borrar puntos</button></div>
+   <input type="file" accept="image/*" capture="environment" class="mdf-c" hidden><input type="file" accept="image/*" class="mdf-g" hidden>
+   <p class="msg" id="mdph" style="padding-top:0">Sacá o elegí una foto. En «dos líneas» marcá un extremo de la primera línea, después el vértice (donde se juntan) y por último un extremo de la segunda. Arrastrá cada punto para ajustarlo: al moverlo aparece una lupa.</p>
+   <canvas id="mdcv" class="mdcv" hidden></canvas>
+  </div></div><div id="out"></div>
+  ${glossHtml([
+   ['Borde largo','El lado más largo del celular. Se apoya contra la pieza como si fuera una escuadra: el celular marca cuánto está inclinada respecto de la horizontal.'],
+   ['Borde corto','El lado angosto del celular. Sirve para medir con el celular de costado, por ejemplo en un perfil o una chapa de poco largo.'],
+   ['Superficie','Con el celular acostado sobre una chapa o una rampa, mide cuánto se inclina esa superficie en cualquier dirección.'],
+   ['Respecto de la horizontal','0° es una pieza acostada a nivel y 90° es una pieza parada derecha. El ángulo respecto de la vertical es el complemento: 90° menos el anterior.'],
+   ['Poner en cero','Toma la posición actual como referencia. Después el valor es la diferencia con esa posición: sirve para medir el ángulo entre dos piezas, apoyando primero una y luego la otra.'],
+   ['Calibrar','Corrige el pequeño error de fábrica del sensor. Se hace una vez, con el celular acostado sobre una superficie plana y girándolo 180°.'],
+   ['Signo del valor','Positivo: el extremo superior del celular (o su costado derecho) está más alto que el opuesto. Negativo: más bajo.']
+  ])}`,
+ calc(){medInit();medMode();}},
 
 {id:'niv',name:'Nivelación',desc:'Cotas con nivel óptico o láser',
  fig:()=>FIG.niv(),
@@ -4026,7 +4299,8 @@ Derivación a calefón ; 4000 ; 18000</textarea></div></label>
   });
   if(!tr.length)return $('#out').innerHTML=need;
   if(tr.some(t=>!(t.Q>0)))return $('#out').innerHTML='<p class="msg">Falta el consumo: cargá artefactos arriba o poné el consumo en cada tramo.</p>';
-  const r=gasSize(tr,M.k,{dp:N('gl')||1,extra:isFinite(N('gx'))?N('gx'):20});
+  const gp=window.GASPLAN&&window.GASPLAN.txt===V('gt').trim()&&window.GASPLAN.mat===M.k&&window.GASPLAN.r&&window.GASPLAN.r.rows?window.GASPLAN.r:null;
+  const r=gp?{rows:gp.rows.map(x=>Object.assign({},x,{name:x.id})),dpT:gp.dpT,dpMax:1,ok:gp.ok,mat:M}:gasSize(tr,M.k,{dp:N('gl')||1,extra:isFinite(N('gx'))?N('gx'):20});
   window.GASLAST={};r.rows.forEach(x=>{GASLAST[x.name.toUpperCase()]=x.lab.replace(/"/g,'”');});
   const g={};r.rows.forEach(x=>{(g[x.lab]=g[x.lab]||{lab:x.lab,di:x.di,len:0,pieces:[]});g[x.lab].len+=x.L;g[x.lab].pieces.push(x.L*1000);});
   const mat=Object.values(g).map(q=>row('Diámetro '+q.lab+(M.k==='ac'?' ('+q.di+' mm interior)':''),lenV(q.len*1000)+' '+lenU(),packCuts(M.len,3,q.pieces).length+' tubo(s) de '+fmt(M.len/1000,1)+' m')).join('');
@@ -4226,7 +4500,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 69 · 15/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 71 · 16/11/2026</p>');
   window.scrollTo(0,0);
 }
 
@@ -4284,8 +4558,15 @@ function linkAct(k,quiet){
     const v=V('gly'),gt=g('gt');if(!v||!gt){linkMsg('Elegí primero un plano.','gMsg');return;}
     const tl=(()=>{const m=new Map();tramoList(linkShapes(v)||[]).filter(t=>t.ins==='gas').forEach(z=>{const q=m.get(z.id);if(q)q.len+=z.len;else m.set(z.id,Object.assign({},z));});return [...m.values()];})();
     if(!tl.length){linkMsg('Ese plano no tiene tramos de gas. En Planos elegí la línea de instalación «Gas» y dibujá.','gMsg');return;}
-    gt.value=tl.map(t=>t.id+' ; '+(V('gtu')==='m'?String(Math.round(t.len/10)/100).replace('.',','):String(Math.round(t.len)))+' ; ').join('\n');gt.dispatchEvent(new Event('input',{bubbles:true}));
-    linkMsg('Se trajeron '+tl.length+' tramos. Poné el consumo de cada uno y ordenalos del medidor al artefacto más lejano.','gMsg');
+    {const sh0=linkShapes(v)||[],pre=gasPrep(sh0),mk=V('gm')||'ac',pr=pre===sh0?planGasCalc(sh0,mk):{err:'x'};
+      if(pr&&!pr.err&&pr.rows&&pr.rows.length){
+        const u=V('gu'),cv=q=>u==='k'?q*9300:u==='w'?q*9300/860:q,tx=pr.rows.map(x=>x.id+' ; '+(V('gtu')==='m'?String(Math.round(x.L*100)/100).replace('.',','):String(Math.round(x.L*1000)))+' ; '+String(Math.round(cv(x.Q)*100)/100).replace('.',',')).join('\n');
+        gt.value=tx;gt.dispatchEvent(new Event('input',{bubbles:true}));window.GASPLAN={txt:tx.trim(),mat:mk,r:pr};
+        linkMsg('Se trajeron '+pr.rows.length+' tramos con el consumo de cada uno según los artefactos del plano (los dos mayores completos y la mitad del resto, en cada rama). Cada tramo se dimensiona con lo que lleva, por eso los diámetros pueden ser distintos.'+(pr.unc.length?' Sin conectar a ninguna cañería: '+pr.unc.join(', ')+'.':''),'gMsg');
+        return;}
+      window.GASPLAN=null;
+      gt.value=tl.map(t=>t.id+' ; '+(V('gtu')==='m'?String(Math.round(t.len/10)/100).replace('.',','):String(Math.round(t.len)))+' ; ').join('\n');gt.dispatchEvent(new Event('input',{bubbles:true}));
+      linkMsg('Se trajeron '+tl.length+' tramos'+(pre!==sh0?'. Hay artefactos apoyados en el medio de una cañería: en Planos usá «Calcular diámetros de gas», que la parte en cada toma.':(pr&&pr.err&&pr.err!=='x'?' ('+pr.err+') Poné el consumo de cada uno y ordenalos del medidor al artefacto más lejano.':'')),'gMsg');}
   }else if(k==='gas-send'){
     const v=V('gly');if(!v||!window.GASLAST){linkMsg('Elegí un plano y calculá primero.','gMsg');return;}
     const ch=linkSetDia(v,window.GASLAST);linkMsg(ch.length?'Diámetros enviados al plano: '+ch.join(', ')+'.':'No hay tramos del plano con esos nombres (G1, G2… o A1, A2…).','gMsg');
@@ -4315,6 +4596,7 @@ function openTool(t){
   window.scrollTo(0,0);
 }
 function route(){
+  if(window.MEDCLEAN)window.MEDCLEAN();
   const id=location.hash.replace('#','');
   const t=TOOLS.find(x=>x.id===id);
   t?openTool(t):home();
