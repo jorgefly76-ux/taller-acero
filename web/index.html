@@ -3494,18 +3494,39 @@ function medAction(k){
   if(k==='zero'){if(MED.zero!=null){MED.zero=null;}else{const h=medH();if(h==null)return;const fromV=V('mdfrom')==='v';MED.zero=fromV?(h<0?-1:1)*(90-Math.abs(h)):h;}medRender();return;}
   if(k==='calclr'){persist('medidor-cal',{});MED.calStep=0;if(cb)cb.textContent='Calibrar';medCalMsg();medRender();return;}
   if(k==='cal'){
+    if(MED.capBusy)return;
     if(!MED.has){msg.textContent='Primero activá el sensor.';return;}
-    const a=medRaw();
-    if(MED.calStep===0){MED.calStep=1;MED.cp=[];msg.textContent='Paso 1: apoyá el celular acostado, con la pantalla hacia arriba, sobre una superficie lo más plana y firme posible (mesa, piso) y tocá «Tomar punto 1».';cb.textContent='Tomar punto 1';return;}
-    if(!a||Math.abs(a.p)>12||Math.abs(a.r)>12){msg.textContent='El celular está muy inclinado para calibrar. Apoyalo acostado sobre una superficie plana y volvé a tocar el botón.';return;}
-    if(MED.calStep===1){MED.cp=[a];MED.calStep=2;msg.textContent='Paso 2: sin mover la superficie, girá el celular media vuelta (180°) sobre sí mismo, como una aguja de reloj, y tocá «Tomar punto 2».';cb.textContent='Tomar punto 2';return;}
-    if(MED.calStep===2){
+    if(MED.calStep===0){MED.calStep=1;MED.cp=[];msg.textContent='Paso 1: apoyá el celular acostado, con la pantalla hacia arriba, sobre una superficie plana y firme (mesa, piso). Tocá «Tomar punto 1» y soltalo enseguida: tenés 5 segundos y la lectura se toma sola. El celular vibra cuando termina.';cb.textContent='Tomar punto 1';return;}
+    medCapture(a=>{
+      if(!a){msg.textContent='No llegan datos del sensor. Tocá el botón otra vez.';return;}
+      if(a.mv){msg.textContent='El celular se movió durante la lectura. Dejalo quieto y tocá el botón otra vez.';return;}
+      if(Math.abs(a.p)>12||Math.abs(a.r)>12){msg.textContent='El celular está muy inclinado para calibrar. Apoyalo acostado sobre una superficie plana y tocá el botón otra vez.';return;}
+      if(MED.calStep===1){MED.cp=[a];MED.calStep=2;msg.textContent='Paso 2: sin mover la mesa, girá el celular media vuelta sobre la mesa, como la aguja de un reloj. Sigue con la pantalla hacia arriba: solo cambia hacia dónde apunta su parte de arriba (si antes apuntaba lejos de vos, ahora apunta hacia vos). Tocá «Tomar punto 2», soltalo y esperá la vibración.';cb.textContent='Tomar punto 2';return;}
       const a1=MED.cp[0],op=(a1.p+a.p)/2,or=(a1.r+a.r)/2;
       MED.calStep=0;cb.textContent='Calibrar';
-      if(Math.abs(a1.p+a.p)>8||Math.abs(a1.r+a.r)>8){msg.textContent='Las dos lecturas no coinciden: la superficie no estaba bien plana o el celular se movió. Repetí la calibración sobre otra superficie.';return;}
-      persist('medidor-cal',{p:op,r:or});medCalMsg();medRender();return;
-    }
+      if(Math.abs(a1.p+a.p)>8||Math.abs(a1.r+a.r)>8){msg.textContent='Las dos lecturas no coinciden: la superficie no estaba bien plana o el celular no se giró 180°. Repetí la calibración.';return;}
+      persist('medidor-cal',{p:op,r:or});medCalMsg();medRender();
+    });
   }
+}
+/* Toma una lectura sin tocar el celular: cuenta 5 s para soltarlo y promedia 1 s de lecturas */
+function medCapture(done){
+  const msg=document.getElementById('mdcal');let n=5;MED.capBusy=true;
+  const fin=r=>{MED.capBusy=false;done(r);};
+  const tick=()=>{
+    if(!document.getElementById('mdcal')){MED.capBusy=false;return;}
+    if(n>0){msg.textContent='Soltá el celular y no lo toques. Tomo la lectura en '+n+'…';n--;setTimeout(tick,1000);return;}
+    msg.textContent='Midiendo…';const acc=[],t0=Date.now();
+    const iv=setInterval(()=>{
+      const a=medRaw();if(a)acc.push(a);
+      if(Date.now()-t0<1000)return;
+      clearInterval(iv);try{if(navigator.vibrate)navigator.vibrate(250);}catch(e){}
+      if(!acc.length){fin(null);return;}
+      const av=k=>acc.reduce((q,x)=>q+x[k],0)/acc.length,rg=k=>Math.max(...acc.map(x=>x[k]))-Math.min(...acc.map(x=>x[k]));
+      fin({p:av('p'),r:av('r'),mv:rg('p')>1.5||rg('r')>1.5});
+    },50);
+  };
+  tick();
 }
 function medCalMsg(){
   const m=document.getElementById('mdcal');if(!m)return;const c=medCal();
@@ -4556,7 +4577,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 73 · 16/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 74 · 16/11/2026</p>');
   window.scrollTo(0,0);
 }
 
