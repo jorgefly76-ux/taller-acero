@@ -9,7 +9,8 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap"></noscript>
 </head>
 <body>
 <style>
@@ -646,10 +647,41 @@ function eqOwner(sh,ins,P,T,R){
   sh.forEach((e,j)=>{if(!isEq(e)||e.hide||(ins&&e.ins!==ins))return;const d=eqDist(e,P,T);if(d>R)return;const c=pdist(P,e.p);if(d<bd||(d===bd&&c<bc)){bd=d;bc=c;best=j;}});
   return best;
 }
+/* Mueve un equipo (artefacto, nicho…) con las cañerías que llegan a él:
+   · solo se arrastra el extremo que realmente está en el equipo; un extremo que es unión con otras cañerías y está lejos del cuerpo se queda donde está
+   · si la cañería era horizontal o vertical y el equipo se corre al costado, se agrega un tramo para que siga a escuadra (en vez de quedar en diagonal)
+   · las piezas que estaban sobre esa cañería (codos, llaves, kits) acompañan al extremo que se movió */
 function eqMove(sh,i,dx,dy){
-  const f=sh[i],T=30,R=450,out=sh.slice(),mv=P=>[P[0]+dx,P[1]+dy];
-  sh.forEach((s,j)=>{if(s.t==='l'&&s.ins===f.ins&&!s.ls){const a=eqOwner(sh,s.ins,s.a,T,R)===i,b=eqOwner(sh,s.ins,s.b,T,R)===i;if(a||b)out[j]=Object.assign({},s,a?{a:mv(s.a)}:{},b?{b:mv(s.b)}:{});}});
-  out[i]=moveShape(f,dx,dy);return out;
+  const f=sh[i],T=30,R=450,out=sh.slice(),mv=P=>[P[0]+dx,P[1]+dy],add=[],done=new Set();
+  const joint=(P,j)=>sh.some((o,k)=>k!==j&&o.t==='l'&&o.ins===f.ins&&!o.ls&&(pdist(P,o.a)<=20||pdist(P,o.b)<=20||segDist(P,o.a,o.b)<=20));
+  const ok=(P,j)=>eqOwner(sh,f.ins,P,T,R)===i&&(eqDist(f,P,T)===0||!joint(P,j));
+  const along=(poly,d)=>{let r=d;for(let q=0;q<poly.length-1;q++){const A=poly[q],B=poly[q+1],l=pdist(A,B);
+    if(r<=l||q===poly.length-2){const u=l?Math.max(0,Math.min(1,r/l)):0;return {p:[A[0]+(B[0]-A[0])*u,A[1]+(B[1]-A[1])*u],ang:Math.round(Math.atan2(B[1]-A[1],B[0]-A[0])*180/Math.PI)};}r-=l;}};
+  sh.forEach((s,j)=>{
+    if(s.t!=='l'||s.ins!==f.ins||s.ls)return;
+    const a=ok(s.a,j),b=ok(s.b,j);if(!a&&!b)return;
+    const onLine=[];sh.forEach((g,k)=>{if(k!==i&&g.t==='fit'&&!isEq(g)&&g.ins===f.ins&&!g.hide&&!done.has(k)&&segDist(g.p,s.a,s.b)<=T)onLine.push(k);});
+    if(a&&b){
+      out[j]=Object.assign({},s,{a:mv(s.a),b:mv(s.b)});
+      onLine.forEach(k=>{done.add(k);out[k]=Object.assign({},sh[k],{p:mv(sh[k].p)});});return;
+    }
+    const e=a?'a':'b',F=a?s.b:s.a,M0=a?s.a:s.b,M1=mv(M0),vx=M0[0]-F[0],vy=M0[1]-F[1],L0=Math.hypot(vx,vy)||1;
+    let corner=null;
+    if(Math.abs(vy)<=2&&Math.abs(vx)>2&&Math.abs(dy)>2)corner=[M1[0],F[1]];
+    else if(Math.abs(vx)<=2&&Math.abs(vy)>2&&Math.abs(dx)>2)corner=[F[0],M1[1]];
+    if(corner&&(pdist(F,corner)<2||pdist(corner,M1)<2))corner=null;
+    const poly=corner?[F,corner,M1]:[F,M1],Lt=poly.slice(1).reduce((q,P,n)=>q+pdist(poly[n],P),0);
+    if(!corner)out[j]=Object.assign({},s,e==='b'?{b:M1}:{a:M1});
+    else{
+      const n2=Object.assign({},s);delete n2.n;
+      if(e==='b'){out[j]=Object.assign({},s,{a:F,b:corner});add.push(Object.assign(n2,{a:corner,b:M1}));}
+      else{out[j]=Object.assign({},s,{a:corner,b:F});add.push(Object.assign(n2,{a:M1,b:corner}));}
+    }
+    onLine.forEach(k=>{done.add(k);const g=sh[k],u=Math.max(0,Math.min(1,((g.p[0]-F[0])*vx+(g.p[1]-F[1])*vy)/(L0*L0))),dF=u*L0,dM=L0-dF,r=dF<=dM?along(poly,dF):along(poly,Math.max(0,Lt-dM));
+      if(r)out[k]=Object.assign({},g,{p:r.p},pdist(r.p,g.p)>1?{ang:r.ang}:{});});
+  });
+  out[i]=moveShape(f,dx,dy);
+  return out.concat(add);
 }
 /* Piezas que van en un vértice (codos, tees, reducciones, cruces): al arrastrarlas se mueve el vértice y las cañerías se estiran con él */
 const NODAL=['c90','c45','cx','tee','y45','red','crz','cu90'];
@@ -4577,7 +4609,7 @@ function home(){
   back.hidden=true; brand.hidden=false;
   main.className='view';
   main.innerHTML=`<p class="lead">${TOOLS.length} calculadoras para el taller y la obra. Funcionan sin conexión y no piden registro.</p><div class="grid">${TOOLS.map(t=>`<a class="tile" href="#${t.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t.id==='conv'?'conv':t.id]}</svg><h2>${t.name}</h2><p>${t.desc}</p></a>`).join('')}</div>`;
-  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 74 · 16/11/2026</p>');
+  main.insertAdjacentHTML('beforeend','<p class="lead" style="font-size:.8rem;opacity:.65;text-align:center;margin-top:18px">Versión 76 · 19/11/2026</p>');
   window.scrollTo(0,0);
 }
 
